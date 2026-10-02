@@ -1,0 +1,127 @@
+import "./egg.css";
+import { defineContentScript } from "wxt/utils/define-content-script";
+import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
+import { browser } from "wxt/browser";
+import { HATCH_WEB_ORIGIN } from "../../lib/config";
+import { detectFromDom } from "../../lib/detect";
+import { clean, collectPageContext } from "../../lib/page";
+import { sendToBackground, type NoticeResponse, type TabMessage } from "../../lib/messages";
+import { DEFAULT_EGG_POS, KEYS, getLocal, getSettings, incubatingCount, isHiddenOn, setLocal, updateSettings, type EggPos, type HatchesCache, type Settings } from "../../lib/storage";
+import { EggView } from "./egg";
+
+/**
+ * Content script on every page: the floating egg, local page detection, and answering the side
+ * panel's "what's on this page?" request. Never calls the web app itself (the background does).
+ */
+export default defineContentScript({
+  matches: ["http://*/*", "https://*/*"],
+  runAt: "document_idle",
+  cssInjectionMode: "ui",
+  async main(ctx) {
+    if (window.top !== window) return; // top frame only
+    if (location.origin === HATCH_WEB_ORIGIN) return; // the web app has its own UI (and the bridge script)
+
+    let egg: EggView | null = null;
+    let ui: Awaited<ReturnType<typeof createShadowRootUi>> | null = null;
+    let settings: Settings = await getSettings();
+
+    // The side panel asks for page context even when the egg is hidden.
+    browser.runtime.onMessage.addListener((raw: unknown, _sender, sendResponse) => {
+      const msg = raw as TabMessage;
+      switch (msg?.type) {
+        case "get-context":
+          sendResponse(collectPageContext());
+          return false;
+        case "egg-state":
+          egg?.setState(msg.state);
+          return false;
+        case "bubble":
+          egg?.showBubble(msg.text, { url: msg.url, linkText: "View" });
+          return false;
+        default:
+          return false;
+      }
+    });
+
+    async function mount() {
+      if (ui || isHiddenOn(settings, location.hostname)) return;
+      const pos = await getLocal<EggPos>(KEYS.eggPos, DEFAULT_EGG_POS);
+      ui = await createShadowRootUi(ctx, {
+        name: "hatch-egg",
+        position: "inline",
+        anchor: "body",
+        append: "last",
+        onMount(container) {
+          egg = new EggView(container, pos, {
+            onOpen: () => void sendToBackground({ type: "open-side-panel" }),
+            onMove: (p) => void setLocal(KEYS.eggPos, p),
+            onHide: (scope) =>
+              void updateSettings((s) =>
+                scope === "everywhere"
+                  ? { ...s, hiddenEverywhere: true }
+                  : { ...s, hiddenSites: [...new Set([...s.hiddenSites, location.hostname])] },
+              ),
+          });
+          return egg;
+        },
+        onRemove(view) {
+          view?.destroy();
+          egg = null;
+        },
+      });
+      ui.mount();
+      const cache = await getLocal<HatchesCache | null>(KEYS.hatches, null);
+      egg?.setTrackingCount(cache ? incubatingCount(cache.list) : 0);
+    }
+
+    function unmount() {
+      ui?.remove();
+      ui = null;
+    }
+
+    browser.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local") return;
+      const settingsChange = changes[KEYS.settings];
+      if (settingsChange) {
+        settings = (settingsChange.newValue as Settings | undefined) ?? settings;
+        if (isHiddenOn(settings, location.hostname)) unmount();
+        else void mount().then(() => void checkPage(true));
+      }
+      const hatchesChange = changes[KEYS.hatches];
+      if (hatchesChange) {
+        const cache = hatchesChange.newValue as HatchesCache | undefined;
+        egg?.setTrackingCount(cache ? incubatingCount(cache.list) : 0);
+      }
+      const posChange = changes[KEYS.eggPos]?.newValue as EggPos | undefined;
+      if (posChange) egg?.setPos(posChange);
+    });
+
+    // ---- noticing: local heuristics first; the AI only for flagged pages (background dedups per URL) ----
+    let checkedUrl = "";
+    async function checkPage(force = false) {
+      const url = location.href.split("#")[0]!;
+      if (!egg || (!force && url === checkedUrl)) return;
+      checkedUrl = url;
+      egg.setState("idle");
+      const d = detectFromDom();
+      if (!d.flagged) return;
+      const ctxPage = collectPageContext();
+      const r = await sendToBackground<NoticeResponse>({
+        type: "notice",
+        page: { url: ctxPage.url, title: ctxPage.title, text: clean(ctxPage.text).slice(0, 1500), detected: ctxPage.detected },
+      }).catch(() => ({ hint: null }));
+      if (r?.hint && location.href.split("#")[0] === url) {
+        egg?.setState("noticed");
+        egg?.showBubble(r.hint, { timeoutMs: 15_000 });
+      }
+    }
+
+    await mount();
+    // Let SPA content (X, TradingView) render before the first look.
+    ctx.setTimeout(() => void checkPage(), 1500);
+    // SPA navigation: re-check when the URL changes.
+    ctx.setInterval(() => {
+      if (location.href.split("#")[0] !== checkedUrl) void checkPage();
+    }, 2000);
+  },
+});
