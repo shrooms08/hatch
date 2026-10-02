@@ -5,3 +5,5 @@ scripts/keys/*.json
 .next/
 dist/
 scripts/state/
+!.env.example
+*.tsbuildinfo
