@@ -25,7 +25,7 @@ describe("diffMilestones", () => {
   it("announces crossing 80% once, with a notification", () => {
     const first = diffMilestones({}, [hatch()]);
     const crossed = diffMilestones(first.next, [hatch({ progress: 81, status: "Almost hatched" })]);
-    expect(crossed.events).toEqual([{ mint: hatch().mint, text: "MINOS is 80% to hatching", url: hatch().tokenUrl, notify: true }]);
+    expect(crossed.events).toEqual([{ kind: "almost", mint: hatch().mint, text: "MINOS is 80% to hatching", url: hatch().tokenUrl, notify: true }]);
     expect(diffMilestones(crossed.next, [hatch({ progress: 90, status: "Almost hatched" })]).events).toEqual([]);
   });
 

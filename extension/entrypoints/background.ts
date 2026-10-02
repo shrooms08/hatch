@@ -9,13 +9,53 @@ import { defineBackground } from "wxt/utils/define-background";
 import { browser } from "wxt/browser";
 import { api } from "../lib/api";
 import { POLL_MINUTES, tokenPageUrl } from "../lib/config";
-import type { BgRequest, NoticeResponse, TabMessage } from "../lib/messages";
+import { SIDEPANEL_PORT, type BgRequest, type NoticeResponse, type OffscreenMessage, type OffscreenResult, type TabMessage } from "../lib/messages";
+import { SOUNDS, type SoundName } from "../lib/buddy/config";
 import { diffMilestones } from "../lib/milestones";
-import { KEYS, getLocal, incubatingCount, setLocal, type HatchesCache, type Milestones } from "../lib/storage";
+import { KEYS, getLocal, getSettings, incubatingCount, setLocal, type HatchesCache, type Milestones } from "../lib/storage";
 
 const POLL_ALARM = "hatch-poll";
 const SOLANA_ADDRESS = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const NOTIFICATION_URLS = "hatch:notificationUrls";
+
+// ---- sounds: all audio plays in an offscreen document (page autoplay rules can't block it) ----
+const OFFSCREEN_URL = "/offscreen.html" as const;
+let creatingOffscreen: Promise<void> | null = null;
+let lastChirpAt = 0;
+
+async function ensureOffscreen(): Promise<boolean> {
+  if (!browser.offscreen) return false;
+  const open = await browser.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"], documentUrls: [browser.runtime.getURL(OFFSCREEN_URL)] });
+  if (open.length > 0) return true;
+  creatingOffscreen ??= browser.offscreen
+    .createDocument({ url: OFFSCREEN_URL, reasons: ["AUDIO_PLAYBACK"], justification: "Plays Hatch's short chirps when the side panel opens/closes and when a token hatches." })
+    .finally(() => (creatingOffscreen = null));
+  await creatingOffscreen;
+  return true;
+}
+
+/** URL of a bundled file. The sfx are copied by a build hook, so WXT's typed paths don't list them. */
+const assetUrl = (path: string) => (browser.runtime.getURL as (p: string) => string)(path);
+
+async function playSound(name: SoundName) {
+  if (!(await getSettings()).sounds) return;
+  if (name === "chirp") {
+    const now = Date.now();
+    if (now - lastChirpAt < SOUNDS.chirpThrottleMs) return;
+    lastChirpAt = now;
+  }
+  if (!(await ensureOffscreen())) return;
+  const s = SOUNDS[name];
+  const msg: OffscreenMessage = { target: "hatch-offscreen", type: "play", src: assetUrl(`/${s.file}`), volume: s.volume };
+  const r = (await browser.runtime.sendMessage(msg).catch((e: unknown) => ({ played: false, error: String(e) }))) as OffscreenResult | undefined;
+  await browser.storage.session.set({ [KEYS.lastSound]: { name, at: Date.now(), played: !!r?.played, error: r?.error } });
+}
+
+/** Crack-and-burst on every page showing the buddy (hidden tabs play it when next shown). */
+async function broadcastHatch() {
+  const tabs = await browser.tabs.query({});
+  await Promise.all(tabs.map((t) => (t.id ? sendToTab(t.id, { type: "hatch" }) : undefined)));
+}
 
 async function sendToTab(tabId: number, msg: TabMessage) {
   await browser.tabs.sendMessage(tabId, msg).catch(() => undefined);
@@ -79,6 +119,10 @@ async function poll() {
     if (tabId) await sendToTab(tabId, { type: "bubble", text: e.text, url });
     if (e.notify) await notifyChrome(e.text, url);
   }
+  if (events.some((e) => e.kind === "hatched")) {
+    await broadcastHatch();
+    await playSound("chirpDouble");
+  }
 }
 
 async function ensurePolling() {
@@ -106,8 +150,16 @@ export default defineBackground(() => {
     await browser.notifications.clear(id);
   });
 
+  // The side panel holds a port open while it is open: connect = opened, disconnect = closed.
+  browser.runtime.onConnect.addListener((port) => {
+    if (port.name !== SIDEPANEL_PORT) return;
+    void playSound("chirp");
+    port.onDisconnect.addListener(() => void playSound("chirp"));
+  });
+
   browser.runtime.onMessage.addListener((raw: unknown, sender, sendResponse) => {
     const msg = raw as BgRequest;
+    if ((raw as { target?: string })?.target === "hatch-offscreen") return false; // for the offscreen document
     if (!msg || typeof msg.type !== "string") return false;
     (async () => {
       switch (msg.type) {
@@ -130,9 +182,16 @@ export default defineBackground(() => {
             await setLocal(KEYS.milestones, {});
           }
           await ensurePolling();
+          if (msg.event === "launched") {
+            await broadcastHatch();
+            await playSound("chirpDouble");
+          }
           await poll();
           return { ok: true };
         }
+        case "play-sound":
+          await playSound(msg.sound);
+          return { ok: true };
         case "refresh-hatches":
           await poll();
           return { ok: true };

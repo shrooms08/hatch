@@ -1,0 +1,135 @@
+/* The orb buddy. Lives in a Shadow DOM root, so page CSS can't reach it. */
+:host {
+  all: initial;
+}
+
+.hatch-egg {
+  --hb-night: #120e0b;
+  --hb-yolk: #f2a93b;
+  --hb-shell: #f6eedc;
+  --hb-ash: #8a8178;
+  position: fixed;
+  z-index: 2147483646;
+  font: 13px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--hb-shell);
+  user-select: none;
+  /* bottom-right anchored, so growing on hover expands up and left */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.hatch-egg__button {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+  transition: width 180ms ease-out, height 180ms ease-out;
+}
+.hatch-egg__button:hover {
+  width: 80px;
+  height: 80px;
+}
+.hatch-egg__button:active { cursor: grabbing; }
+.hatch-egg__button:focus-visible { outline: 2px solid var(--hb-yolk); outline-offset: 3px; }
+
+/* The canvas is 1.5x the orb so the glow can spill outside it. */
+.hatch-orb {
+  position: absolute;
+  left: -25%;
+  top: -25%;
+  width: 150%;
+  height: 150%;
+  pointer-events: none;
+  display: block;
+}
+
+.hatch-egg__badge {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: var(--hb-yolk);
+  color: var(--hb-night);
+  font-size: 11px;
+  font-weight: 800;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 0 2px var(--hb-night);
+}
+.hatch-egg[data-tracking="true"] .hatch-egg__badge { display: flex; }
+
+.hatch-egg__more {
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--hb-ash);
+  background: var(--hb-night);
+  color: var(--hb-shell);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: none;
+  padding: 0;
+  z-index: 2;
+}
+.hatch-egg:hover .hatch-egg__more,
+.hatch-egg__more:focus-visible { display: block; }
+
+.hatch-egg__menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  min-width: 170px;
+  background: var(--hb-night);
+  border: 1px solid rgba(138, 129, 120, 0.5);
+  border-radius: 10px;
+  padding: 4px;
+  display: none;
+}
+.hatch-egg__menu[data-open="true"] { display: block; }
+.hatch-egg__menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.hatch-egg__menu button:hover { background: rgba(246, 238, 220, 0.08); }
+
+.hatch-egg__bubble {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  right: 0;
+  width: max-content;
+  max-width: 260px;
+  background: var(--hb-night);
+  border: 1px solid rgba(242, 169, 59, 0.45);
+  border-radius: 12px;
+  padding: 8px 10px;
+  display: none;
+}
+.hatch-egg__bubble[data-open="true"] { display: block; }
+.hatch-egg__bubble a { color: var(--hb-yolk); margin-left: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .hatch-egg__button { transition: none; }
+}

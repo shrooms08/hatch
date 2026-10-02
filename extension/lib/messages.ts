@@ -4,6 +4,7 @@
  */
 import { browser } from "wxt/browser";
 import type { EggState, PageContext } from "./types";
+import type { SoundName } from "./buddy/config";
 
 /** To the background worker. */
 export type BgRequest =
@@ -15,7 +16,9 @@ export type BgRequest =
   /** Bridge (web app page): a wallet connected or a token launched. */
   | { type: "hatch-event"; event: "launched" | "wallet"; wallet: string; mint?: string }
   | { type: "refresh-hatches" }
-  | { type: "forget-wallet" };
+  | { type: "forget-wallet" }
+  /** Debug page: play a sound through the offscreen document (respects the Sounds setting). */
+  | { type: "play-sound"; sound: SoundName };
 
 export type NoticeResponse = { hint: string | null };
 
@@ -24,7 +27,16 @@ export type TabMessage =
   | { type: "get-context" }
   | { type: "egg-state"; state: EggState }
   | { type: "tracking"; count: number }
-  | { type: "bubble"; text: string; url?: string };
+  | { type: "bubble"; text: string; url?: string }
+  /** launched / hatched: play the crack-and-burst once. */
+  | { type: "hatch" };
+
+/** Background -> offscreen audio document. */
+export type OffscreenMessage = { target: "hatch-offscreen"; type: "play"; src: string; volume: number };
+export type OffscreenResult = { played: boolean; error?: string };
+
+/** Side panel keeps this port open; the background chirps when it connects and disconnects. */
+export const SIDEPANEL_PORT = "hatch-sidepanel";
 
 export function sendToBackground<T = unknown>(msg: BgRequest): Promise<T> {
   return browser.runtime.sendMessage(msg) as Promise<T>;

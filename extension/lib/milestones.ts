@@ -5,6 +5,7 @@ import type { HatchSummary } from "./types";
 export const ALMOST_AT = 80;
 
 export type MilestoneEvent = {
+  kind: "almost" | "hatched" | "fees";
   mint: string;
   text: string;
   /** Token page path (relative to the web app). */
@@ -32,8 +33,8 @@ export function diffMilestones(prev: Milestones, list: HatchSummary[]): { next: 
       continue;
     }
 
-    if (hatched && !p.hatched) events.push({ mint: h.mint, text: `${label(h)} hatched!`, url: h.tokenUrl, notify: true });
-    else if (almost && !p.almost) events.push({ mint: h.mint, text: `${label(h)} is ${ALMOST_AT}% to hatching`, url: h.tokenUrl, notify: true });
+    if (hatched && !p.hatched) events.push({ kind: "hatched", mint: h.mint, text: `${label(h)} hatched!`, url: h.tokenUrl, notify: true });
+    else if (almost && !p.almost) events.push({ kind: "almost", mint: h.mint, text: `${label(h)} is ${ALMOST_AT}% to hatching`, url: h.tokenUrl, notify: true });
     if (fees && !p.fees) events.push(feeEvent(h));
 
     next[h.mint] = { seen: true, almost: p.almost || almost, hatched: p.hatched || hatched, fees };
@@ -43,5 +44,5 @@ export function diffMilestones(prev: Milestones, list: HatchSummary[]): { next: 
 
 function feeEvent(h: HatchSummary): MilestoneEvent {
   const f = h.claimableCreatorFees;
-  return { mint: h.mint, text: `You can claim ${f.amount} ${f.symbol} in creator fees on ${label(h)}`, url: h.tokenUrl, notify: false };
+  return { kind: "fees", mint: h.mint, text: `You can claim ${f.amount} ${f.symbol} in creator fees on ${label(h)}`, url: h.tokenUrl, notify: false };
 }

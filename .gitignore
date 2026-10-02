@@ -7,3 +7,4 @@ dist/
 scripts/state/
 !.env.example
 *.tsbuildinfo
+.DS_Store

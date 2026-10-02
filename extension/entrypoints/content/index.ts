@@ -1,4 +1,4 @@
-import "./egg.css";
+import "./buddy.css";
 import { defineContentScript } from "wxt/utils/define-content-script";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import { browser } from "wxt/browser";
@@ -7,7 +7,7 @@ import { detectFromDom } from "../../lib/detect";
 import { clean, collectPageContext } from "../../lib/page";
 import { sendToBackground, type NoticeResponse, type TabMessage } from "../../lib/messages";
 import { DEFAULT_EGG_POS, KEYS, getLocal, getSettings, incubatingCount, isHiddenOn, setLocal, updateSettings, type EggPos, type HatchesCache, type Settings } from "../../lib/storage";
-import { EggView } from "./egg";
+import { BuddyView } from "./buddy";
 
 /**
  * Content script on every page: the floating egg, local page detection, and answering the side
@@ -21,9 +21,16 @@ export default defineContentScript({
     if (window.top !== window) return; // top frame only
     if (location.origin === HATCH_WEB_ORIGIN) return; // the web app has its own UI (and the bridge script)
 
-    let egg: EggView | null = null;
+    let egg: BuddyView | null = null;
     let ui: Awaited<ReturnType<typeof createShadowRootUi>> | null = null;
     let settings: Settings = await getSettings();
+    let pendingHatch = false;
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden && pendingHatch) {
+        pendingHatch = false;
+        void egg?.hatch();
+      }
+    });
 
     // The side panel asks for page context even when the egg is hidden.
     browser.runtime.onMessage.addListener((raw: unknown, _sender, sendResponse) => {
@@ -37,6 +44,11 @@ export default defineContentScript({
           return false;
         case "bubble":
           egg?.showBubble(msg.text, { url: msg.url, linkText: "View" });
+          return false;
+        case "hatch":
+          // Play when the user can see it: now, or the next time this tab is shown.
+          if (document.hidden) pendingHatch = true;
+          else void egg?.hatch();
           return false;
         default:
           return false;
@@ -52,7 +64,7 @@ export default defineContentScript({
         anchor: "body",
         append: "last",
         onMount(container) {
-          egg = new EggView(container, pos, {
+          egg = new BuddyView(container, pos, {
             onOpen: () => void sendToBackground({ type: "open-side-panel" }),
             onMove: (p) => void setLocal(KEYS.eggPos, p),
             onHide: (scope) =>
@@ -83,7 +95,7 @@ export default defineContentScript({
       if (area !== "local") return;
       const settingsChange = changes[KEYS.settings];
       if (settingsChange) {
-        settings = (settingsChange.newValue as Settings | undefined) ?? settings;
+        settings = { ...settings, ...((settingsChange.newValue as Partial<Settings> | undefined) ?? {}) };
         if (isHiddenOn(settings, location.hostname)) unmount();
         else void mount().then(() => void checkPage(true));
       }

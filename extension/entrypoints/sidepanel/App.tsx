@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { browser } from "wxt/browser";
+import { SIDEPANEL_PORT } from "../../lib/messages";
 import { DraftTab } from "./components/DraftTab";
 import { HatchesTab } from "./components/HatchesTab";
 import { SettingsTab } from "./components/SettingsTab";
@@ -14,6 +16,12 @@ export function App() {
   const presets = usePresets();
   const cache = useStorageValue<HatchesCache | null>(KEYS.hatches, null);
   const incubating = cache ? incubatingCount(cache.list) : 0;
+
+  // Held open while the panel is open; the background chirps on connect (open) and disconnect (close).
+  useEffect(() => {
+    const port = browser.runtime.connect({ name: SIDEPANEL_PORT });
+    return () => port.disconnect();
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-col gap-3 p-3">

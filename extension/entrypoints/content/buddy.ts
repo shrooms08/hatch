@@ -1,31 +1,34 @@
 /**
- * The floating egg's view: rendering, dragging, bubble and menu. No storage, network or page
- * logic here (see index.ts); everything comes in through methods and goes out through callbacks.
+ * The floating buddy's view: the orb (lib/buddy/orb.ts), dragging, badge, bubble and menu.
+ * No storage, network or page logic here (see index.ts); everything comes in through methods
+ * and goes out through callbacks.
  */
-import { eggSvg } from "../../lib/egg";
+import { OrbBuddy } from "../../lib/buddy/orb";
+import { SIZE } from "../../lib/buddy/config";
 import type { EggPos } from "../../lib/storage";
 import type { EggState } from "../../lib/types";
 
-const SIZE = 48;
 const MARGIN = 8;
 const DRAG_THRESHOLD = 4;
 
-export type EggCallbacks = {
+export type BuddyCallbacks = {
   onOpen: () => void;
   onMove: (pos: EggPos) => void;
   onHide: (scope: "site" | "everywhere") => void;
 };
 
-export class EggView {
+export class BuddyView {
   private root: HTMLDivElement;
   private button: HTMLButtonElement;
   private badge: HTMLSpanElement;
   private bubble: HTMLDivElement;
   private menu: HTMLDivElement;
+  private orb: OrbBuddy;
   private bubbleTimer: number | undefined;
   private pos: EggPos;
+  private onResize = () => this.applyPos();
 
-  constructor(container: HTMLElement, pos: EggPos, private cb: EggCallbacks) {
+  constructor(container: HTMLElement, pos: EggPos, private cb: BuddyCallbacks) {
     this.pos = pos;
     this.root = document.createElement("div");
     this.root.className = "hatch-egg";
@@ -36,12 +39,14 @@ export class EggView {
         <button type="button" role="menuitem" data-hide="site">Hide on this site</button>
         <button type="button" role="menuitem" data-hide="everywhere">Hide everywhere</button>
       </div>
-      <button type="button" class="hatch-egg__button" aria-label="Open Hatch">${eggSvg(26)}<span class="hatch-egg__badge"></span></button>
+      <button type="button" class="hatch-egg__button" aria-label="Open Hatch"><span class="hatch-egg__badge"></span></button>
       <button type="button" class="hatch-egg__more" aria-label="Hatch options" title="Options">⋯</button>`;
     this.button = this.root.querySelector(".hatch-egg__button")!;
     this.badge = this.root.querySelector(".hatch-egg__badge")!;
     this.bubble = this.root.querySelector(".hatch-egg__bubble")!;
     this.menu = this.root.querySelector(".hatch-egg__menu")!;
+    this.orb = new OrbBuddy();
+    this.button.prepend(this.orb.canvas);
     container.append(this.root);
 
     this.applyPos();
@@ -59,11 +64,18 @@ export class EggView {
       if (scope === "site" || scope === "everywhere") this.cb.onHide(scope);
       this.menu.dataset.open = "false";
     });
-    window.addEventListener("resize", () => this.applyPos());
+    window.addEventListener("resize", this.onResize);
   }
 
   setState(state: EggState) {
     this.root.dataset.state = state;
+    this.orb.setState(state);
+  }
+
+  /** launched / hatched: crack-and-burst, then back to the chicken. */
+  hatch(): Promise<void> {
+    this.root.dataset.state = "idle";
+    return this.orb.hatch();
   }
 
   setTrackingCount(count: number) {
@@ -97,12 +109,15 @@ export class EggView {
   }
 
   destroy() {
+    window.removeEventListener("resize", this.onResize);
+    this.orb.destroy();
     this.root.remove();
   }
 
   private applyPos() {
-    const maxRight = Math.max(MARGIN, window.innerWidth - SIZE - MARGIN);
-    const maxBottom = Math.max(MARGIN, window.innerHeight - SIZE - MARGIN);
+    const size = SIZE.docked;
+    const maxRight = Math.max(MARGIN, window.innerWidth - size - MARGIN);
+    const maxBottom = Math.max(MARGIN, window.innerHeight - size - MARGIN);
     this.pos = {
       right: Math.min(Math.max(MARGIN, this.pos.right), maxRight),
       bottom: Math.min(Math.max(MARGIN, this.pos.bottom), maxBottom),

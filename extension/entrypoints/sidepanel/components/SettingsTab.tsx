@@ -5,14 +5,27 @@ import { useStorageValue } from "../hooks";
 import { Button, Card, Muted } from "./ui";
 
 export function SettingsTab() {
-  const settings = useStorageValue<Settings>(KEYS.settings, DEFAULT_SETTINGS);
+  const stored = useStorageValue<Partial<Settings>>(KEYS.settings, DEFAULT_SETTINGS);
+  const settings: Settings = { ...DEFAULT_SETTINGS, ...stored };
   const wallet = useStorageValue<string | null>(KEYS.wallet, null);
 
   return (
     <div className="flex flex-col gap-3 text-sm">
       <Card>
         <label className="flex items-center justify-between gap-2">
-          <span>Hide the egg everywhere</span>
+          <span>Sounds</span>
+          <input
+            type="checkbox"
+            checked={settings.sounds !== false}
+            onChange={(e) => void updateSettings((s) => ({ ...s, sounds: e.target.checked }))}
+          />
+        </label>
+        <Muted>A soft chirp when this panel opens or closes, a double chirp when a token hatches.</Muted>
+      </Card>
+
+      <Card>
+        <label className="flex items-center justify-between gap-2">
+          <span>Hide the buddy everywhere</span>
           <input
             type="checkbox"
             checked={settings.hiddenEverywhere}

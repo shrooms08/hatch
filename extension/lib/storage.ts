@@ -9,10 +9,11 @@ export const KEYS = {
   hatches: "hatch:hatches",
   milestones: "hatch:milestones",
   noticed: "hatch:noticed", // storage.session: url -> hint | null
+  lastSound: "hatch:lastSound", // storage.session: { name, at, played, error? } for the debug page
 } as const;
 
-export type Settings = { hiddenSites: string[]; hiddenEverywhere: boolean };
-export const DEFAULT_SETTINGS: Settings = { hiddenSites: [], hiddenEverywhere: false };
+export type Settings = { hiddenSites: string[]; hiddenEverywhere: boolean; sounds: boolean };
+export const DEFAULT_SETTINGS: Settings = { hiddenSites: [], hiddenEverywhere: false, sounds: true };
 
 export type EggPos = { right: number; bottom: number };
 export const DEFAULT_EGG_POS: EggPos = { right: 24, bottom: 24 };
@@ -31,7 +32,8 @@ export function setLocal(key: string, value: unknown) {
   return browser.storage.local.set({ [key]: value });
 }
 
-export const getSettings = () => getLocal<Settings>(KEYS.settings, DEFAULT_SETTINGS);
+/** Stored settings merged over the defaults (older installs have no `sounds` key: on). */
+export const getSettings = async (): Promise<Settings> => ({ ...DEFAULT_SETTINGS, ...(await getLocal<Partial<Settings>>(KEYS.settings, {})) });
 
 export function isHiddenOn(settings: Settings, hostname: string) {
   return settings.hiddenEverywhere || settings.hiddenSites.includes(hostname);
