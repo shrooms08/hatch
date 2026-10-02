@@ -1,195 +1,87 @@
-import { NextApiRequest, NextApiResponse } from 'next';
-import { PutObjectCommand, PutObjectCommandOutput, S3Client } from '@aws-sdk/client-s3';
+// POST /api/upload: validate a launch, store image + metadata JSON on R2, and return the
+// UNSIGNED createPool transaction. The client signs and sends it with Phantom.
+import type { NextApiRequest, NextApiResponse } from 'next';
 import { Connection, PublicKey } from '@solana/web3.js';
-import { DynamicBondingCurveClient } from '@meteora-ag/dynamic-bonding-curve-sdk';
+import { serverRpcUrl } from '@/lib/config/network';
+import { launchRequestSchema, IMAGE_EXT } from '@/lib/validation/launch';
+import { configKeyFor, PresetError } from '@/lib/server/presets';
+import { isR2Configured, R2NotConfiguredError, uploadToR2 } from '@/lib/server/r2';
+import { ImageError, loadLaunchImage } from '@/lib/server/image';
+import { buildCreatePoolTx } from '@/lib/server/createPool';
 
-// Environment variables with type assertions
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID as string;
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY as string;
-const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID as string;
-const R2_BUCKET = process.env.R2_BUCKET as string;
-const RPC_URL = process.env.RPC_URL as string;
-const POOL_CONFIG_KEY = process.env.POOL_CONFIG_KEY as string;
+export const config = {
+  api: { bodyParser: { sizeLimit: '3mb' } }, // 2 MB image as base64 (~2.7 MB) + fields
+};
 
-if (
-  !R2_ACCESS_KEY_ID ||
-  !R2_SECRET_ACCESS_KEY ||
-  !R2_ACCOUNT_ID ||
-  !R2_BUCKET ||
-  !RPC_URL ||
-  !POOL_CONFIG_KEY
-) {
-  throw new Error('Missing required environment variables');
+type Ok = { poolTx: string; pool: string; metadataUrl: string; imageUrl: string };
+type Err = { error: string; issues?: Record<string, string[] | undefined> };
+
+function parsePubkey(value: string, field: string) {
+  try {
+    return new PublicKey(value);
+  } catch {
+    throw new PresetError(`${field} is not a valid address`);
+  }
 }
 
-const PRIVATE_R2_URL = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
-const PUBLIC_R2_URL = 'https://pub-85c7f5f0dc104dc784e656b623d999e5.r2.dev';
-
-// Types
-type UploadRequest = {
-  tokenLogo: string;
-  tokenName: string;
-  tokenSymbol: string;
-  mint: string;
-  userWallet: string;
-};
-
-type Metadata = {
-  name: string;
-  symbol: string;
-  image: string;
-};
-
-type MetadataUploadParams = {
-  tokenName: string;
-  tokenSymbol: string;
-  mint: string;
-  image: string;
-};
-
-// R2 client setup
-const r2 = new S3Client({
-  endpoint: PRIVATE_R2_URL,
-  credentials: {
-    accessKeyId: R2_ACCESS_KEY_ID,
-    secretAccessKey: R2_SECRET_ACCESS_KEY,
-  },
-  region: 'auto',
-});
-
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(req: NextApiRequest, res: NextApiResponse<Ok | Err>) {
   if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  const parsed = launchRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Invalid launch details', issues: parsed.error.flatten().fieldErrors });
+  }
+  const input = parsed.data;
+
   try {
-    const { tokenLogo, tokenName, tokenSymbol, mint, userWallet } = req.body as UploadRequest;
+    const configKey = configKeyFor(input.preset); // rejects presets not in POOL_CONFIGS
+    const mint = parsePubkey(input.mint, 'mint');
+    const user = parsePubkey(input.userWallet, 'userWallet');
+    if (!isR2Configured()) throw new R2NotConfiguredError();
 
-    // Validate required fields
-    if (!tokenLogo || !tokenName || !tokenSymbol || !mint || !userWallet) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
+    const image = await loadLaunchImage(input.image);
+    const mintId = mint.toBase58();
+    const imageUrl = await uploadToR2(`images/${mintId}.${IMAGE_EXT[image.contentType]}`, image.bytes, image.contentType);
 
-    // Upload image and metadata
-    const imageUrl = await uploadImage(tokenLogo, mint);
-    if (!imageUrl) {
-      return res.status(400).json({ error: 'Failed to upload image' });
-    }
+    const metadata = {
+      name: input.name,
+      symbol: input.symbol,
+      description: input.description,
+      image: imageUrl,
+      ...(input.source ? { external_url: input.source } : {}),
+      ...(input.website || input.twitter
+        ? { extensions: { ...(input.website ? { website: input.website } : {}), ...(input.twitter ? { twitter: input.twitter } : {}) } }
+        : {}),
+      hatch: { preset: input.preset },
+    };
+    const metadataUrl = await uploadToR2(`metadata/${mintId}.json`, JSON.stringify(metadata), 'application/json');
 
-    const metadataUrl = await uploadMetadata({ tokenName, tokenSymbol, mint, image: imageUrl });
-    if (!metadataUrl) {
-      return res.status(400).json({ error: 'Failed to upload metadata' });
-    }
+    const connection = new Connection(serverRpcUrl(), 'confirmed');
+    const { tx, pool } = await buildCreatePoolTx({
+      connection,
+      config: configKey,
+      baseMint: mint,
+      user,
+      name: input.name,
+      symbol: input.symbol,
+      uri: metadataUrl,
+    });
 
-    // Create pool transaction
-    const poolTx = await createPoolTransaction({
-      mint,
-      tokenName,
-      tokenSymbol,
+    return res.status(200).json({
+      poolTx: tx.serialize({ requireAllSignatures: false, verifySignatures: false }).toString('base64'),
+      pool: pool.toBase58(),
       metadataUrl,
-      userWallet,
-    });
-
-    res.status(200).json({
-      success: true,
-      poolTx: poolTx
-        .serialize({
-          requireAllSignatures: false,
-          verifySignatures: false,
-        })
-        .toString('base64'),
+      imageUrl,
     });
   } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
+    if (error instanceof R2NotConfiguredError) return res.status(503).json({ error: 'R2 not configured' });
+    if (error instanceof PresetError || error instanceof ImageError) {
+      return res.status(400).json({ error: error.message });
+    }
+    console.error('upload failed:', error instanceof Error ? error.message : error);
+    return res.status(500).json({ error: 'Failed to prepare the launch transaction' });
   }
-}
-
-async function uploadImage(tokenLogo: string, mint: string): Promise<string | false> {
-  const matches = tokenLogo.match(/^data:([A-Za-z-+/]+);base64,(.+)$/);
-  if (!matches || matches.length !== 3) {
-    return false;
-  }
-
-  const [, contentType, base64Data] = matches;
-
-  if (!contentType || !base64Data) {
-    return false;
-  }
-
-  const fileBuffer = Buffer.from(base64Data, 'base64');
-  const fileName = `images/${mint}.${contentType.split('/')[1]}`;
-
-  try {
-    await uploadToR2(fileBuffer, contentType, fileName);
-    return `${PUBLIC_R2_URL}/${fileName}`;
-  } catch (error) {
-    console.error('Error uploading image:', error);
-    return false;
-  }
-}
-
-async function uploadMetadata(params: MetadataUploadParams): Promise<string | false> {
-  const metadata: Metadata = {
-    name: params.tokenName,
-    symbol: params.tokenSymbol,
-    image: params.image,
-  };
-  const fileName = `metadata/${params.mint}.json`;
-
-  try {
-    await uploadToR2(Buffer.from(JSON.stringify(metadata, null, 2)), 'application/json', fileName);
-    return `${PUBLIC_R2_URL}/${fileName}`;
-  } catch (error) {
-    console.error('Error uploading metadata:', error);
-    return false;
-  }
-}
-
-async function uploadToR2(
-  fileBuffer: Buffer,
-  contentType: string,
-  fileName: string
-): Promise<PutObjectCommandOutput> {
-  return r2.send(
-    new PutObjectCommand({
-      Bucket: R2_BUCKET,
-      Key: fileName,
-      Body: fileBuffer,
-      ContentType: contentType,
-    })
-  );
-}
-
-async function createPoolTransaction({
-  mint,
-  tokenName,
-  tokenSymbol,
-  metadataUrl,
-  userWallet,
-}: {
-  mint: string;
-  tokenName: string;
-  tokenSymbol: string;
-  metadataUrl: string;
-  userWallet: string;
-}) {
-  const connection = new Connection(RPC_URL, 'confirmed');
-  const client = new DynamicBondingCurveClient(connection, 'confirmed');
-
-  const poolTx = await client.creator.createPool({
-    config: new PublicKey(POOL_CONFIG_KEY),
-    baseMint: new PublicKey(mint),
-    name: tokenName,
-    symbol: tokenSymbol,
-    uri: metadataUrl,
-    payer: new PublicKey(userWallet),
-    poolCreator: new PublicKey(userWallet),
-  });
-
-  const { blockhash } = await connection.getLatestBlockhash();
-  poolTx.feePayer = new PublicKey(userWallet);
-  poolTx.recentBlockhash = blockhash;
-
-  return poolTx;
 }

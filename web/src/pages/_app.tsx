@@ -8,6 +8,7 @@ import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
 import { useMemo } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useWindowWidthListener } from '@/lib/device';
+import { NETWORK } from '@/lib/config/network';
 
 function AppProviders({ Component, pageProps }: AppProps) {
   const { resolvedTheme } = useTheme();
@@ -29,13 +30,13 @@ function AppProviders({ Component, pageProps }: AppProps) {
       <UnifiedWalletProvider
         wallets={wallets}
         config={{
-          env: 'mainnet-beta',
+          env: NETWORK,
           autoConnect: true,
           metadata: {
-            name: 'UnifiedWallet',
-            description: 'UnifiedWallet',
-            url: 'https://jup.ag',
-            iconUrls: ['https://jup.ag/favicon.ico'],
+            name: 'Hatch',
+            description: 'Launch a token quoted in the stock you are looking at.',
+            url: typeof window === 'undefined' ? 'https://hatch.local' : window.location.origin,
+            iconUrls: ['/favicon.ico'],
           },
           // notificationCallback: WalletNotification,
           theme: walletTheme,

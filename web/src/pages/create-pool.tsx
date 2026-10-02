@@ -1,337 +1,271 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Head from 'next/head';
-import Link from 'next/link';
-import { z } from 'zod';
-import Header from '../components/Header';
-
-import { useForm } from '@tanstack/react-form';
-import { Button } from '@/components/ui/button';
-import { Keypair, Transaction } from '@solana/web3.js';
+import { useRouter } from 'next/router';
 import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter';
 import { toast } from 'sonner';
-
-// Define the schema for form validation
-const poolSchema = z.object({
-  tokenName: z.string().min(3, 'Token name must be at least 3 characters'),
-  tokenSymbol: z.string().min(1, 'Token symbol is required'),
-  tokenLogo: z.instanceof(File, { message: 'Token logo is required' }).optional(),
-  website: z.string().url({ message: 'Please enter a valid URL' }).optional().or(z.literal('')),
-  twitter: z.string().url({ message: 'Please enter a valid URL' }).optional().or(z.literal('')),
-});
+import Header from '../components/Header';
+import { Button } from '@/components/ui/button';
+import { PresetPicker } from '@/components/Hatch/PresetPicker';
+import { PresetExplainer } from '@/components/Hatch/PresetExplainer';
+import { usePresetConfigs } from '@/hooks/useHatch';
+import { parsePresetId, type PresetId } from '@/lib/presets';
+import {
+  DESCRIPTION_MAX,
+  NAME_MAX,
+  SYMBOL_MAX,
+  launchFieldsSchema,
+  type LaunchFields,
+} from '@/lib/validation/launch';
+import { checkImageFile, launchToken } from '@/lib/launch/client';
+import { getConnection } from '@/lib/solana/connection';
+import { explorerTxUrl } from '@/lib/config/network';
 
 const inputClassName =
   'w-full rounded-lg border border-neutral-750 bg-background p-3 text-sm text-foreground placeholder:text-neutral-500 transition-colors focus:border-primary/60 focus:outline-none focus:ring-1 focus:ring-primary/40';
+const labelClassName = 'block text-sm font-medium text-neutral-300 mb-1.5';
+const sectionClassName = 'rounded-xl border border-neutral-850 bg-neutral-925 p-5 sm:p-8';
 
-interface FormValues {
-  tokenName: string;
-  tokenSymbol: string;
-  tokenLogo: File | undefined;
-  website?: string;
-  twitter?: string;
+type FormState = Omit<LaunchFields, 'preset'> & { preset: PresetId };
+
+const EMPTY: FormState = { name: '', symbol: '', description: '', preset: 'MEME', source: '', website: '', twitter: '' };
+
+function firstQueryValue(v: string | string[] | undefined) {
+  return (Array.isArray(v) ? v[0] : v) ?? '';
+}
+
+/** Prefill from ?name=&symbol=&description=&image=&preset=&source= (used by the Chrome extension). */
+function prefillFromQuery(query: Record<string, string | string[] | undefined>) {
+  const q = (k: string) => firstQueryValue(query[k]).trim();
+  return {
+    fields: {
+      name: q('name').slice(0, NAME_MAX),
+      symbol: q('symbol').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, SYMBOL_MAX),
+      description: q('description').slice(0, DESCRIPTION_MAX),
+      source: /^https?:\/\//i.test(q('source')) ? q('source') : '',
+      ...(parsePresetId(q('preset')) ? { preset: parsePresetId(q('preset'))! } : {}),
+    },
+    imageUrl: /^https?:\/\//i.test(q('image')) ? q('image') : '',
+  };
 }
 
 export default function CreatePool() {
-  const { publicKey, signTransaction } = useWallet();
-  const address = useMemo(() => publicKey?.toBase58(), [publicKey]);
+  const router = useRouter();
+  const wallet = useWallet();
+  const { data: enabledPresets } = usePresetConfigs();
 
+  const [form, setForm] = useState<FormState>(EMPTY);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState('');
+  const [errors, setErrors] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [poolCreated, setPoolCreated] = useState(false);
+  const [created, setCreated] = useState<{ mint: string; signature: string } | null>(null);
 
-  const form = useForm({
-    defaultValues: {
-      tokenName: '',
-      tokenSymbol: '',
-      tokenLogo: undefined,
-      website: '',
-      twitter: '',
-    } as FormValues,
-    onSubmit: async ({ value }) => {
-      try {
-        setIsLoading(true);
-        const { tokenLogo } = value;
-        if (!tokenLogo) {
-          toast.error('Token logo is required');
-          return;
-        }
+  useEffect(() => {
+    if (!router.isReady) return;
+    const { fields, imageUrl: url } = prefillFromQuery(router.query);
+    setForm((f) => ({ ...f, ...fields }));
+    if (url) setImageUrl(url);
+  }, [router.isReady, router.query]);
 
-        if (!signTransaction) {
-          toast.error('Wallet not connected');
-          return;
-        }
+  const previewSrc = useMemo(() => (imageFile ? URL.createObjectURL(imageFile) : imageUrl), [imageFile, imageUrl]);
+  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
 
-        const reader = new FileReader();
+  const onSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const parsed = launchFieldsSchema.safeParse(form);
+    const problems = parsed.success ? [] : Object.values(parsed.error.flatten().fieldErrors).flat();
+    if (!imageFile && !imageUrl) problems.push('Token image is required');
+    if (imageFile) {
+      const imageProblem = checkImageFile(imageFile);
+      if (imageProblem) problems.push(imageProblem);
+    }
+    setErrors(problems as string[]);
+    if (!parsed.success || problems.length) return;
 
-        // Convert file to base64
-        const base64File = await new Promise<string>((resolve) => {
-          reader.onload = (e) => resolve(e.target?.result as string);
-          reader.readAsDataURL(tokenLogo);
-        });
-
-        const keyPair = Keypair.generate();
-
-        // Step 1: Upload to R2 and get transaction
-        const uploadResponse = await fetch('/api/upload', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            tokenLogo: base64File,
-            mint: keyPair.publicKey.toBase58(),
-            tokenName: value.tokenName,
-            tokenSymbol: value.tokenSymbol,
-            userWallet: address,
-          }),
-        });
-
-        if (!uploadResponse.ok) {
-          const error = await uploadResponse.json();
-          throw new Error(error.error);
-        }
-
-        const { poolTx } = await uploadResponse.json();
-        const transaction = Transaction.from(Buffer.from(poolTx, 'base64'));
-
-        // Step 2: Sign with keypair first
-        transaction.sign(keyPair);
-
-        // Step 3: Then sign with user's wallet
-        const signedTransaction = await signTransaction(transaction);
-
-        // Step 4: Send signed transaction
-        const sendResponse = await fetch('/api/send-transaction', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            signedTransaction: signedTransaction.serialize().toString('base64'),
-          }),
-        });
-
-        if (!sendResponse.ok) {
-          const error = await sendResponse.json();
-          throw new Error(error.error);
-        }
-
-        const { success } = await sendResponse.json();
-        if (success) {
-          toast.success('Pool created successfully');
-          setPoolCreated(true);
-        }
-      } catch (error) {
-        console.error('Error creating pool:', error);
-        toast.error(error instanceof Error ? error.message : 'Failed to create pool');
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    validators: {
-      onSubmit: ({ value }) => {
-        const result = poolSchema.safeParse(value);
-        if (!result.success) {
-          return result.error.formErrors.fieldErrors;
-        }
-        return undefined;
-      },
-    },
-  });
+    setIsLoading(true);
+    try {
+      const result = await launchToken({
+        wallet,
+        connection: getConnection(),
+        fields: parsed.data,
+        image: imageFile ?? imageUrl,
+      });
+      toast.success('Your token is hatching!', {
+        action: { label: 'View tx', onClick: () => window.open(explorerTxUrl(result.signature), '_blank') },
+      });
+      setCreated(result);
+      router.push(`/token/${result.mint}`);
+    } catch (err) {
+      console.error('Launch failed:', err);
+      toast.error(err instanceof Error ? err.message : 'Launch failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <>
       <Head>
-        <title>Create Pool - Virtual Curve</title>
-        <meta
-          name="description"
-          content="Create a new token pool on Virtual Curve with customizable price curves."
-        />
+        <title>Launch - Hatch</title>
+        <meta name="description" content="Launch a token on Hatch, built on Meteora DBC." />
       </Head>
 
       <div className="min-h-screen bg-background text-foreground">
-        {/* Header */}
         <Header />
 
-        {/* Page Content */}
         <main className="mx-auto w-full max-w-3xl px-4 py-8 md:py-12">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 md:mb-10">
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold mb-2 tracking-tight">Create Pool</h1>
-              <p className="text-neutral-400">Launch your token with a customizable price curve</p>
-            </div>
+          <div className="mb-8 md:mb-10">
+            <h1 className="mb-2 text-3xl font-bold tracking-tight md:text-4xl">Hatch a token</h1>
+            <p className="text-neutral-400">Pick a preset, describe your token, and hatch it.</p>
           </div>
 
-          {poolCreated && !isLoading ? (
-            <PoolCreationSuccess />
+          {created && !isLoading ? (
+            <p className="text-neutral-300">Launched! Taking you to your token…</p>
           ) : (
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                form.handleSubmit();
-              }}
-              className="space-y-8"
-            >
-              {/* Token Details Section */}
-              <div className="rounded-xl border border-neutral-850 bg-neutral-925 p-5 sm:p-8">
-                <h2 className="text-xl md:text-2xl font-bold mb-4">Token Details</h2>
+            <form onSubmit={onSubmit} className="space-y-8" noValidate>
+              <div className={sectionClassName}>
+                <h2 className="mb-4 text-xl font-bold md:text-2xl">Preset</h2>
+                <PresetPicker value={form.preset} onChange={(id) => set('preset', id)} enabled={enabledPresets} />
+              </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className={sectionClassName}>
+                <h2 className="mb-4 text-xl font-bold md:text-2xl">Token Details</h2>
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   <div>
                     <div className="mb-4">
-                      <label
-                        htmlFor="tokenName"
-                        className="block text-sm font-medium text-neutral-300 mb-1.5"
-                      >
+                      <label htmlFor="name" className={labelClassName}>
                         Token Name*
                       </label>
-                      <form.Field name="tokenName">
-                        {(field) => (
-                          <input
-                            id="tokenName"
-                            name={field.name}
-                            type="text"
-                            className={inputClassName}
-                            placeholder="e.g. Virtual Coin"
-                            value={field.state.value}
-                            onChange={(e) => field.handleChange(e.target.value)}
-                            required
-                            minLength={3}
-                          />
-                        )}
-                      </form.Field>
+                      <input
+                        id="name"
+                        className={inputClassName}
+                        placeholder="e.g. Hatchling"
+                        value={form.name}
+                        maxLength={NAME_MAX}
+                        onChange={(e) => set('name', e.target.value)}
+                      />
                     </div>
-
                     <div className="mb-4">
-                      <label
-                        htmlFor="tokenSymbol"
-                        className="block text-sm font-medium text-neutral-300 mb-1.5"
-                      >
+                      <label htmlFor="symbol" className={labelClassName}>
                         Token Symbol*
                       </label>
-                      <form.Field name="tokenSymbol">
-                        {(field) => (
-                          <input
-                            id="tokenSymbol"
-                            name={field.name}
-                            type="text"
-                            className={inputClassName}
-                            placeholder="e.g. VRTL"
-                            value={field.state.value}
-                            onChange={(e) => field.handleChange(e.target.value)}
-                            required
-                            maxLength={10}
-                          />
-                        )}
-                      </form.Field>
+                      <input
+                        id="symbol"
+                        className={inputClassName}
+                        placeholder="e.g. HATCH"
+                        value={form.symbol}
+                        maxLength={SYMBOL_MAX}
+                        onChange={(e) => set('symbol', e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                      />
                     </div>
                   </div>
 
                   <div>
-                    <label
-                      htmlFor="tokenLogo"
-                      className="block text-sm font-medium text-neutral-300 mb-1.5"
-                    >
-                      Token Logo*
+                    <label htmlFor="tokenLogo" className={labelClassName}>
+                      Token Image*
                     </label>
-                    <form.Field name="tokenLogo">
-                      {(field) => (
-                        <div className="rounded-lg border-2 border-dashed border-neutral-750 p-6 sm:p-8 text-center transition-colors hover:border-neutral-600">
-                          <span className="iconify w-6 h-6 mx-auto mb-2 text-neutral-500 ph--upload-bold" />
-                          <p className="text-neutral-500 text-xs mb-3">
-                            {field.state.value?.name ?? 'PNG, JPG or SVG (max. 2MB)'}
-                          </p>
-                          <input
-                            type="file"
-                            id="tokenLogo"
-                            className="hidden"
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) {
-                                field.handleChange(file);
-                              }
-                            }}
-                          />
-                          <label
-                            htmlFor="tokenLogo"
-                            className="inline-flex cursor-pointer items-center rounded-full border border-neutral-750 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-900"
-                          >
-                            Browse Files
-                          </label>
-                        </div>
+                    <div className="rounded-lg border-2 border-dashed border-neutral-750 p-6 text-center transition-colors hover:border-neutral-600">
+                      {previewSrc ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={previewSrc} alt="" className="mx-auto mb-3 h-16 w-16 rounded-lg object-cover" />
+                      ) : (
+                        <span className="iconify mx-auto mb-2 h-6 w-6 text-neutral-500 ph--upload-bold" />
                       )}
-                    </form.Field>
+                      <p className="mb-3 text-xs text-neutral-500">
+                        {imageFile?.name ?? (imageUrl ? 'Using image from link' : 'PNG, JPG, WEBP or GIF (max. 2MB)')}
+                      </p>
+                      <input
+                        type="file"
+                        id="tokenLogo"
+                        accept="image/png,image/jpeg,image/webp,image/gif"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const problem = checkImageFile(file);
+                          if (problem) return toast.error(problem);
+                          setImageFile(file);
+                        }}
+                      />
+                      <label
+                        htmlFor="tokenLogo"
+                        className="inline-flex cursor-pointer items-center rounded-full border border-neutral-750 px-4 py-2 text-sm font-medium text-neutral-200 transition-colors hover:bg-neutral-900"
+                      >
+                        Browse Files
+                      </label>
+                    </div>
                   </div>
                 </div>
+
+                <div className="mt-2">
+                  <label htmlFor="description" className={labelClassName}>
+                    Description
+                  </label>
+                  <textarea
+                    id="description"
+                    rows={3}
+                    className={inputClassName}
+                    placeholder="What is this token about?"
+                    value={form.description}
+                    maxLength={DESCRIPTION_MAX}
+                    onChange={(e) => set('description', e.target.value)}
+                  />
+                  <div className="mt-1 text-right text-xs text-neutral-500">
+                    {form.description?.length ?? 0}/{DESCRIPTION_MAX}
+                  </div>
+                </div>
+
+                {form.source && (
+                  <p className="mt-2 text-xs text-neutral-400">
+                    Inspired by: <span className="break-all text-neutral-300">{form.source}</span>
+                  </p>
+                )}
               </div>
 
-              {/* Social Links Section */}
-              <div className="rounded-xl border border-neutral-850 bg-neutral-925 p-5 sm:p-8">
-                <h2 className="text-xl md:text-2xl font-bold mb-6">Social Links (Optional)</h2>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="mb-4">
-                    <label
-                      htmlFor="website"
-                      className="block text-sm font-medium text-neutral-300 mb-1.5"
-                    >
+              <div className={sectionClassName}>
+                <h2 className="mb-6 text-xl font-bold md:text-2xl">Social Links (Optional)</h2>
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                  <div>
+                    <label htmlFor="website" className={labelClassName}>
                       Website
                     </label>
-                    <form.Field name="website">
-                      {(field) => (
-                        <input
-                          id="website"
-                          name={field.name}
-                          type="url"
-                          className={inputClassName}
-                          placeholder="https://yourwebsite.com"
-                          value={field.state.value}
-                          onChange={(e) => field.handleChange(e.target.value)}
-                        />
-                      )}
-                    </form.Field>
+                    <input
+                      id="website"
+                      type="url"
+                      className={inputClassName}
+                      placeholder="https://yourwebsite.com"
+                      value={form.website}
+                      onChange={(e) => set('website', e.target.value)}
+                    />
                   </div>
-
-                  <div className="mb-4">
-                    <label
-                      htmlFor="twitter"
-                      className="block text-sm font-medium text-neutral-300 mb-1.5"
-                    >
+                  <div>
+                    <label htmlFor="twitter" className={labelClassName}>
                       Twitter
                     </label>
-                    <form.Field name="twitter">
-                      {(field) => (
-                        <input
-                          id="twitter"
-                          name={field.name}
-                          type="url"
-                          className={inputClassName}
-                          placeholder="https://twitter.com/yourusername"
-                          value={field.state.value}
-                          onChange={(e) => field.handleChange(e.target.value)}
-                        />
-                      )}
-                    </form.Field>
+                    <input
+                      id="twitter"
+                      type="url"
+                      className={inputClassName}
+                      placeholder="https://x.com/yourusername"
+                      value={form.twitter}
+                      onChange={(e) => set('twitter', e.target.value)}
+                    />
                   </div>
                 </div>
               </div>
 
-              {form.state.errors && form.state.errors.length > 0 && (
-                <div className="rounded-lg border border-rose/40 bg-rose/10 p-4 space-y-2">
-                  {form.state.errors.map((error, index) =>
-                    Object.entries(error || {}).map(([, value]) => (
-                      <div key={index} className="flex items-start gap-2">
-                        <span className="iconify mt-0.5 h-4 w-4 shrink-0 text-rose ph--warning-circle-bold" />
-                        <p className="text-sm text-rose">
-                          {Array.isArray(value)
-                            ? value.map((v: any) => v.message || v).join(', ')
-                            : typeof value === 'string'
-                              ? value
-                              : String(value)}
-                        </p>
-                      </div>
-                    ))
-                  )}
+              {errors.length > 0 && (
+                <div className="space-y-2 rounded-lg border border-rose/40 bg-rose/10 p-4">
+                  {errors.map((error) => (
+                    <div key={error} className="flex items-start gap-2">
+                      <span className="iconify mt-0.5 h-4 w-4 shrink-0 text-rose ph--warning-circle-bold" />
+                      <p className="text-sm text-rose">{error}</p>
+                    </div>
+                  ))}
                 </div>
               )}
+
+              <PresetExplainer preset={form.preset} />
 
               <div className="flex justify-end">
                 <SubmitButton isSubmitting={isLoading} />
@@ -360,48 +294,15 @@ const SubmitButton = ({ isSubmitting }: { isSubmitting: boolean }) => {
     <Button className="flex items-center gap-2" type="submit" disabled={isSubmitting}>
       {isSubmitting ? (
         <>
-          <span className="iconify ph--spinner w-5 h-5 animate-spin" />
-          <span>Creating Pool...</span>
+          <span className="iconify ph--spinner h-5 w-5 animate-spin" />
+          <span>Hatching…</span>
         </>
       ) : (
         <>
-          <span className="iconify ph--rocket-bold w-5 h-5" />
-          <span>Launch Pool</span>
+          <span className="iconify ph--egg-bold h-5 w-5" />
+          <span>Hatch it</span>
         </>
       )}
     </Button>
-  );
-};
-
-const PoolCreationSuccess = () => {
-  return (
-    <>
-      <div className="rounded-xl border border-neutral-850 bg-neutral-925 p-6 sm:p-8 text-center">
-        <div className="bg-emerald/15 p-4 rounded-full inline-flex mb-6">
-          <span className="iconify ph--check-bold w-12 h-12 text-emerald" />
-        </div>
-        <h2 className="text-2xl md:text-3xl font-bold mb-4">Pool Created Successfully!</h2>
-        <p className="text-neutral-400 mb-8 max-w-lg mx-auto">
-          Your token pool has been created and is now live on the Virtual Curve platform. Users can
-          now buy and trade your tokens.
-        </p>
-        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
-          <Link
-            href="/"
-            className="rounded-full border border-neutral-750 px-6 py-3 font-medium text-neutral-200 transition-colors hover:bg-neutral-900"
-          >
-            Explore Pools
-          </Link>
-          <button
-            onClick={() => {
-              window.location.reload();
-            }}
-            className="cursor-pointer rounded-full bg-primary px-6 py-3 font-semibold text-primary-950 transition-colors hover:bg-primary-300"
-          >
-            Create Another Pool
-          </button>
-        </div>
-      </div>
-    </>
   );
 };

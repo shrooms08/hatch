@@ -4,7 +4,9 @@ import { Button } from './ui/button';
 import { CreatePoolButton } from './CreatePoolButton';
 import { ThemeToggle } from './ThemeToggle';
 import { useMemo } from 'react';
-import { shortenAddress } from '@/lib/utils';
+import { cn, shortenAddress } from '@/lib/utils';
+import { buttonVariants } from './ui/button';
+import { NETWORK } from '@/lib/config/network';
 
 export const Header = () => {
   const { setShowModal } = useUnifiedWalletContext();
@@ -25,15 +27,21 @@ export const Header = () => {
           className="flex min-w-0 items-center gap-2 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
         >
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
-            <span className="iconify h-5 w-5 ph--rocket-launch-bold" />
+            <span className="iconify h-5 w-5 ph--egg-bold" />
           </span>
           <span className="truncate whitespace-nowrap text-base font-bold tracking-tight md:text-xl">
-            Fun Launch
+            Hatch
           </span>
+          {NETWORK === 'devnet' && (
+            <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-xs text-neutral-400">devnet</span>
+          )}
         </Link>
 
         {/* Navigation and Actions */}
         <div className="flex items-center gap-1.5 md:gap-3">
+          <Link href="/my-hatches" className={cn(buttonVariants({ variant: 'ghost' }), 'hidden sm:inline-flex')}>
+            My Hatches
+          </Link>
           <CreatePoolButton />
           {address ? (
             <Button variant="secondary" onClick={() => disconnect()}>
