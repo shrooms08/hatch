@@ -88,12 +88,15 @@ function clampSymbol(raw: string, name: string): string {
   return name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, SYMBOL_MAX) || 'HATCH';
 }
 
-/** STOCK is allowed only for a plausible ticker that the page itself mentions. */
-function tickerIsOnPage(ticker: string, page: PageContext): boolean {
+/**
+ * STOCK is allowed only when the ticker is clearly the page's subject: found by the extension's
+ * local detection (stock-page URL or $cashtag) or named in the page title. A mention somewhere in
+ * the body text is not enough, since body text is where injected instructions live.
+ */
+function tickerIsSubject(ticker: string, page: PageContext): boolean {
   if (page.detected.tickers.includes(ticker)) return true;
-  const hay = `${page.title}\n${page.text}\n${page.url}`;
   const esc = ticker.replace('.', '\\.');
-  return new RegExp(`(^|[^A-Za-z0-9])\\$?${esc}([^A-Za-z0-9]|$)`).test(hay);
+  return new RegExp(`(^|[^A-Za-z0-9])\\$?${esc}([^A-Za-z0-9]|$)`).test(page.title);
 }
 
 export function clampDraft(raw: z4.infer<typeof DraftOutput>, page: PageContext): BuddyDraft {
@@ -101,7 +104,7 @@ export function clampDraft(raw: z4.infer<typeof DraftOutput>, page: PageContext)
   let preset: PresetId = (PRESET_IDS as readonly string[]).includes(raw.preset) ? raw.preset : 'MEME';
   let stockTicker = raw.stockTicker ? raw.stockTicker.toUpperCase().replace(/^\$/, '').trim() : null;
   if (stockTicker && !/^[A-Z]{1,6}(\.[A-Z])?$/.test(stockTicker)) stockTicker = null;
-  if (stockTicker && !tickerIsOnPage(stockTicker, page)) stockTicker = null;
+  if (stockTicker && !tickerIsSubject(stockTicker, page)) stockTicker = null;
   if (preset === 'STOCK' && !stockTicker) preset = 'MEME';
   if (preset !== 'STOCK') stockTicker = null;
   return {
