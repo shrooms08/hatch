@@ -266,3 +266,65 @@ Size thresholds with margin, e.g. ≥ $900 worth of NVDAx at current UI price ×
 - **Jupiter dependence in fun-launch.** Listings, charts and swaps all ride undocumented Jupiter endpoints and indexing, and SOL→NVDAx→token routing may not exist for new pools. Plan a DBC-SDK swap fallback for the stock preset (quote = NVDAx, with an optional SOL→NVDAx Jupiter leg).
 - **Harden the forked server before deploy.** fun-launch has an open-relay send route, no upload limits, a hardcoded R2 URL, no priority fees and hidden TS errors. Fix these first, and never accept a raw config key from the client; use a preset allowlist.
 - **Reuse the Glance pieces, minus its shortcuts.** Reuse the WXT shell, adapters, screenshot path, auth handoff and structured-LLM backend. Add a chart adapter. Do not carry over the JWT-in-URL pattern or the `DEV_LOGIN` route.
+
+---
+
+## Step 3 results — devnet DBC loop (2026-10-02)
+
+The loop ran on **devnet only**, using our own scripts in `scripts/`.
+
+- **Packages:** `@meteora-ag/dynamic-bonding-curve-sdk` **1.5.13**, `@meteora-ag/cp-amm-sdk` 1.5.1, `@solana/web3.js` 1.99 (v1).
+- **Running it:** `pnpm <step>` simulates by default; add `--live` to send. `pnpm dry-run [--live]` runs all seven steps in order.
+- **Behaviour:** every transaction was simulated right before it was sent. All sends succeeded on the first attempt. The only problem was the earlier faucet rate limit, worked around by funding the wallets manually.
+
+### Wallets
+| Role | Address |
+|---|---|
+| partner (Hatch platform, fee claimer) | `8UoVnimiG4Nf68PxR62NyNsfXtSKzmNPTwqZetxrPavu` |
+| creator (test user) | `8H8SzG8ydyXZU6UmFCnYhpVvfLh2xeKoA7nTmDHrDdfj` |
+
+Each wallet started with 2.5 SOL, funded from a web faucet because the RPC airdrop was rate-limited (429).
+
+### Mock stock
+- **Mint:** "Mock NVIDIA xStock" (NVDAx), Token-2022, 8 decimals, MetadataPointer + TokenMetadata only: [`EXcqWhNFD5wxiC6a2SQLB6gmxRvvxAFBTqsPafwhqBd3`](https://explorer.solana.com/address/EXcqWhNFD5wxiC6a2SQLB6gmxRvvxAFBTqsPafwhqBd3?cluster=devnet).
+- **Supply:** 10,000 minted to the creator.
+- **Token badge:** none was needed, as expected for a metadata-only Token-2022 quote mint. The DBC config records `quoteTokenFlag = 1`.
+
+### Presets, pools, graduation
+| | MEME (wSOL quote) | STOCK (mock NVDAx quote) |
+|---|---|---|
+| Curve | `buildCurve`, 20% supply to LP, threshold 1 SOL | `buildCurve`, 25% supply to LP, threshold 50 NVDAx |
+| Fees | flat 1% + dynamic, paid in quote, 50/50 partner/creator | same |
+| Config | [`4k48Svg4Zn7Fpp7Lc6t1P2Y7PkXoV8twrS36DpgTVwyt`](https://explorer.solana.com/address/4k48Svg4Zn7Fpp7Lc6t1P2Y7PkXoV8twrS36DpgTVwyt?cluster=devnet) | [`9gyZQhjTWfeJES11Assg6MH77Qt6qLT9GaFxaeuKjNbR`](https://explorer.solana.com/address/9gyZQhjTWfeJES11Assg6MH77Qt6qLT9GaFxaeuKjNbR?cluster=devnet) |
+| Token | Hatch Meme Test (HMEME), mint `BCPB2aXGrqXc5dYqU93HmYyFWFFTkwk9HrQcqL6GwrbY` | Hatch NVDA Test (HNVDA), mint `2CpmHHKycwYnARRywyne4DPPqcZX6NRKYYs7hE8J6pny` |
+| DBC pool | [`5ZrLhriEgG32zK9w8cH5gpkssFmcSzsZ62xxUiMpzER7`](https://explorer.solana.com/address/5ZrLhriEgG32zK9w8cH5gpkssFmcSzsZ62xxUiMpzER7?cluster=devnet) | [`9p51JNPt2taUDNoTeVEiDiNAQ4CGCZn2jHWrFgNBWzPb`](https://explorer.solana.com/address/9p51JNPt2taUDNoTeVEiDiNAQ4CGCZn2jHWrFgNBWzPb?cluster=devnet) |
+| Small buy | 0.05 SOL; price 3.125e-10 → 4.122e-10 SOL; progress 0% → 4.95% | 2 NVDAx; price 2.222e-8 → 2.588e-8 NVDAx; progress 0% → 3.96% |
+| Graduated | yes, 1 / 1 SOL | yes, 50 / 50 NVDAx |
+| DAMM v2 pool | [`JDX8aVffadNX9hfeS1veBNK34dYWRSLAcx7HQU3XB57p`](https://explorer.solana.com/address/JDX8aVffadNX9hfeS1veBNK34dYWRSLAcx7HQU3XB57p?cluster=devnet) | [`7QRyWBxgRAPZeE1Ss5cSGc4gR1pGUDZ9H2JMwoick5ud`](https://explorer.solana.com/address/7QRyWBxgRAPZeE1Ss5cSGc4gR1pGUDZ9H2JMwoick5ud?cluster=devnet) |
+| Claimable DBC fees (partner / creator) | 0.004817 SOL / 0.004817 SOL | 0.241274 NVDAx / 0.241274 NVDAx |
+
+- **Migration:** both pools used DAMM v2 config `Hv8Lmzmnju6m7kcokVKvwqz7QPmdX9XfKjJsXz8RXcjp` (FixedBps100), and the partner paid. Each DAMM v2 pool was read back with `CpAmm.fetchPoolState` (non-zero liquidity, correct token pair).
+- **Prices:** quote per base token, from `getPriceFromSqrtPrice`.
+- **Curve fills:** done with `swap2` in `PartialFill` mode, sending up to 15% over the remaining quote amount; the curve refunds whatever it doesn't use.
+
+### Transactions
+| Step | Transaction |
+|---|---|
+| mock-stock: create NVDAx + mint 10,000 | [4XPdXB…n9Y](https://explorer.solana.com/tx/4XPdXBx9UZCvZUM257S2xJryX8enXDb7WivE1M283z22U8WoWw4kHd6Z2inc449jaeoLxdZSKvqUudiNeqbrfn9Y?cluster=devnet) |
+| create meme config | [4Xsxwl…Wm5](https://explorer.solana.com/tx/4XsxWLwnfw3QFCjvxrxi7NCz6ZGTE9ULEjrt1U16mbqg29fECQF7EYJhcyeGmWcCL3H5XA7LxwEuUce776c5QWm5?cluster=devnet) |
+| create stock config | [3fy28K…xn2](https://explorer.solana.com/tx/3fy28Krs7CLzu3BVRYE3PM9UfFA8bQXXxP9GXfCdG9ahGWaiGv8WJPtLDrQN2bebrBxF87ViJySx3QVEM3xVJ2xn?cluster=devnet) |
+| launch HMEME | [3C137o…15U](https://explorer.solana.com/tx/3C137okXpFnxST9dyAsJAxNhZ4s8qDnMiyLRcaXuHBurb4vt35bq4UdW8jeFGMFfo9QjJgfRMoH7KD9iMXfQ315U?cluster=devnet) |
+| launch HNVDA | [3EieUA…mmf](https://explorer.solana.com/tx/3EieUAWQimQmf1yci8h7tLZ6bRAJc8WuXs1azCX4dTQmp4sZPAeo9w5LJjfg9NykyTcHN2nYBnS8q2tqoACQammf?cluster=devnet) |
+| buy 0.05 SOL of HMEME | [3tqxq5…7d](https://explorer.solana.com/tx/3tqxq5xwhKpz4jejW6JVZ1GhFdVQRQ336Fa6aA5Tpga9AajAWEbs2caUxbS89V36mEeyLeEkZXgvhTST4uMLkw7d?cluster=devnet) |
+| buy 2 NVDAx of HNVDA | [4WFEdp…eBm](https://explorer.solana.com/tx/4WFEdpiSkVtXAoDHxtgNKEboxqSyaNxLdBmLkxsGjWKXrHCZmwgY7xXSCktACPsxeonnWvXahxSMxBMrwSzkeXBm?cluster=devnet) |
+| fill HMEME curve | [sH92xx…66f](https://explorer.solana.com/tx/sH92xxnQ3aNoV2dogSQ4qbweVaAucsaBcy7mAW7UhDmRJcYLj6yF5rcey37eWQ4fJw3PxKknvZWqF1Af6oNy66f?cluster=devnet) |
+| migrate HMEME → DAMM v2 | [4Xgfsa…JjU](https://explorer.solana.com/tx/4XgfsakkzUiBCXYxzyv7c6dJMGr2VXkdvGB1qh9rtNYqBUd1MWjFkvm1zELC6BFSHn9rMJ6AJxHeidfUMByqJjJU?cluster=devnet) |
+| fill HNVDA curve | [5zduXL…zWFt](https://explorer.solana.com/tx/5zduXLjiXgRhv6FoP7Fy7V2vSZxg161uimFyCZCqFao3XP6rSnoHjJeuWcbpp7roKsjNdHEK4AdpWN1yLoJqFWzt?cluster=devnet) |
+| migrate HNVDA → DAMM v2 | [4UVP1L…bHj3](https://explorer.solana.com/tx/4UVP1LM6oQCdV2Bw1taK9RdbSapcbBy9pfF5oX1L5ADotKvMpYkQwemQnHTdufDC7bo7zytxrjJVtPni4TbnFHj3?cluster=devnet) |
+
+### Notes
+- **Proven on devnet:** the full create-config → launch → buy → graduate → DAMM v2 migrate loop, with a Token-2022 quote mint.
+- **Not proven:** the token-badge path. The mock mint deliberately has only metadata extensions, so it needed no badge. Real xStocks need the badge, which exists only on mainnet. Our scripts already derive the badge and pass it whenever it exists.
+- **Not tested:** fee claims (`claimPartnerTradingFee` / `claimCreatorTradingFee`). The fees above are unclaimed balances.
+- **Stage label:** after a fill, `migrationProgress` reads `LockedVesting` (value 2) even though these configs have no locked vesting. This is how the program staged the pool here, and migration succeeded from that stage.
+- **RPC noise:** the public devnet RPC returned occasional 429s on reads. web3.js retried them automatically and they caused no failures.

@@ -1,0 +1,30 @@
+{
+  "name": "hatch-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup-wallets": "tsx src/setup-wallets.ts",
+    "mock-stock": "tsx src/mock-stock.ts",
+    "create-configs": "tsx src/create-configs.ts",
+    "launch": "tsx src/launch.ts",
+    "buy": "tsx src/buy.ts",
+    "graduate": "tsx src/graduate.ts",
+    "status": "tsx src/status.ts",
+    "dry-run": "tsx src/dry-run.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@meteora-ag/cp-amm-sdk": "1.5.1",
+    "@meteora-ag/dynamic-bonding-curve-sdk": "1.5.13",
+    "@solana/spl-token": "0.4.15",
+    "@solana/spl-token-metadata": "0.1.6",
+    "@solana/web3.js": "^1.99.0",
+    "bn.js": "^5.2.5"
+  },
+  "devDependencies": {
+    "@types/bn.js": "^5.2.0",
+    "@types/node": "^26.6.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

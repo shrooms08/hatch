@@ -4,3 +4,4 @@ node_modules/
 scripts/keys/*.json
 .next/
 dist/
+scripts/state/
