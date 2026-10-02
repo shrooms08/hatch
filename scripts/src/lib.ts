@@ -27,8 +27,10 @@ if (/mainnet/i.test(RPC_URL)) {
   process.exit(1)
 }
 
-// Default is DRY RUN (simulate only). Real devnet transactions require --live.
-export const LIVE = process.argv.includes('--live') && !process.argv.includes('--dry-run')
+// Default is DRY RUN (simulate only). Real devnet transactions require --live (or HATCH_LIVE=1,
+// used only by the dev faucet).
+export const LIVE =
+  (process.argv.includes('--live') || process.env.HATCH_LIVE === '1') && !process.argv.includes('--dry-run')
 export const DRY_RUN = !LIVE
 
 export const connection = new Connection(RPC_URL, 'confirmed')
@@ -36,7 +38,7 @@ export const dbc = new DynamicBondingCurveClient(connection, 'confirmed')
 
 export const WSOL_MINT = new PublicKey('So11111111111111111111111111111111111111112')
 
-export type PresetKey = 'meme' | 'stock'
+export type PresetKey = 'meme' | 'stock' | 'agent'
 
 export type State = {
   mockStock?: { mint: string; decimals: number; tx?: string }

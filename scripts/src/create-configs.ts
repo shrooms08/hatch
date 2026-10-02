@@ -26,7 +26,7 @@ export async function createConfigs() {
   for (const preset of ['meme', 'stock'] as PresetKey[]) await createConfig(preset, partner)
 }
 
-async function createConfig(preset: PresetKey, partner: ReturnType<typeof loadKeypair>) {
+export async function createConfig(preset: PresetKey, partner: ReturnType<typeof loadKeypair>) {
   const p = PRESETS[preset]
   const quoteMint = p.quoteMint()
   const { kp: config } = loadOrCreateKeypair(`config-${preset}`)

@@ -39,13 +39,27 @@ export const PRESETS: Record<
     quoteSymbol: 'NVDAx',
     token: { name: 'Hatch NVDA Test', symbol: 'HNVDA', uri: 'https://example.com/hatch/hnvda.json' },
   },
+  agent: {
+    label: 'AI AGENT (SOL quote)',
+    quoteMint: () => WSOL_MINT,
+    quoteDecimals: 9,
+    quoteSymbol: 'SOL',
+    token: { name: 'Hatch Agent Test', symbol: 'HAGENT', uri: 'https://example.com/hatch/hagent.json' },
+  },
 }
 
-// Shared by both presets. Flat 1% fee with dynamic fee on, collected in the quote token,
-// split 50/50 between partner (Hatch) and creator. Graduates to DAMM v2 with a 1% pool fee.
-// Post-graduation LP: 45% claimable + 5% permanently locked each for partner and creator
-// (protocol requires >= 10% locked).
-function base(quoteDecimals: number): BuildCurveBaseParams {
+// Shared by all presets. Flat 1% fee with dynamic fee on, collected in the quote token, and a
+// graduation to DAMM v2 with a 1% pool fee. Default split (MEME, STOCK): 50/50 trading fees between
+// partner (Hatch) and creator; post-graduation LP 45% claimable + 5% permanently locked each
+// (protocol requires >= 10% locked). AI AGENT overrides the split in favor of the creator.
+function base(
+  quoteDecimals: number,
+  split: { creatorTradingFeePercentage: number; partnerLp: number; creatorLp: number } = {
+    creatorTradingFeePercentage: 50,
+    partnerLp: 45,
+    creatorLp: 45,
+  }
+): BuildCurveBaseParams {
   return {
     token: {
       tokenType: TokenType.SPLToken,
@@ -62,7 +76,7 @@ function base(quoteDecimals: number): BuildCurveBaseParams {
       },
       dynamicFeeEnabled: true,
       collectFeeMode: CollectFeeMode.QuoteToken,
-      creatorTradingFeePercentage: 50,
+      creatorTradingFeePercentage: split.creatorTradingFeePercentage,
       poolCreationFee: 0,
       enableFirstSwapWithMinFee: false,
     },
@@ -72,9 +86,9 @@ function base(quoteDecimals: number): BuildCurveBaseParams {
       migrationFee: { feePercentage: 0, creatorFeePercentage: 0 },
     },
     liquidityDistribution: {
-      partnerLiquidityPercentage: 45,
+      partnerLiquidityPercentage: split.partnerLp,
       partnerPermanentLockedLiquidityPercentage: 5,
-      creatorLiquidityPercentage: 45,
+      creatorLiquidityPercentage: split.creatorLp,
       creatorPermanentLockedLiquidityPercentage: 5,
     },
     lockedVesting: {
@@ -93,6 +107,16 @@ export function curveFor(preset: PresetKey): ConfigParameters {
     // Classic constant-product bonding curve: price rises smoothly as SOL comes in, and the
     // pool graduates once 1 SOL has been raised (devnet-sized), with 20% of supply seeding DAMM v2.
     return buildCurve({ ...base(9), percentageSupplyOnMigration: 20, migrationQuoteThreshold: 1 })
+  }
+  if (preset === 'agent') {
+    // Gentler curve: 35% of supply seeds DAMM v2, so the price only climbs ~3.4x from first buy to
+    // graduation (MEME climbs ~16x) and stays affordable longer while the same 1 SOL is raised.
+    // Creator-favoring split: creator gets 80% of curve trading fees and 70% (+5% locked) of the graduated LP.
+    return buildCurve({
+      ...base(9, { creatorTradingFeePercentage: 80, partnerLp: 20, creatorLp: 70 }),
+      percentageSupplyOnMigration: 35,
+      migrationQuoteThreshold: 1,
+    })
   }
   // Same smooth constant-product shape, priced in NVDAx: graduates after 50 NVDAx is raised,
   // and a larger 25% of supply goes to the DAMM v2 pool for deeper post-launch liquidity.

@@ -7,12 +7,12 @@ import { readPool } from './pool-view.js'
 
 const STEP = 'buy'
 export const SLIPPAGE_BPS = 100
-const AMOUNTS: Record<PresetKey, number> = { meme: 0.05, stock: 2 }
+const AMOUNTS: Record<'meme' | 'stock', number> = { meme: 0.05, stock: 2 }
 
 export async function buy() {
   header(STEP)
   const creator = loadKeypair('creator')
-  for (const preset of ['meme', 'stock'] as PresetKey[]) {
+  for (const preset of ['meme', 'stock'] as const) {
     const before = await readPool(preset)
     console.log(`\n  [${preset}]`)
     if (!prerequisite(before !== null, `${preset} pool`, STEP)) continue
