@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { HatchPool } from '@/lib/dbc/pool';
-import { formatUi } from '@/lib/solana/mint';
+import { formatAmount } from '@/lib/format/amount';
 import { PRESETS } from '@/lib/presets';
 import { useQuoteSymbol, useTokenMetadata } from '@/hooks/useHatch';
 import { CurveProgress, HatchStatusBadge } from './HatchStatus';
@@ -27,7 +27,7 @@ function HatchRow({ pool, showFees }: { pool: HatchPool; showFees: boolean }) {
             {md?.symbol && <span className="text-sm text-neutral-400">${md.symbol}</span>}
           </div>
           <div className="text-xs text-neutral-500">
-            {pool.presetId ? PRESETS[pool.presetId].label : 'Unknown preset'} · {formatUi(pool.price)} {quote}
+            {pool.presetId ? PRESETS[pool.presetId].label : 'Unknown preset'} · {formatAmount(pool.price)} {quote}
           </div>
         </div>
       </div>
@@ -36,7 +36,7 @@ function HatchRow({ pool, showFees }: { pool: HatchPool; showFees: boolean }) {
       </div>
       {showFees && (
         <div className="text-xs text-neutral-400 md:w-44 md:text-right">
-          Claimable: {formatUi(pool.fees.creatorQuote)} {quote}
+          Claimable: {formatAmount(pool.fees.creatorQuote)} {quote}
         </div>
       )}
       <HatchStatusBadge status={pool.status} className="self-start md:self-center" />

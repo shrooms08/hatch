@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import { STATUS_LABEL, type HatchStatus } from '@/lib/dbc/pool';
+import { formatPercent } from '@/lib/format/amount';
 
 const STATUS_CLASS: Record<HatchStatus, string> = {
   INCUBATING: 'bg-neutral-900 text-neutral-300',
@@ -16,13 +17,12 @@ export function HatchStatusBadge({ status, className }: { status: HatchStatus; c
 }
 
 export function CurveProgress({ progress, className }: { progress: number; className?: string }) {
-  const pct = Math.round(progress * 10_000) / 100;
   return (
     <div className={cn('w-full', className)}>
       <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-850">
-        <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${pct}%` }} />
+        <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%` }} />
       </div>
-      <div className="mt-1 text-xs text-neutral-400">{pct.toFixed(2)}% to hatch</div>
+      <div className="mt-1 text-xs text-neutral-400">{formatPercent(progress)} to hatch</div>
     </div>
   );
 }

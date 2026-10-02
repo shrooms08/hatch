@@ -8,7 +8,7 @@ import Page from '@/components/ui/Page/Page';
 import { DataStreamProvider, useDataStream } from '@/contexts/DataStreamProvider';
 import { TokenChartProvider } from '@/contexts/TokenChartProvider';
 import { useTokenAddress, useTokenInfo } from '@/hooks/queries';
-import { useHatchPool, useTokenMetadata } from '@/hooks/useHatch';
+import { useHatchPool, useRouteMint, useTokenMetadata } from '@/hooks/useHatch';
 import { HatchTokenHeader } from '@/components/Hatch/HatchTokenHeader';
 import { HatchPoolPanel } from '@/components/Hatch/HatchPoolPanel';
 import { TradePanel } from '@/components/Hatch/TradePanel';
@@ -41,7 +41,7 @@ const HatchOnChain = ({ mint }: { mint: string }) => {
 
 /** Page used when Jupiter data is off (default, and always on devnet). */
 const HatchTokenPage = () => {
-  const mint = useTokenAddress();
+  const mint = useRouteMint();
   const { data: pool } = useHatchPool(mint);
   const { data: md } = useTokenMetadata(mint);
   return (

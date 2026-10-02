@@ -33,35 +33,50 @@ function parseMetaplex(data: Buffer) {
   return { name, symbol, uri };
 }
 
-async function fetchJson(uri: string): Promise<TokenMetadataJson | null> {
-  if (!/^https?:\/\//i.test(uri)) return null;
-  try {
-    const res = await fetch(uri, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    return (await res.json()) as TokenMetadataJson;
-  } catch {
-    return null;
-  }
+/** Keeps only the string fields we render; anything else in the JSON is ignored. */
+export function pickMetadataJson(raw: unknown): TokenMetadataJson | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  const str = (k: string) => (typeof r[k] === 'string' ? (r[k] as string).slice(0, 2000) : undefined);
+  const url = (k: string) => {
+    const v = str(k);
+    return v && /^https?:\/\//i.test(v) ? v : undefined;
+  };
+  return {
+    name: str('name'),
+    symbol: str('symbol'),
+    description: str('description'),
+    image: url('image'),
+    external_url: url('external_url'),
+  };
 }
 
-export async function fetchTokenMetadata(
+/**
+ * Name/symbol/uri from chain only. The off-chain JSON is fetched server-side by
+ * /api/token-metadata: metadata hosts (e.g. an R2 public bucket) usually send no CORS
+ * headers, so a browser fetch of the JSON is blocked.
+ */
+export async function fetchOnChainMetadata(
   connection: Connection,
   mint: string
-): Promise<HatchTokenMetadata | null> {
+): Promise<Omit<HatchTokenMetadata, 'json'> | null> {
   const mintPk = new PublicKey(mint);
   const mintAccount = await connection.getAccountInfo(mintPk, 'confirmed');
   if (!mintAccount) return null;
-
-  let base: { name: string; symbol: string; uri: string } | null = null;
   if (mintAccount.owner.equals(TOKEN_2022_PROGRAM_ID)) {
     const md = await getTokenMetadata(connection, mintPk, 'confirmed', TOKEN_2022_PROGRAM_ID);
-    if (md) base = { name: md.name, symbol: md.symbol, uri: md.uri };
-  } else {
-    const account = await connection.getAccountInfo(deriveMintMetadata(mintPk), 'confirmed');
-    if (account) base = parseMetaplex(account.data);
+    return md ? { name: md.name, symbol: md.symbol, uri: md.uri } : null;
   }
-  if (!base) return null;
-  return { ...base, json: await fetchJson(base.uri) };
+  const account = await connection.getAccountInfo(deriveMintMetadata(mintPk), 'confirmed');
+  return account ? parseMetaplex(account.data) : null;
+}
+
+/** Browser: token metadata (on-chain fields + off-chain JSON) via our API route. */
+export async function fetchTokenMetadata(mint: string): Promise<HatchTokenMetadata | null> {
+  const res = await fetch(`/api/token-metadata?mint=${encodeURIComponent(mint)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Could not load token metadata (HTTP ${res.status})`);
+  return (await res.json()) as HatchTokenMetadata;
 }
 
 /** "https://x.com/foo/status/1" -> "x.com" */

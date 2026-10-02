@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import type { HatchPool } from '@/lib/dbc/pool';
 import { buildClaimCreatorFees, signAndSend } from '@/lib/dbc/transactions';
-import { formatUi } from '@/lib/solana/mint';
+import { formatAmount } from '@/lib/format/amount';
 import { getConnection } from '@/lib/solana/connection';
 import { explorerTxUrl } from '@/lib/config/network';
 import { useQuoteSymbol } from '@/hooks/useHatch';
@@ -43,8 +43,8 @@ export function ClaimCreatorFees({ pool, baseSymbol }: { pool: HatchPool; baseSy
     <div className="rounded-lg border border-neutral-750 p-4">
       <h2 className="mb-2 font-semibold">Your creator fees</h2>
       <p className="mb-3 text-sm text-neutral-300">
-        {formatUi(creatorQuote)} {quoteSymbol}
-        {!creatorBase.isZero() && ` + ${formatUi(creatorBase)} ${baseSymbol}`} claimable
+        {formatAmount(creatorQuote)} {quoteSymbol}
+        {!creatorBase.isZero() && ` + ${formatAmount(creatorBase)} ${baseSymbol}`} claimable
       </p>
       <Button className="w-full" variant="secondary" onClick={claim} disabled={busy || nothing}>
         {busy ? 'Confirm in your wallet…' : 'Claim creator fees'}

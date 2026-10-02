@@ -77,11 +77,3 @@ export async function fetchRawBalance(connection: Connection, owner: PublicKey, 
     return new BN(0); // no token account yet
   }
 }
-
-export function formatUi(value: Decimal, maxSignificant = 6): string {
-  if (value.isZero()) return '0';
-  if (value.abs().lt(0.000001)) return value.toSignificantDigits(4).toString();
-  return value.toSignificantDigits(maxSignificant).toNumber().toLocaleString('en-US', {
-    maximumFractionDigits: 9,
-  });
-}

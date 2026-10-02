@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { HatchPool } from '@/lib/dbc/pool';
 import { buildSwap, signAndSend, type TradeSide } from '@/lib/dbc/transactions';
-import { formatUi, rawToUi } from '@/lib/solana/mint';
+import { rawToUi } from '@/lib/solana/mint';
+import { formatAmount, formatPercent } from '@/lib/format/amount';
 import { getConnection } from '@/lib/solana/connection';
 import { explorerAddressUrl, explorerTxUrl } from '@/lib/config/network';
 import { useQuoteSymbol, useTokenBalance } from '@/hooks/useHatch';
@@ -73,7 +74,7 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
   const setMax = () => {
     if (!inBalance) return;
     const max = side === 'buy' && pool.quote.isNativeSol ? inBalance.minus(SOL_FEE_BUFFER) : inBalance;
-    setAmount(max.gt(0) ? max.toString() : '0');
+    setAmount(max.gt(0) ? max.toFixed() : '0'); // toFixed: never exponent notation in the input
   };
 
   const submit = async () => {
@@ -121,7 +122,7 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
       <div className="mb-1 flex items-center justify-between text-xs text-neutral-400">
         <span>You pay ({inSymbol})</span>
         <button type="button" onClick={setMax} className="hover:text-neutral-200" disabled={!inBalance}>
-          Balance: {inBalance ? formatUi(inBalance) : wallet.publicKey ? '…' : '-'}
+          Balance: {inBalance ? formatAmount(inBalance) : wallet.publicKey ? '…' : '-'}
         </button>
       </div>
       <input
@@ -136,12 +137,12 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
         <div className="flex justify-between">
           <span>You receive (est.)</span>
           <span className="text-neutral-200">
-            {preview.data ? `${formatUi(preview.data.out)} ${outSymbol}` : preview.isFetching ? '…' : '-'}
+            {preview.data ? `${formatAmount(preview.data.out)} ${outSymbol}` : preview.isFetching ? '…' : '-'}
           </span>
         </div>
         <div className="flex justify-between">
           <span>Minimum after slippage</span>
-          <span>{preview.data ? `${formatUi(preview.data.minOut)} ${outSymbol}` : '-'}</span>
+          <span>{preview.data ? `${formatAmount(preview.data.minOut)} ${outSymbol}` : '-'}</span>
         </div>
         {preview.error instanceof Error && <p className="text-rose">{preview.error.message}</p>}
         <div className="flex items-center justify-between pt-1">
@@ -154,14 +155,14 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
                 onClick={() => setSlippageBps(bps)}
                 className={cn('rounded px-2 py-0.5', slippageBps === bps ? 'bg-neutral-800 text-neutral-100' : 'hover:text-neutral-200')}
               >
-                {bps / 100}%
+                {formatPercent(bps / 10_000)}
               </button>
             ))}
           </div>
         </div>
         <div className="flex justify-between">
           <span>Your {baseSymbol}</span>
-          <span>{baseBalance.data ? formatUi(baseBalance.data) : '-'}</span>
+          <span>{baseBalance.data ? formatAmount(baseBalance.data) : '-'}</span>
         </div>
       </div>
 

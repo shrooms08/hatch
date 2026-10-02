@@ -1,5 +1,5 @@
 import type { HatchPool } from '@/lib/dbc/pool';
-import { formatUi } from '@/lib/solana/mint';
+import { formatAmount } from '@/lib/format/amount';
 import { explorerAddressUrl } from '@/lib/config/network';
 import { shortenAddress } from '@/lib/utils';
 import { useQuoteSymbol } from '@/hooks/useHatch';
@@ -32,11 +32,11 @@ export function HatchPoolPanel({ pool, symbol }: { pool: HatchPool; symbol?: str
       </div>
       <CurveProgress progress={pool.progress} className="mb-3" />
       <Row label="Price">
-        {formatUi(pool.price)} {quote}
+        {formatAmount(pool.price)} {quote}
         {symbol ? ` per ${symbol}` : ''}
       </Row>
       <Row label="Raised">
-        {formatUi(pool.quoteReserveUi)} / {formatUi(pool.thresholdUi)} {quote}
+        {formatAmount(pool.quoteReserveUi)} / {formatAmount(pool.thresholdUi)} {quote}
       </Row>
       <Row label="Quote token">
         {quote}

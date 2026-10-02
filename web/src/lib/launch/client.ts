@@ -55,6 +55,9 @@ export async function launchToken(params: {
     throw new Error(issues || body.error || `Upload failed (HTTP ${res.status})`);
   }
 
+  if (!body.poolTx || !body.imageUrl || !body.metadataUrl) {
+    throw new Error('Image or metadata upload did not complete; nothing was launched. Please try again.');
+  }
   const tx = Transaction.from(Buffer.from(body.poolTx, 'base64'));
   const signature = await signAndSend(wallet, connection, tx, [mintKeypair]);
   return { signature, mint: mintKeypair.publicKey.toBase58(), pool: body.pool };

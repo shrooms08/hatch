@@ -1,5 +1,6 @@
 // React Query hooks for Hatch chain data. All reads go straight to RPC via the DBC SDK.
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'next/router';
 import { PublicKey } from '@solana/web3.js';
 import { getConnection } from '@/lib/solana/connection';
 import { fetchHatchPoolByMint, fetchHatchPools } from '@/lib/dbc/pool';
@@ -9,6 +10,14 @@ import type { PresetConfigMap } from '@/lib/presets';
 import type { PresetsResponse } from '@/pages/api/presets';
 
 const POLL_MS = 10_000;
+
+/** Base mint from /token/[tokenId], or undefined until the router is ready (no default mint). */
+export function useRouteMint(): string | undefined {
+  const { isReady, query } = useRouter();
+  if (!isReady) return undefined;
+  const id = Array.isArray(query.tokenId) ? query.tokenId[0] : query.tokenId;
+  return id || undefined;
+}
 
 export function usePresetConfigs() {
   return useQuery({
@@ -45,7 +54,7 @@ export function useHatchPools(opts: { creator?: string; enabled?: boolean } = {}
 export function useTokenMetadata(mint: string | undefined) {
   return useQuery({
     queryKey: ['hatch', 'metadata', mint],
-    queryFn: () => fetchTokenMetadata(getConnection(), mint!),
+    queryFn: () => fetchTokenMetadata(mint!),
     enabled: !!mint,
     staleTime: 5 * 60_000,
   });

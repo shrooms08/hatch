@@ -5,7 +5,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { serverRpcUrl } from '@/lib/config/network';
 import { launchRequestSchema, IMAGE_EXT } from '@/lib/validation/launch';
 import { configKeyFor, PresetError } from '@/lib/server/presets';
-import { isR2Configured, R2NotConfiguredError, uploadToR2 } from '@/lib/server/r2';
+import { isR2Configured, R2NotConfiguredError, R2UploadError, uploadToR2 } from '@/lib/server/r2';
 import { ImageError, loadLaunchImage } from '@/lib/server/image';
 import { buildCreatePoolTx } from '@/lib/server/createPool';
 
@@ -78,6 +78,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     });
   } catch (error) {
     if (error instanceof R2NotConfiguredError) return res.status(503).json({ error: 'R2 not configured' });
+    if (error instanceof R2UploadError) return res.status(502).json({ error: error.message });
     if (error instanceof PresetError || error instanceof ImageError) {
       return res.status(400).json({ error: error.message });
     }
