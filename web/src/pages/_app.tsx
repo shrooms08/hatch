@@ -9,6 +9,13 @@ import { useMemo } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useWindowWidthListener } from '@/lib/device';
 import { NETWORK } from '@/lib/config/network';
+import { useWalletHatchEvents } from '@/lib/extensionBridge';
+
+/** Lives inside the wallet provider so it can see the connected wallet. */
+function HatchEvents(): null {
+  useWalletHatchEvents();
+  return null;
+}
 
 function AppProviders({ Component, pageProps }: AppProps) {
   const { resolvedTheme } = useTheme();
@@ -43,6 +50,7 @@ function AppProviders({ Component, pageProps }: AppProps) {
           lang: 'en',
         }}
       >
+        <HatchEvents />
         <Toaster theme={walletTheme} richColors closeButton />
         <Component {...pageProps} />
       </UnifiedWalletProvider>

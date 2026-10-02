@@ -19,6 +19,7 @@ import {
 import { checkImageFile, launchToken } from '@/lib/launch/client';
 import { getConnection } from '@/lib/solana/connection';
 import { explorerTxUrl } from '@/lib/config/network';
+import { emitHatchEvent } from '@/lib/extensionBridge';
 
 const inputClassName =
   'w-full rounded-lg border border-neutral-750 bg-background p-3 text-sm text-foreground placeholder:text-neutral-500 transition-colors focus:border-primary/60 focus:outline-none focus:ring-1 focus:ring-primary/40';
@@ -94,6 +95,7 @@ export default function CreatePool() {
         action: { label: 'View tx', onClick: () => window.open(explorerTxUrl(result.signature), '_blank') },
       });
       setCreated(result);
+      emitHatchEvent('launched', wallet.publicKey!.toBase58(), result.mint);
       router.push(`/token/${result.mint}`);
     } catch (err) {
       console.error('Launch failed:', err);
