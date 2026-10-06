@@ -13,14 +13,25 @@ import type { HatchSummary } from '@/lib/buddy/schema';
 
 const REQUESTS_PER_HOUR = 300;
 const symbolCache = new Map<string, string>();
+const symbolInflight = new Map<string, Promise<string | null>>();
 
 async function quoteSymbol(connection: Connection, mint: string, isNativeSol: boolean) {
   if (isNativeSol) return 'SOL';
-  if (!symbolCache.has(mint)) {
-    const md = await fetchOnChainMetadata(connection, mint).catch((): null => null);
-    symbolCache.set(mint, md?.symbol || `${mint.slice(0, 4)}…`);
+  const cached = symbolCache.get(mint);
+  if (cached) return cached;
+  // One lookup per mint even when many pools share the quote (parallel duplicates trip RPC rate limits).
+  let pending = symbolInflight.get(mint);
+  if (!pending) {
+    pending = fetchOnChainMetadata(connection, mint)
+      .then((md) => md?.symbol || null)
+      .catch((): null => null)
+      .finally(() => symbolInflight.delete(mint));
+    symbolInflight.set(mint, pending);
   }
-  return symbolCache.get(mint)!;
+  const symbol = await pending;
+  // Cache only a real symbol: a failed (e.g. rate-limited) read must not pin the fallback forever.
+  if (symbol) symbolCache.set(mint, symbol);
+  return symbol || `${mint.slice(0, 4)}…`;
 }
 
 export default async function handler(

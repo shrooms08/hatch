@@ -43,6 +43,8 @@ export type PresetKey = 'meme' | 'stock' | 'agent'
 export type State = {
   mockStock?: { mint: string; decimals: number; tx?: string }
   configs?: Partial<Record<PresetKey, { config: string; quoteMint: string; quoteDecimals: number; tx?: string }>>
+  /** Same presets with a Token-2022 base token (create-configs --base token2022). */
+  t22Configs?: Partial<Record<PresetKey, { config: string; quoteMint: string; quoteDecimals: number; tx?: string }>>
   pools?: Partial<Record<PresetKey, { pool: string; baseMint: string; name: string; symbol: string; tx?: string }>>
   migrations?: Partial<Record<PresetKey, { dammV2Pool: string; dammConfig: string; tx?: string }>>
   txs?: { step: string; label: string; sig: string; url: string }[]

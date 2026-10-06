@@ -1,7 +1,7 @@
 // Step 3: create the MEME (wSOL quote) and STOCK (mock NVDAx quote) DBC configs, owned by the
 // partner wallet (fee claimer + leftover receiver), migrating to DAMM v2.
 import { PublicKey } from '@solana/web3.js'
-import { deriveTokenBadgeAddress } from '@meteora-ag/dynamic-bonding-curve-sdk'
+import { TokenType, deriveTokenBadgeAddress } from '@meteora-ag/dynamic-bonding-curve-sdk'
 import {
   accountExists,
   addrUrl,
@@ -23,16 +23,22 @@ const STEP = 'create-configs'
 export async function createConfigs() {
   header(STEP)
   const partner = loadKeypair('partner')
-  for (const preset of ['meme', 'stock'] as PresetKey[]) await createConfig(preset, partner)
+  const t22 = process.argv.includes('--base') && process.argv[process.argv.indexOf('--base') + 1] === 'token2022'
+  const only = process.argv.find((a) => a === 'meme' || a === 'stock') as PresetKey | undefined
+  for (const preset of (only ? [only] : ['meme', 'stock']) as PresetKey[]) await createConfig(preset, partner, t22 ? 'token2022' : 'spl')
 }
 
-export async function createConfig(preset: PresetKey, partner: ReturnType<typeof loadKeypair>) {
+/** `base`: the launched tokens' program. Token-2022 configs are separate (keys config-<preset>-t22, state t22Configs). */
+export async function createConfig(preset: PresetKey, partner: ReturnType<typeof loadKeypair>, base: 'spl' | 'token2022' = 'spl') {
   const p = PRESETS[preset]
   const quoteMint = p.quoteMint()
-  const { kp: config } = loadOrCreateKeypair(`config-${preset}`)
+  const t22 = base === 'token2022'
+  const { kp: config } = loadOrCreateKeypair(t22 ? `config-${preset}-t22` : `config-${preset}`)
   console.log(`\n  [${p.label}] config ${config.publicKey.toBase58()}  quote ${quoteMint.toBase58()}`)
 
-  const curve = curveFor(preset)
+  const baseCurve = curveFor(preset)
+  const curve = t22 ? { ...baseCurve, tokenType: TokenType.Token2022 } : baseCurve
+  console.log(`  base token: ${t22 ? 'Token-2022' : 'SPL'}`)
   console.log(`  curve: migrationQuoteThreshold ${fmtUnits(curve.migrationQuoteThreshold, p.quoteDecimals)} ${p.quoteSymbol}, creator fee share ${curve.creatorTradingFeePercentage}%`)
 
   if (await accountExists(config.publicKey)) {
@@ -52,7 +58,9 @@ export async function createConfig(preset: PresetKey, partner: ReturnType<typeof
     const sig = await execute(STEP, `create ${preset} config`, tx, partner, [config])
     if (!sig) return
     writeState((s) => {
-      s.configs = { ...s.configs, [preset]: { config: config.publicKey.toBase58(), quoteMint: quoteMint.toBase58(), quoteDecimals: p.quoteDecimals, tx: sig } }
+      const entry = { config: config.publicKey.toBase58(), quoteMint: quoteMint.toBase58(), quoteDecimals: p.quoteDecimals, tx: sig }
+      if (t22) s.t22Configs = { ...s.t22Configs, [preset]: entry }
+      else s.configs = { ...s.configs, [preset]: entry }
     })
   }
 
@@ -63,8 +71,11 @@ export async function createConfig(preset: PresetKey, partner: ReturnType<typeof
     `  on-chain: quote ${onchain.quoteMint.toBase58()} (quoteTokenFlag ${onchain.quoteTokenFlag}), threshold ${fmtUnits(onchain.migrationQuoteThreshold, p.quoteDecimals)} ${p.quoteSymbol}, migrationOption ${onchain.migrationOption} (1 = DAMM v2), feeClaimer ${onchain.feeClaimer.toBase58()}`
   )
   console.log(`  ${addrUrl(config.publicKey)}`)
+  console.log(`  on-chain tokenType ${onchain.tokenType} (0 = SPL, 1 = Token-2022)`)
   writeState((s) => {
-    s.configs = { ...s.configs, [preset]: { ...s.configs?.[preset], config: config.publicKey.toBase58(), quoteMint: quoteMint.toBase58(), quoteDecimals: p.quoteDecimals } }
+    const entry = { config: config.publicKey.toBase58(), quoteMint: quoteMint.toBase58(), quoteDecimals: p.quoteDecimals }
+    if (t22) s.t22Configs = { ...s.t22Configs, [preset]: { ...s.t22Configs?.[preset], ...entry } }
+    else s.configs = { ...s.configs, [preset]: { ...s.configs?.[preset], ...entry } }
   })
 }
 
