@@ -7,6 +7,8 @@ import { launchRequestSchema, IMAGE_EXT } from '@/lib/validation/launch';
 import { configKeyFor, PresetError } from '@/lib/server/presets';
 import { isR2Configured, R2NotConfiguredError, R2UploadError, uploadToR2 } from '@/lib/server/r2';
 import { ImageError, loadLaunchImage } from '@/lib/server/image';
+import { isFallbackUrl, renderFallbackPng } from '@/lib/server/fallbackImage';
+import { loadHatchConfigs } from '@/lib/server/presets';
 import { buildCreatePoolTx } from '@/lib/server/createPool';
 
 export const config = {
@@ -42,8 +44,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     const user = parsePubkey(input.userWallet, 'userWallet');
     if (!isR2Configured()) throw new R2NotConfiguredError();
 
-    const image = await loadLaunchImage(input.image);
     const mintId = mint.toBase58();
+    // No image (or a generated one from the extension's draft): render the Hatch egg for the final ticker.
+    const pairedWith = input.preset === 'STOCK' && input.stock ? loadHatchConfigs().stocks[input.stock]?.symbol : null;
+    const image =
+      input.image && !isFallbackUrl(input.image)
+        ? await loadLaunchImage(input.image)
+        : { bytes: renderFallbackPng(input.symbol, pairedWith), contentType: 'image/png' as const };
     const imageUrl = await uploadToR2(`images/${mintId}.${IMAGE_EXT[image.contentType]}`, image.bytes, image.contentType);
 
     const metadata = {

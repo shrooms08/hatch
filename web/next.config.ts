@@ -18,6 +18,9 @@ const nextConfig: NextConfig = {
   turbopack: { root: path.resolve(__dirname) },
   outputFileTracingRoot: path.resolve(__dirname),
   images: { remotePatterns: r2RemotePattern() },
+  // Fallback token images: native renderer + the bundled font file.
+  serverExternalPackages: ['@resvg/resvg-js'],
+  outputFileTracingIncludes: { '/api/**/*': ['./assets/fonts/**/*'] },
   // Type errors fail the build. ESLint is run separately (`pnpm lint`).
   eslint: {
     ignoreDuringBuilds: true,

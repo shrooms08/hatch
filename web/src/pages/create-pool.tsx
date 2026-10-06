@@ -46,7 +46,8 @@ function prefillFromQuery(query: Record<string, string | string[] | undefined>) 
       stock: q('stock').toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 8),
       ...(parsePresetId(q('preset')) ? { preset: parsePresetId(q('preset'))! } : {}),
     },
-    imageUrl: /^https?:\/\//i.test(q('image')) ? q('image') : '',
+    // A generated egg from the extension's draft is re-rendered at launch for the final ticker.
+    imageUrl: /^https?:\/\//i.test(q('image')) && !q('image').includes('/images/fallback/') ? q('image') : '',
   };
 }
 
@@ -70,6 +71,8 @@ export default function CreatePool() {
   }, [router.isReady, router.query]);
 
   const previewSrc = useMemo(() => (imageFile ? URL.createObjectURL(imageFile) : imageUrl), [imageFile, imageUrl]);
+  // No image: preview the Hatch egg the server will make for this ticker.
+  const fallbackSrc = `/api/fallback-image?symbol=${encodeURIComponent(form.symbol || 'HATCH')}${form.preset === 'STOCK' && form.stock ? `&stock=${encodeURIComponent(form.stock)}` : ''}`;
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
   const stocks = Object.values(enabledPresets?.stocks ?? {});
   const selectedStock = enabledPresets?.stocks[form.stock ?? ''] ?? null;
@@ -83,7 +86,6 @@ export default function CreatePool() {
     e.preventDefault();
     const parsed = launchFieldsSchema.safeParse(form);
     const problems = parsed.success ? [] : Object.values(parsed.error.flatten().fieldErrors).flat();
-    if (!imageFile && !imageUrl) problems.push('Token image is required');
     if (imageFile) {
       const imageProblem = checkImageFile(imageFile);
       if (imageProblem) problems.push(imageProblem);
@@ -195,17 +197,14 @@ export default function CreatePool() {
 
                   <div>
                     <label htmlFor="tokenLogo" className={labelClassName}>
-                      Token Image*
+                      Token Image
                     </label>
                     <div className="rounded-lg border-2 border-dashed border-neutral-750 p-6 text-center transition-colors hover:border-neutral-600">
-                      {previewSrc ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={previewSrc} alt="" className="mx-auto mb-3 h-16 w-16 rounded-lg object-cover" />
-                      ) : (
-                        <span className="iconify mx-auto mb-2 h-6 w-6 text-neutral-500 ph--upload-bold" />
-                      )}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={previewSrc || fallbackSrc} alt="" className="mx-auto mb-3 h-16 w-16 rounded-lg object-cover" />
                       <p className="mb-3 text-xs text-neutral-500">
-                        {imageFile?.name ?? (imageUrl ? 'Using image from link' : 'PNG, JPG, WEBP or GIF (max. 2MB)')}
+                        {imageFile?.name ??
+                          (imageUrl ? 'Using image from link' : 'No image? Hatch makes this one for you. Or upload PNG, JPG, WEBP or GIF (max. 2MB)')}
                       </p>
                       <input
                         type="file"

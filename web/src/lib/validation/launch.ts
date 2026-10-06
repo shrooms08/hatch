@@ -36,9 +36,9 @@ export const launchFieldsSchema = z.object({
   twitter: httpUrl.optional().or(z.literal('')),
 });
 
-/** Server request body: fields + image (data URL from a file, or an http(s) URL from prefill). */
+/** Server request body: fields + image (data URL from a file, or an http(s) URL from prefill). No image: the server makes one. */
 export const launchRequestSchema = launchFieldsSchema.extend({
-  image: z.string().min(1, 'Token image is required'),
+  image: z.string().optional().or(z.literal('')),
   mint: z.string().min(32).max(44),
   userWallet: z.string().min(32).max(44),
 });
