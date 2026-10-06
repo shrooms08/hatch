@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { browser } from "wxt/browser";
 import { launchUrl } from "../../../lib/api";
-import { xStockFor } from "../../../lib/xstocks";
-import { NETWORK } from "../../../lib/config";
+import { stockFor, unavailableTickers } from "../../../lib/stocks";
 import type { PageContext, PresetId, PresetInfo } from "../../../lib/types";
-import { useDraftSession } from "../hooks";
+import { useDraftSession, useStocks } from "../hooks";
 import { Button, Card, Field, Muted, TextArea, TextInput } from "./ui";
 
 const PRESET_ORDER: PresetId[] = ["STOCK", "MEME", "AI_AGENT"];
@@ -31,7 +30,15 @@ export function DraftTab({ tabId, page, presets }: { tabId: number; page: PageCo
   const s = useDraftSession(tabId, page);
   const [message, setMessage] = useState("");
   const preset = presets.find((p) => p.id === s.draft?.preset);
-  const xs = xStockFor(s.draft?.stockTicker);
+  const stocks = useStocks();
+  const paired = stockFor(stocks, s.draft?.stockTicker);
+  const comingSoon = unavailableTickers(stocks, page.detected.tickers);
+  const pickPreset = (preset: PresetId) => {
+    if (preset !== "STOCK") return s.edit({ preset, stockTicker: null });
+    // STOCK needs an available stock: the page's ticker if pairable, else the first available one.
+    const ticker = page.detected.tickers.find((t) => stockFor(stocks, t)) ?? Object.keys(stocks)[0] ?? null;
+    s.edit({ preset, stockTicker: ticker });
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,22 +103,19 @@ export function DraftTab({ tabId, page, presets }: { tabId: number; page: PageCo
             <select
               className="w-full rounded-md border border-[var(--border)] bg-transparent px-2 py-1.5 text-sm"
               value={s.draft.preset}
-              onChange={(e) => s.edit({ preset: e.target.value as PresetId })}
+              onChange={(e) => pickPreset(e.target.value as PresetId)}
             >
               {PRESET_ORDER.map((id) => (
-                <option key={id} value={id} className="bg-black">
+                <option key={id} value={id} className="bg-black" disabled={id === "STOCK" && Object.keys(stocks).length === 0}>
                   {presets.find((p) => p.id === id)?.label ?? id}
                 </option>
               ))}
             </select>
           </Field>
 
-          {s.draft.preset === "STOCK" && (
-            <Muted>
-              {xs
-                ? `Paired with ${xs.xSymbol} (${xs.company})${NETWORK === "devnet" ? " · devnet uses mock NVDAx" : ""}.`
-                : "No listed xStock for this ticker yet; the web app will use the STOCK preset's configured quote token."}
-            </Muted>
+          {s.draft.preset === "STOCK" && paired && <Muted>Paired with {paired.symbol} (tokenized {paired.name}).</Muted>}
+          {s.draft.preset !== "STOCK" && comingSoon.length > 0 && (
+            <Muted>Stock-paired launches for {comingSoon.join(", ")} are coming soon.</Muted>
           )}
 
           {preset && (

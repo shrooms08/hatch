@@ -4,7 +4,7 @@
  * through the background.
  */
 import { HATCH_WEB_URL } from "./config";
-import type { BuddyDraft, BuddyNotice, ChatMessage, Draft, HatchSummary, PageContext, PresetInfo, Result } from "./types";
+import type { BuddyDraft, BuddyNotice, ChatMessage, Draft, HatchSummary, PageContext, PresetInfo, Result, StockMap } from "./types";
 
 const OFFLINE = `Can't reach Hatch at ${HATCH_WEB_URL}. Is the web app running?`;
 
@@ -41,6 +41,7 @@ export const api = {
   hatches: (wallet: string) =>
     request<{ wallet: string; network: string; hatches: HatchSummary[] }>("GET", `/api/hatches?wallet=${encodeURIComponent(wallet)}`),
   presets: () => request<{ network: string; presets: PresetInfo[] }>("GET", "/api/presets"),
+  stocks: () => request<{ network: string; stocks: StockMap }>("GET", "/api/stocks"),
 };
 
 /** The web app's /launch URL, prefilled (the user reviews, then Phantom signs on the web app). */
@@ -53,5 +54,6 @@ export function launchUrl(draft: Draft, sourceUrl: string): string {
     source: sourceUrl,
   });
   if (draft.imageUrl) q.set("image", draft.imageUrl);
+  if (draft.preset === "STOCK" && draft.stockTicker) q.set("stock", draft.stockTicker);
   return `${HATCH_WEB_URL}/launch?${q.toString()}`;
 }

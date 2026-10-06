@@ -9,6 +9,7 @@ export const KEYS = {
   hatches: "hatch:hatches",
   milestones: "hatch:milestones",
   noticed: "hatch:noticed", // storage.session: url -> hint | null
+  stocks: "hatch:stocks", // { at, stocks } from GET /api/stocks
   lastSound: "hatch:lastSound", // storage.session: { name, at, played, error? } for the debug page
 } as const;
 

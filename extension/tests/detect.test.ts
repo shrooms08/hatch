@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { cashtags, isStockPageUrl, isTweetUrl, tickersFromUrl } from "../lib/detect";
-import { xStockFor } from "../lib/xstocks";
 
 describe("stock page URLs", () => {
   it.each([
@@ -39,14 +38,5 @@ describe("cashtags", () => {
   });
   it("ignores lowercase, prices and embedded dollars", () => {
     expect(cashtags("costs $5 or $nvda or a$AAPL")).toEqual([]);
-  });
-});
-
-describe("xStocks", () => {
-  it("maps tickers to xStock symbols with no invented mainnet mints", () => {
-    expect(xStockFor("NVDA")?.xSymbol).toBe("NVDAx");
-    expect(xStockFor("$tsla")?.xSymbol).toBe("TSLAx");
-    expect(xStockFor("ZZZZ")).toBeNull();
-    expect(xStockFor("AAPL")?.mainnetMint).toBeNull();
   });
 });

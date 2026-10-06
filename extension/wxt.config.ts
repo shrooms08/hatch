@@ -17,16 +17,6 @@ const HATCH_WEB_URL = (process.env.WXT_HATCH_WEB_URL ?? "http://localhost:3000")
 process.env.WXT_HATCH_WEB_URL = HATCH_WEB_URL;
 const HATCH_WEB_MATCH = `${new URL(HATCH_WEB_URL).origin}/*`;
 
-// Devnet: every stock maps to the mock NVDAx mint created by scripts/ (scripts/state/devnet.json),
-// unless WXT_DEVNET_STOCK_MINT is set explicitly.
-if (!process.env.WXT_DEVNET_STOCK_MINT) {
-  const statePath = fileURLToPath(new URL("../scripts/state/devnet.json", import.meta.url));
-  if (existsSync(statePath)) {
-    const mint = JSON.parse(readFileSync(statePath, "utf8"))?.mockStock?.mint;
-    if (typeof mint === "string") process.env.WXT_DEVNET_STOCK_MINT = mint;
-  }
-}
-
 // Buddy sounds live in the repo (design/sfx/hatch-sfx). Copied into the build as sfx/*.mp3;
 // the build fails loudly if either file is missing.
 const SFX_DIR = fileURLToPath(new URL("../design/sfx/hatch-sfx/", import.meta.url));

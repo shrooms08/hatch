@@ -6,6 +6,9 @@
 import assert from 'node:assert/strict';
 import { clampDraft, draftToken } from '@/lib/server/buddy';
 import { draftRequestSchema, type BuddyDraft, type PageContext } from '@/lib/buddy/schema';
+import type { StockMap } from '@/lib/presets';
+
+const STOCKS: StockMap = { NVDA: { ticker: 'NVDA', config: 'cfg', quoteMint: 'mint', symbol: 'NVDAx', name: 'NVIDIA' } };
 
 const WEB = (process.env.HATCH_WEB_URL ?? 'http://localhost:3000').replace(/\/$/, '');
 
@@ -56,11 +59,18 @@ assert.equal(clamped.stockTicker, null);
 assert.equal(clamped.imageUrl, null);
 const keepsStock = clampDraft(
   { name: 'Green Team', symbol: 'GRN', description: 'd', preset: 'STOCK', imageUrl: yahooNvda.images[0], stockTicker: '$nvda', reasoning: 'r', reply: 'ok' },
-  yahooNvda
+  yahooNvda,
+  STOCKS
 );
 assert.equal(keepsStock.preset, 'STOCK');
 assert.equal(keepsStock.stockTicker, 'NVDA');
 assert.equal(keepsStock.imageUrl, yahooNvda.images[0]);
+// A stock with no config on this network (TSLA) is drafted as MEME with a plain "coming soon" reply.
+const tslaPage: PageContext = { ...yahooNvda, url: 'https://finance.yahoo.com/quote/TSLA/', title: 'Tesla, Inc. (TSLA) Stock Price', detected: { kind: 'stock', tickers: ['TSLA'] } };
+const tsla = clampDraft({ name: 'Volt Moon', symbol: 'VOLT', description: 'd', preset: 'STOCK', imageUrl: null, stockTicker: 'TSLA', reasoning: 'r', reply: 'Paired with TSLAx!' }, tslaPage, STOCKS);
+assert.equal(tsla.preset, 'MEME');
+assert.equal(tsla.stockTicker, null);
+assert.match(tsla.reply, /Stock-paired launches for TSLA are coming soon/);
 console.log('clamping: passed');
 
 // ---------- 2. live draft (needs ANTHROPIC_API_KEY) ----------

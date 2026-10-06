@@ -4,10 +4,11 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import * as z4 from 'zod/v4';
-import { PRESET_IDS, PRESETS, type PresetId } from '@/lib/presets';
+import { PRESET_IDS, PRESETS, type PresetId, type StockMap } from '@/lib/presets';
 import { DESCRIPTION_MAX, NAME_MAX, SYMBOL_MAX } from '@/lib/validation/launch';
 import type { BuddyDraft, BuddyNotice, DraftRequest, NoticeRequest, PageContext } from '@/lib/buddy/schema';
 import { DRAFT_MODEL, FAST_MODEL, anthropic } from '@/lib/server/ai';
+import { loadHatchConfigs } from '@/lib/server/presets';
 
 export class AiOutputError extends Error {}
 
@@ -15,7 +16,7 @@ export class AiOutputError extends Error {}
 
 const PRESET_GUIDE = PRESET_IDS.map((id) => `- ${id}: ${PRESETS[id].description}`).join('\n');
 
-const DRAFT_SYSTEM = `You are Hatch, a friendly assistant inside a browser extension that helps people launch a fun token on Solana (Meteora bonding curve) inspired by the web page they are reading.
+const DRAFT_SYSTEM_BASE = `You are Hatch, a friendly assistant inside a browser extension that helps people launch a fun token on Solana (Meteora bonding curve) inspired by the web page they are reading.
 
 Your job: draft the token's name, symbol, description and launch preset, and write a short friendly chat reply.
 
@@ -28,7 +29,8 @@ Presets:
 ${PRESET_GUIDE}
 
 Choosing a preset:
-- STOCK only when a real, publicly traded company's stock ticker is clearly the subject of the page (for example a stock quote page, or a post or article mainly about that company). Set stockTicker to that ticker (e.g. "NVDA"). If no single company is clearly the subject, do not use STOCK and set stockTicker to null.
+- STOCK only when a real, publicly traded company's stock ticker is clearly the subject of the page (for example a stock quote page, or a post or article mainly about that company) AND that stock is in the available list below. Set stockTicker to that ticker (e.g. "NVDA"). If no single company is clearly the subject, do not use STOCK and set stockTicker to null.
+- If the subject is a company whose stock is NOT in the available list, use MEME, still set stockTicker to its ticker, and say plainly in reply that stock-paired launches for that stock are coming soon.
 - AI_AGENT when the page is about an AI agent, bot or AI product.
 - MEME otherwise.
 - If the user asks for a preset, use it, except do not use STOCK without a clear company ticker; explain that briefly in reply.
@@ -56,6 +58,16 @@ function pageBlock(page: PageContext): string {
     text: page.text,
   };
   return `<page_content>\n${JSON.stringify(data, null, 1)}\n</page_content>`;
+}
+
+/** The draft prompt plus this network's stock list (only these can be STOCK). */
+function draftSystem(stocks: StockMap): string {
+  const list = Object.values(stocks)
+    .map((s) => `${s.ticker} (${s.name}, paired with ${s.symbol})`)
+    .join(', ');
+  return `${DRAFT_SYSTEM_BASE}
+
+Stocks available for STOCK launches on this network: ${list || 'none'}.`;
 }
 
 // ---------- output schemas (model-facing; clamped afterwards) ----------
@@ -99,14 +111,21 @@ function tickerIsSubject(ticker: string, page: PageContext): boolean {
   return new RegExp(`(^|[^A-Za-z0-9])\\$?${esc}([^A-Za-z0-9]|$)`).test(page.title);
 }
 
-export function clampDraft(raw: z4.infer<typeof DraftOutput>, page: PageContext): BuddyDraft {
+export function clampDraft(raw: z4.infer<typeof DraftOutput>, page: PageContext, stocks: StockMap = {}): BuddyDraft {
   const name = clip(oneLine(raw.name), NAME_MAX) || 'Hatchling';
   let preset: PresetId = (PRESET_IDS as readonly string[]).includes(raw.preset) ? raw.preset : 'MEME';
   let stockTicker = raw.stockTicker ? raw.stockTicker.toUpperCase().replace(/^\$/, '').trim() : null;
   if (stockTicker && !/^[A-Z]{1,6}(\.[A-Z])?$/.test(stockTicker)) stockTicker = null;
   if (stockTicker && !tickerIsSubject(stockTicker, page)) stockTicker = null;
   if (preset === 'STOCK' && !stockTicker) preset = 'MEME';
+  // A stock without a config on this network can't be STOCK: launch as MEME and say so plainly.
+  const comingSoon = stockTicker && !stocks[stockTicker] ? stockTicker : null;
+  if (comingSoon) preset = 'MEME';
   if (preset !== 'STOCK') stockTicker = null;
+  let reply = clip(oneLine(raw.reply), 400) || 'Here is a draft. Tweak anything you like!';
+  if (comingSoon && (raw.preset === 'STOCK' || !/coming soon/i.test(reply))) {
+    reply = `Stock-paired launches for ${comingSoon} are coming soon, so I drafted this as a Meme launch for now.`;
+  }
   return {
     name,
     symbol: clampSymbol(raw.symbol, name),
@@ -115,7 +134,7 @@ export function clampDraft(raw: z4.infer<typeof DraftOutput>, page: PageContext)
     imageUrl: raw.imageUrl && page.images.includes(raw.imageUrl) ? raw.imageUrl : null,
     stockTicker,
     reasoning: clip(oneLine(raw.reasoning), 200),
-    reply: clip(oneLine(raw.reply), 400) || 'Here is a draft. Tweak anything you like!',
+    reply,
   };
 }
 
@@ -127,6 +146,7 @@ function checkStop(stop: Anthropic.Message['stop_reason']) {
 }
 
 export async function draftToken(req: DraftRequest): Promise<BuddyDraft> {
+  const { stocks } = loadHatchConfigs();
   const first = `Here is the page the user is looking at.\n\n${pageBlock(req.page)}\n\nDraft a token inspired by this page.`;
   const turns: { role: 'user' | 'assistant'; content: string }[] = [{ role: 'user', content: first }];
   for (const m of req.messages) {
@@ -144,13 +164,13 @@ export async function draftToken(req: DraftRequest): Promise<BuddyDraft> {
   const response = await anthropic().messages.parse({
     model: DRAFT_MODEL,
     max_tokens: 4000,
-    system: DRAFT_SYSTEM,
+    system: draftSystem(stocks),
     messages: turns,
     output_config: { format: zodOutputFormat(DraftOutput), effort: 'low' },
   });
   checkStop(response.stop_reason);
   if (!response.parsed_output) throw new AiOutputError('The AI returned an unreadable draft; try again');
-  return clampDraft(response.parsed_output, req.page);
+  return clampDraft(response.parsed_output, req.page, stocks);
 }
 
 export async function noticePage(req: NoticeRequest): Promise<BuddyNotice> {

@@ -45,4 +45,7 @@ export type HatchSummary = {
 
 export type EggState = "idle" | "noticed" | "thinking" | "ready";
 
+export type StockInfo = { ticker: string; config: string; quoteMint: string; symbol: string; name: string };
+export type StockMap = Record<string, StockInfo>;
+
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };

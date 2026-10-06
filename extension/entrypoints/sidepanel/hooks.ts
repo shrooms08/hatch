@@ -3,7 +3,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
 import { api } from "../../lib/api";
 import { sendToBackground, type TabMessage } from "../../lib/messages";
-import type { BuddyDraft, ChatMessage, Draft, EggState, PageContext, PresetInfo } from "../../lib/types";
+import type { BuddyDraft, ChatMessage, Draft, EggState, PageContext, PresetInfo, StockMap } from "../../lib/types";
+import { loadStocks } from "../../lib/stocks";
 
 /** A chrome.storage.local value that stays in sync. */
 export function useStorageValue<T>(key: string, fallback: T): T {
@@ -67,6 +68,15 @@ export function usePresets(): PresetInfo[] {
     void api.presets().then((r) => r.ok && setPresets(r.data.presets));
   }, []);
   return presets;
+}
+
+/** Pairable stocks on the web app's network (GET /api/stocks, cached). */
+export function useStocks(): StockMap {
+  const [stocks, setStocks] = useState<StockMap>({});
+  useEffect(() => {
+    void loadStocks().then(setStocks);
+  }, []);
+  return stocks;
 }
 
 export type ChatEntry = { role: "user" | "assistant"; text: string };
