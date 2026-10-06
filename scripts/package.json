@@ -13,7 +13,14 @@
     "dry-run": "tsx src/dry-run.ts",
     "typecheck": "tsc --noEmit",
     "create-agent-config": "tsx src/create-agent-config.ts",
-    "faucet-nvdax": "HATCH_LIVE=1 tsx src/faucet-nvdax.ts"
+    "faucet-nvdax": "HATCH_LIVE=1 tsx src/faucet-nvdax.ts",
+    "mainnet-partner": "node --env-file-if-exists=.env --import tsx src/mainnet-partner.ts",
+    "cost-estimate-mainnet": "node --env-file-if-exists=.env --import tsx src/cost-estimate-mainnet.ts",
+    "create-config-mainnet": "node --env-file-if-exists=.env --import tsx src/create-config-mainnet.ts",
+    "launch-mainnet": "node --env-file-if-exists=.env --import tsx src/launch-mainnet.ts",
+    "swap-sol-to-nvdax": "node --env-file-if-exists=.env --import tsx src/swap-sol-to-nvdax.ts",
+    "buy-mainnet": "node --env-file-if-exists=.env --import tsx src/buy-mainnet.ts",
+    "status-mainnet": "node --env-file-if-exists=.env --import tsx src/status-mainnet.ts"
   },
   "dependencies": {
     "@meteora-ag/cp-amm-sdk": "1.5.1",

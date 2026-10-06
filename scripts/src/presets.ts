@@ -52,7 +52,7 @@ export const PRESETS: Record<
 // graduation to DAMM v2 with a 1% pool fee. Default split (MEME, STOCK): 50/50 trading fees between
 // partner (Hatch) and creator; post-graduation LP 45% claimable + 5% permanently locked each
 // (protocol requires >= 10% locked). AI AGENT overrides the split in favor of the creator.
-function base(
+export function base(
   quoteDecimals: number,
   split: { creatorTradingFeePercentage: number; partnerLp: number; creatorLp: number } = {
     creatorTradingFeePercentage: 50,
