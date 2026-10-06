@@ -1,6 +1,6 @@
 // Client-side transaction builders for trading and fee claims on DBC pools.
 // Phantom (through the wallet adapter) signs AND sends; nothing is relayed by our server.
-import { Connection, PublicKey, Transaction, type Signer } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, VersionedTransaction, type Signer } from '@solana/web3.js';
 import { SwapMode } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import type { WalletContextState } from '@jup-ag/wallet-adapter';
 import BN from 'bn.js';
@@ -122,6 +122,29 @@ export async function signAndSend(
   }
 
   const signature = await wallet.sendTransaction(tx, connection, { signers });
+  const res = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+  if (res.value.err) throw new Error(`Transaction failed: ${JSON.stringify(res.value.err)}`);
+  return signature;
+}
+
+/**
+ * Versioned-transaction variant (e.g. Jupiter + DBC in one v0 tx with lookup tables): refresh the
+ * blockhash, simulate, then the wallet signs and sends.
+ */
+export async function signAndSendVersioned(
+  wallet: Pick<WalletContextState, 'publicKey' | 'sendTransaction'>,
+  connection: Connection,
+  tx: VersionedTransaction
+): Promise<string> {
+  if (!wallet.publicKey) throw new Error('Connect your wallet first');
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  tx.message.recentBlockhash = blockhash;
+  const sim = await connection.simulateTransaction(tx, { sigVerify: false });
+  if (sim.value.err) {
+    const logs = sim.value.logs?.slice(-6).join('\n') ?? '';
+    throw new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}${logs ? `\n${logs}` : ''}`);
+  }
+  const signature = await wallet.sendTransaction(tx, connection);
   const res = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
   if (res.value.err) throw new Error(`Transaction failed: ${JSON.stringify(res.value.err)}`);
   return signature;
