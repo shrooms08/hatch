@@ -17,6 +17,11 @@ const HATCH_WEB_URL = (process.env.WXT_HATCH_WEB_URL ?? "http://localhost:3000")
 process.env.WXT_HATCH_WEB_URL = HATCH_WEB_URL;
 const HATCH_WEB_MATCH = `${new URL(HATCH_WEB_URL).origin}/*`;
 
+// Stable extension ID (knfkjiebkbhddjogcbniiachhomkmdkm): the manifest "key" is the PUBLIC key, committed in
+// extension-key.pub. The private key stays in .keys/hatch-extension.pem (gitignored) and is only needed to
+// sign packaged builds. The web app's CORS allows exactly this ID.
+const MANIFEST_KEY = readFileSync(fileURLToPath(new URL("./extension-key.pub", import.meta.url)), "utf8").trim();
+
 // Buddy sounds live in the repo (design/sfx/hatch-sfx). Copied into the build as sfx/*.mp3;
 // the build fails loudly if either file is missing.
 const SFX_DIR = fileURLToPath(new URL("../design/sfx/hatch-sfx/", import.meta.url));
@@ -27,6 +32,7 @@ export default defineConfig({
   outDir: "dist",
   manifest: ({ mode }) => ({
     name: "Hatch",
+    key: MANIFEST_KEY,
     short_name: "Hatch",
     description: "Your Hatch browser buddy: notices pages worth a token, drafts it with AI, and tracks your hatches.",
     minimum_chrome_version: "116",

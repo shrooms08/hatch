@@ -9,3 +9,6 @@ scripts/state/
 *.tsbuildinfo
 .DS_Store
 !.env.mainnet.example
+
+# Private signing keys
+*.pem
