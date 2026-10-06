@@ -4,6 +4,7 @@ import {
   DAMM_V2_MIGRATION_FEE_ADDRESS,
   DynamicBondingCurveClient,
   deriveDammV2PoolAddress,
+  deriveDbcPoolAddress,
   getPriceFromSqrtPrice,
   type PoolConfig,
   type VirtualPool,
@@ -118,7 +119,17 @@ export async function fetchHatchPoolByMint(
   hc: HatchConfigs = EMPTY_HATCH_CONFIGS
 ): Promise<HatchPool | null> {
   const client = dbcClient(connection);
-  const found = await client.state.getPoolByBaseMint(new PublicKey(baseMint));
+  const mint = new PublicKey(baseMint);
+  // Hatch pools sit at a PDA of (quote mint, base mint, config): plain account reads, no program scan.
+  for (const key of allConfigKeys(hc)) {
+    const config = await client.state.getPoolConfig(key);
+    if (!config) continue;
+    const address = deriveDbcPoolAddress(config.quoteMint, mint, new PublicKey(key));
+    const pool = await client.state.getPool(address);
+    if (pool) return describePool(connection, address, pool, config, hc);
+  }
+  // Other configs: getProgramAccounts scan (some RPCs intermittently return nothing, so retry once).
+  const found = (await client.state.getPoolByBaseMint(mint)) ?? (await client.state.getPoolByBaseMint(mint));
   if (!found) return null;
   const config = await client.state.getPoolConfig(found.account.poolState.config);
   if (!config) return null;
@@ -144,11 +155,16 @@ export async function fetchHatchPools(
     })
   );
 
+  // getProgramAccounts scans: some RPCs intermittently return an empty list, so an empty result is retried once.
+  const scan = async <T,>(q: () => Promise<T[]>) => {
+    const first = await q();
+    return first.length ? first : q();
+  };
   const pools = opts.creator
-    ? (await client.state.getPoolsByCreator(opts.creator)).filter((p) =>
+    ? (await scan(() => client.state.getPoolsByCreator(opts.creator!))).filter((p) =>
         configs.has(p.account.poolState.config.toBase58())
       )
-    : (await Promise.all([...configs.keys()].map((k) => client.state.getPoolsByConfig(k)))).flat();
+    : (await Promise.all([...configs.keys()].map((k) => scan(() => client.state.getPoolsByConfig(k))))).flat();
 
   const described = await Promise.all(
     pools.map((p) =>

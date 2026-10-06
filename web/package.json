@@ -6,7 +6,9 @@
   "scripts": {
     "clean": "rm -rf node_modules .next .turbo",
     "dev": "next dev --turbopack",
+    "dev:mainnet": "NEXT_DIST_DIR=.next-mainnet node --env-file=.env.mainnet.local node_modules/next/dist/bin/next dev --turbopack -p ${PORT:-3000}",
     "build": "next build",
+    "build:mainnet": "NEXT_DIST_DIR=.next-mainnet node --env-file=.env.mainnet.local node_modules/next/dist/bin/next build",
     "start": "next start",
     "lint": "next lint",
     "format": "prettier --write .",

@@ -29,7 +29,8 @@ const SFX_FILES = ["chirp.mp3", "chirp-double.mp3"];
 
 export default defineConfig({
   modules: ["@wxt-dev/module-react"],
-  outDir: "dist",
+  // build:mainnet writes to dist-mainnet so the devnet build in dist stays loadable.
+  outDir: process.env.WXT_OUT_DIR ?? "dist",
   manifest: ({ mode }) => ({
     name: "Hatch",
     key: MANIFEST_KEY,

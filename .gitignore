@@ -12,3 +12,5 @@ scripts/state/
 
 # Private signing keys
 *.pem
+.next-*/
+web/next-env.d.ts

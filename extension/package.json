@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
+    "build:mainnet": "WXT_HATCH_NETWORK=mainnet-beta WXT_HATCH_WEB_URL=http://localhost:3000 WXT_OUT_DIR=dist-mainnet wxt build",
     "zip": "wxt zip",
     "compile": "tsc --noEmit -p tsconfig.json",
     "postinstall": "wxt prepare",

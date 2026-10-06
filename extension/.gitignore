@@ -8,3 +8,4 @@ dist
 scripts/out/
 .env.local
 .env.*.local
+dist-*
