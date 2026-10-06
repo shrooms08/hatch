@@ -8,3 +8,4 @@ scripts/state/
 !.env.example
 *.tsbuildinfo
 .DS_Store
+!.env.mainnet.example

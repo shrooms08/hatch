@@ -37,7 +37,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   const input = parsed.data;
 
   try {
-    const configKey = configKeyFor(input.preset); // rejects presets not in POOL_CONFIGS
+    const configKey = configKeyFor(input.preset, input.stock); // rejects unknown presets and unlisted stocks
     const mint = parsePubkey(input.mint, 'mint');
     const user = parsePubkey(input.userWallet, 'userWallet');
     if (!isR2Configured()) throw new R2NotConfiguredError();
@@ -55,7 +55,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       ...(input.website || input.twitter
         ? { extensions: { ...(input.website ? { website: input.website } : {}), ...(input.twitter ? { twitter: input.twitter } : {}) } }
         : {}),
-      hatch: { preset: input.preset },
+      hatch: { preset: input.preset, ...(input.preset === 'STOCK' && input.stock ? { stock: input.stock } : {}) },
     };
     const metadataUrl = await uploadToR2(`metadata/${mintId}.json`, JSON.stringify(metadata), 'application/json');
 

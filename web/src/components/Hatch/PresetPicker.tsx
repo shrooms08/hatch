@@ -1,11 +1,11 @@
 import { cn } from '@/lib/utils';
-import { PRESET_IDS, PRESETS, type PresetConfigMap, type PresetId } from '@/lib/presets';
+import { PRESET_IDS, PRESETS, type HatchConfigs, type PresetId } from '@/lib/presets';
 
 type Props = {
   value: PresetId;
   onChange: (id: PresetId) => void;
   /** Presets enabled on the server; others are shown disabled. */
-  enabled: PresetConfigMap | undefined;
+  enabled: HatchConfigs | undefined;
 };
 
 export function PresetPicker({ value, onChange, enabled }: Props) {
@@ -13,7 +13,8 @@ export function PresetPicker({ value, onChange, enabled }: Props) {
     <div role="radiogroup" aria-label="Launch preset" className="grid grid-cols-1 gap-3 md:grid-cols-3">
       {PRESET_IDS.map((id) => {
         const preset = PRESETS[id];
-        const isEnabled = !enabled || !!enabled[id];
+        const stockSymbols = enabled ? Object.values(enabled.stocks).map((s) => s.symbol) : [];
+        const isEnabled = !enabled || (id === 'STOCK' ? stockSymbols.length > 0 : !!enabled.configs[id]);
         const selected = value === id;
         return (
           <button
@@ -31,11 +32,11 @@ export function PresetPicker({ value, onChange, enabled }: Props) {
             <div className="flex items-center justify-between">
               <span className="font-semibold">{preset.label}</span>
               <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-xs text-neutral-400">
-                {preset.quoteSymbol}
+                {id === 'STOCK' && stockSymbols.length ? stockSymbols.join(' · ') : preset.quoteSymbol}
               </span>
             </div>
             <p className="mt-1 text-xs text-neutral-400">{preset.description}</p>
-            {!isEnabled && <p className="mt-1 text-xs text-rose">Not enabled on this server</p>}
+            {!isEnabled && <p className="mt-1 text-xs text-rose">{id === 'STOCK' ? 'Coming soon on this network' : 'Not enabled on this server'}</p>}
           </button>
         );
       })}

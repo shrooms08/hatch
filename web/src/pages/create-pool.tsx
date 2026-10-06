@@ -28,7 +28,7 @@ const sectionClassName = 'rounded-xl border border-neutral-850 bg-neutral-925 p-
 
 type FormState = Omit<LaunchFields, 'preset'> & { preset: PresetId };
 
-const EMPTY: FormState = { name: '', symbol: '', description: '', preset: 'MEME', source: '', website: '', twitter: '' };
+const EMPTY: FormState = { name: '', symbol: '', description: '', preset: 'MEME', stock: '', source: '', website: '', twitter: '' };
 
 function firstQueryValue(v: string | string[] | undefined) {
   return (Array.isArray(v) ? v[0] : v) ?? '';
@@ -43,6 +43,7 @@ function prefillFromQuery(query: Record<string, string | string[] | undefined>) 
       symbol: q('symbol').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, SYMBOL_MAX),
       description: q('description').slice(0, DESCRIPTION_MAX),
       source: /^https?:\/\//i.test(q('source')) ? q('source') : '',
+      stock: q('stock').toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 8),
       ...(parsePresetId(q('preset')) ? { preset: parsePresetId(q('preset'))! } : {}),
     },
     imageUrl: /^https?:\/\//i.test(q('image')) ? q('image') : '',
@@ -70,6 +71,13 @@ export default function CreatePool() {
 
   const previewSrc = useMemo(() => (imageFile ? URL.createObjectURL(imageFile) : imageUrl), [imageFile, imageUrl]);
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
+  const stocks = Object.values(enabledPresets?.stocks ?? {});
+  const selectedStock = enabledPresets?.stocks[form.stock ?? ''] ?? null;
+  // Default to the first available stock; an unlisted ?stock= stays visible as "coming soon".
+  useEffect(() => {
+    if (form.preset === 'STOCK' && !form.stock && stocks[0]) set('stock', stocks[0].ticker);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.preset, form.stock, stocks.length]);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,6 +136,29 @@ export default function CreatePool() {
               <div className={sectionClassName}>
                 <h2 className="mb-4 text-xl font-bold md:text-2xl">Preset</h2>
                 <PresetPicker value={form.preset} onChange={(id) => set('preset', id)} enabled={enabledPresets} />
+                {form.preset === 'STOCK' && (
+                  <div className="mt-4">
+                    <label htmlFor="stock" className={labelClassName}>
+                      Paired stock
+                    </label>
+                    <select
+                      id="stock"
+                      className={inputClassName}
+                      value={form.stock}
+                      onChange={(e) => set('stock', e.target.value)}
+                    >
+                      {form.stock && !selectedStock && <option value={form.stock}>{form.stock} (coming soon)</option>}
+                      {stocks.map((s) => (
+                        <option key={s.ticker} value={s.ticker}>
+                          {s.name} ({s.ticker}) · priced in {s.symbol}
+                        </option>
+                      ))}
+                    </select>
+                    {form.stock && !selectedStock && (
+                      <p className="mt-1 text-xs text-rose">Stock-paired launches for {form.stock} are coming soon. Pick an available stock or another preset.</p>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className={sectionClassName}>
@@ -267,7 +298,7 @@ export default function CreatePool() {
                 </div>
               )}
 
-              <PresetExplainer preset={form.preset} />
+              <PresetExplainer preset={form.preset} stock={selectedStock} />
 
               <div className="flex justify-end">
                 <SubmitButton isSubmitting={isLoading} />

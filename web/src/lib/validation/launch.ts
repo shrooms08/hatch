@@ -29,6 +29,8 @@ export const launchFieldsSchema = z.object({
     .optional()
     .default(''),
   preset: z.enum(PRESET_IDS),
+  /** STOCK only: ticker from the network's STOCK_CONFIGS (e.g. NVDA). */
+  stock: z.string().trim().toUpperCase().max(8).optional().or(z.literal('')),
   source: httpUrl.optional().or(z.literal('')),
   website: httpUrl.optional().or(z.literal('')),
   twitter: httpUrl.optional().or(z.literal('')),

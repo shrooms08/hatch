@@ -35,7 +35,7 @@ export const PRESETS: Record<PresetId, Preset> = {
     id: 'STOCK',
     label: 'Stock-paired',
     description: 'A token whose pool is priced in tokenized NVIDIA (NVDAx).',
-    quoteMint: process.env.NEXT_PUBLIC_STOCK_QUOTE_MINT ?? '',
+    quoteMint: '', // per stock: see stockPreset() and STOCK_CONFIGS
     quoteSymbol: 'NVDAx',
     quoteDecimals: 8,
     explainer: [
@@ -66,10 +66,58 @@ export function parsePresetId(value: unknown): PresetId | null {
   return (PRESET_IDS as readonly string[]).includes(v) ? (v as PresetId) : null;
 }
 
-/** Shape returned by /api/presets. */
+/** Preset -> DBC config key for the non-stock presets (from POOL_CONFIGS). */
 export type PresetConfigMap = Partial<Record<PresetId, string>>;
 
-export function presetForConfig(configs: PresetConfigMap, configKey: string): PresetId | null {
-  const hit = (Object.entries(configs) as [PresetId, string][]).find(([, k]) => k === configKey);
+/** One tokenized stock Hatch can pair with on this network (from STOCK_CONFIGS). */
+export type StockInfo = {
+  ticker: string; // e.g. "NVDA"
+  config: string; // DBC config key quoted in this stock
+  quoteMint: string; // the xStock mint (Token-2022)
+  symbol: string; // e.g. "NVDAx"
+  name: string; // e.g. "NVIDIA"
+};
+export type StockMap = Record<string, StockInfo>;
+
+/** Everything the app needs to know about the current network's launch configs (/api/presets). */
+export type HatchConfigs = {
+  network: string;
+  configs: PresetConfigMap;
+  stocks: StockMap;
+  /** Mints hidden from public lists (their token pages still work by direct link). */
+  hiddenMints: string[];
+};
+
+export const EMPTY_HATCH_CONFIGS: HatchConfigs = { network: '', configs: {}, stocks: {}, hiddenMints: [] };
+
+/** Every config key Hatch launches under (deduped: on mainnet AI_AGENT reuses the MEME config). */
+export function allConfigKeys(hc: HatchConfigs): string[] {
+  const keys = [...Object.values(hc.configs), ...Object.values(hc.stocks).map((s) => s.config)].filter(Boolean) as string[];
+  return [...new Set(keys)];
+}
+
+export function presetForConfig(hc: HatchConfigs, configKey: string): PresetId | null {
+  if (Object.values(hc.stocks).some((s) => s.config === configKey)) return 'STOCK';
+  const hit = (Object.entries(hc.configs) as [PresetId, string][]).find(([, k]) => k === configKey);
   return hit ? hit[0] : null;
+}
+
+export function stockForConfig(hc: HatchConfigs, configKey: string): StockInfo | null {
+  return Object.values(hc.stocks).find((s) => s.config === configKey) ?? null;
+}
+
+/** The STOCK preset's copy for a specific stock. */
+export function stockPreset(stock: Pick<StockInfo, 'symbol' | 'name' | 'quoteMint'> | null | undefined): Preset {
+  if (!stock) return PRESETS.STOCK;
+  return {
+    ...PRESETS.STOCK,
+    description: `A token whose pool is priced in tokenized ${stock.name} (${stock.symbol}).`,
+    quoteMint: stock.quoteMint,
+    quoteSymbol: stock.symbol,
+    explainer: [
+      `People buy your token with tokenized ${stock.name} (${stock.symbol}) instead of SOL, and every purchase nudges the price up.`,
+      `Once enough ${stock.symbol} has come in, your token "hatches" into a full trading pool paired with ${stock.symbol}; every trade pays a 1% fee, split evenly between you and Hatch.`,
+      `This token is not the stock. Its pool holds tokenized ${stock.name}. The stock token's issuer can pause transfers.`,
+    ],
+  };
 }

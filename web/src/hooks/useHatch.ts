@@ -6,7 +6,7 @@ import { getConnection } from '@/lib/solana/connection';
 import { fetchHatchPoolByMint, fetchHatchPools } from '@/lib/dbc/pool';
 import { fetchTokenMetadata } from '@/lib/metadata/token';
 import { fetchMintInfo, fetchRawBalance, rawToUi, type MintInfo } from '@/lib/solana/mint';
-import type { PresetConfigMap } from '@/lib/presets';
+import type { HatchConfigs } from '@/lib/presets';
 import type { PresetsResponse } from '@/pages/api/presets';
 
 const POLL_MS = 10_000;
@@ -22,10 +22,11 @@ export function useRouteMint(): string | undefined {
 export function usePresetConfigs() {
   return useQuery({
     queryKey: ['hatch', 'presets'],
-    queryFn: async (): Promise<PresetConfigMap> => {
+    queryFn: async (): Promise<HatchConfigs> => {
       const res = await fetch('/api/presets');
       if (!res.ok) throw new Error('Could not load presets');
-      return ((await res.json()) as PresetsResponse).configs;
+      const body = (await res.json()) as PresetsResponse;
+      return { network: body.network, configs: body.configs, stocks: body.stocks, hiddenMints: body.hiddenMints };
     },
     staleTime: 60_000,
   });
@@ -35,7 +36,7 @@ export function useHatchPool(baseMint: string | undefined) {
   const { data: configs } = usePresetConfigs();
   return useQuery({
     queryKey: ['hatch', 'pool', baseMint, configs],
-    queryFn: () => fetchHatchPoolByMint(getConnection(), baseMint!, configs ?? {}),
+    queryFn: () => fetchHatchPoolByMint(getConnection(), baseMint!, configs!),
     enabled: !!baseMint && !!configs,
     refetchInterval: POLL_MS,
   });
@@ -45,7 +46,7 @@ export function useHatchPools(opts: { creator?: string; enabled?: boolean } = {}
   const { data: configs } = usePresetConfigs();
   return useQuery({
     queryKey: ['hatch', 'pools', opts.creator ?? 'all', configs],
-    queryFn: () => fetchHatchPools(getConnection(), configs ?? {}, { creator: opts.creator }),
+    queryFn: () => fetchHatchPools(getConnection(), configs!, { creator: opts.creator, publicList: !opts.creator }),
     enabled: !!configs && opts.enabled !== false,
     refetchInterval: 30_000,
   });

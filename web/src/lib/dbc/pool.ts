@@ -10,7 +10,7 @@ import {
 } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import Decimal from 'decimal.js';
 import { fetchMintInfo, rawToUi, type MintInfo } from '@/lib/solana/mint';
-import { presetForConfig, type PresetConfigMap, type PresetId } from '@/lib/presets';
+import { allConfigKeys, presetForConfig, EMPTY_HATCH_CONFIGS, type HatchConfigs, type PresetId } from '@/lib/presets';
 
 export type HatchStatus = 'INCUBATING' | 'ALMOST_HATCHED' | 'HATCHED';
 export const ALMOST_HATCHED_AT = 0.8;
@@ -68,7 +68,7 @@ export async function describePool(
   address: PublicKey,
   pool: VirtualPool,
   config: PoolConfig,
-  presetConfigs: PresetConfigMap = {}
+  hc: HatchConfigs = EMPTY_HATCH_CONFIGS
 ): Promise<HatchPool> {
   const s = pool.poolState;
   const quote = await cachedMintInfo(connection, config.quoteMint.toBase58());
@@ -86,7 +86,7 @@ export async function describePool(
     address: address.toBase58(),
     baseMint: s.baseMint.toBase58(),
     configKey: s.config.toBase58(),
-    presetId: presetForConfig(presetConfigs, s.config.toBase58()),
+    presetId: presetForConfig(hc, s.config.toBase58()),
     creator: s.creator.toBase58(),
     quote,
     baseDecimals,
@@ -115,24 +115,27 @@ export async function describePool(
 export async function fetchHatchPoolByMint(
   connection: Connection,
   baseMint: string,
-  presetConfigs: PresetConfigMap = {}
+  hc: HatchConfigs = EMPTY_HATCH_CONFIGS
 ): Promise<HatchPool | null> {
   const client = dbcClient(connection);
   const found = await client.state.getPoolByBaseMint(new PublicKey(baseMint));
   if (!found) return null;
   const config = await client.state.getPoolConfig(found.account.poolState.config);
   if (!config) return null;
-  return describePool(connection, found.publicKey, found.account, config, presetConfigs);
+  return describePool(connection, found.publicKey, found.account, config, hc);
 }
 
-/** All pools under the given config keys (optionally only those created by `creator`). */
+/**
+ * All pools under Hatch's config keys (optionally only those created by `creator`).
+ * `publicList` drops HIDDEN_MINTS (test tokens); direct token pages are unaffected.
+ */
 export async function fetchHatchPools(
   connection: Connection,
-  presetConfigs: PresetConfigMap,
-  opts: { creator?: string } = {}
+  hc: HatchConfigs,
+  opts: { creator?: string; publicList?: boolean } = {}
 ): Promise<HatchPool[]> {
   const client = dbcClient(connection);
-  const configKeys = Object.values(presetConfigs).filter(Boolean) as string[];
+  const configKeys = allConfigKeys(hc);
   const configs = new Map<string, PoolConfig>();
   await Promise.all(
     configKeys.map(async (k) => {
@@ -154,10 +157,11 @@ export async function fetchHatchPools(
         p.publicKey,
         p.account,
         configs.get(p.account.poolState.config.toBase58())!,
-        presetConfigs
+        hc
       )
     )
   );
+  const visible = opts.publicList ? described.filter((d) => !hc.hiddenMints.includes(d.baseMint)) : described;
   // Newest-looking first is not available without timestamps; sort by progress, hatched last.
-  return described.sort((a, b) => Number(a.isMigrated) - Number(b.isMigrated) || b.progress - a.progress);
+  return visible.sort((a, b) => Number(a.isMigrated) - Number(b.isMigrated) || b.progress - a.progress);
 }

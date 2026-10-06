@@ -6,7 +6,7 @@ import { NETWORK, serverRpcUrl } from '@/lib/config/network';
 import { fetchHatchPools, STATUS_LABEL } from '@/lib/dbc/pool';
 import { fetchOnChainMetadata } from '@/lib/metadata/token';
 import { formatAmount } from '@/lib/format/amount';
-import { loadPresetConfigs } from '@/lib/server/presets';
+import { loadHatchConfigs } from '@/lib/server/presets';
 import { handleCors } from '@/lib/server/cors';
 import { rateLimited } from '@/lib/server/rateLimit';
 import type { HatchSummary } from '@/lib/buddy/schema';
@@ -49,7 +49,7 @@ export default async function handler(
 
   try {
     const connection = new Connection(serverRpcUrl(), 'confirmed');
-    const pools = await fetchHatchPools(connection, loadPresetConfigs(), { creator: wallet });
+    const pools = await fetchHatchPools(connection, loadHatchConfigs(), { creator: wallet });
     const hatches = await Promise.all(
       pools.map(async (p): Promise<HatchSummary> => {
         const md = await fetchOnChainMetadata(connection, p.baseMint).catch((): null => null);
