@@ -49,13 +49,81 @@ Partner wallet left: **0.006553 SOL** (~$0.79).
   fees are ours to claim.
 
 ### Web app on mainnet
-These values are not applied yet (the web app is still on devnet). Set them when switching:
-`NEXT_PUBLIC_SOLANA_NETWORK=mainnet-beta`, `RPC_URL`/`NEXT_PUBLIC_RPC_URL` = the Helius URL,
-`POOL_CONFIGS={"MEME":"HjeeZN7aDtgfAoiVh8F17GeAKVAg4DFJsHx8Ap2GUfqv","STOCK":"HX9EjDXFjazM5gLyN2hUG5SRsH9BMorKi1EhVVw1BzJ6","AI_AGENT":"HjeeZN7aDtgfAoiVh8F17GeAKVAg4DFJsHx8Ap2GUfqv"}`,
-`NEXT_PUBLIC_STOCK_QUOTE_MINT=Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh`.
+Superseded by Phase 3b below (`web/.env.mainnet.example`, `pnpm dev:mainnet`).
 
 ### Notes
 - `scripts/.env` originally held the whole Helius URL pasted into its `api-key` parameter (HTTP 401).
   It was repaired to the single working URL; the original is kept as `scripts/.env.bak` (gitignored).
 - Confirmations were typed through an `expect` wrapper that waits for the "Type YES MAINNET" prompt.
   A first attempt piped the text in too early, and the prompt aborted without sending anything.
+
+## Phase 3b: web app + extension on mainnet (local)
+
+Nothing is deployed. Devnet stays the default (`pnpm dev`, `.env.local`, extension `pnpm build`);
+mainnet runs side by side with its own env file, Next dist dir (`.next-mainnet`) and extension
+output (`dist-mainnet`). No mainnet transaction was sent in this phase.
+
+### Run it
+```bash
+cd web && pnpm dev:mainnet                # http://localhost:3000 (PORT=3200 pnpm dev:mainnet for another port)
+cd extension && pnpm build:mainnet        # load extension/dist-mainnet/chrome-mv3 unpacked
+cd scripts && pnpm claim-partner-fees-mainnet   # simulate; add --mainnet --live to claim (asks YES MAINNET)
+```
+Stop the devnet dev server first if it is on port 3000. Test token page:
+http://localhost:3000/token/Eekou3Ckcd2Hxk1MaeVepRafCH6SHU7sybNrifizUZfb
+
+### Env vars (`web/.env.mainnet.local`, gitignored; template `web/.env.mainnet.example`)
+| Var | Value |
+| --- | --- |
+| `NEXT_PUBLIC_SOLANA_NETWORK` | `mainnet-beta` |
+| `RPC_URL`, `NEXT_PUBLIC_RPC_URL` | mainnet RPC (Helius). The public one ships to the browser. |
+| `POOL_CONFIGS` | `{"MEME":"HjeeZ…","AI_AGENT":"HjeeZ…"}` (AI_AGENT reuses MEME) |
+| `STOCK_CONFIGS` | ticker → `{config, quoteMint, symbol, name}`; NVDA → `HX9Ej…` / NVDAx |
+| `HIDDEN_MINTS` | comma list kept out of public lists (HGTEST) |
+| `R2_*`, `ANTHROPIC_API_KEY` | same as devnet |
+| `NEXT_PUBLIC_PRIORITY_FEE_MICROLAMPORTS` | `50000` |
+| `HATCH_EXTENSION_IDS` | optional; overrides the allowed extension ID(s) for CORS |
+| `NEXT_PUBLIC_JUPITER_API_URL` | optional; default `https://lite-api.jup.ag` |
+
+Extension build vars: `WXT_HATCH_NETWORK=mainnet-beta`, `WXT_HATCH_WEB_URL=http://localhost:3000`,
+`WXT_OUT_DIR=dist-mainnet` (set by `build:mainnet`).
+
+### What changed
+- **Network config:** presets come from `POOL_CONFIGS` + `STOCK_CONFIGS`; `GET /api/stocks` lists pairable
+  stocks for the extension. STOCK launches only for listed tickers (server rejects others); the AI
+  draft turns an unlisted stock into a MEME launch and says stock pairing is coming soon.
+- **Pay with SOL** (mainnet, non-SOL-quote pools, buy side; on by default when the wallet holds none of
+  the quote token): Jupiter quote SOL → quote token (direct route preferred, explicit slippage), then
+  the DBC buy. Both legs are protected: the DBC leg spends Jupiter's guaranteed minimum and requires
+  the curve's minimum out for that amount. Built as **one v0 transaction** (Jupiter
+  swap-instructions + DBC swap, Jupiter's lookup tables). A 0.001 SOL buy of HGTEST simulated
+  successfully on mainnet as one 1013-byte transaction. If a route is too large for one
+  transaction, it falls back to two ("Step 1 of 2" swap, "Step 2 of 2" buy with what arrived).
+  Jupiter 429s show "Jupiter is busy right now… Try again in a few seconds." Hidden on devnet.
+- **Image fallback:** launches without an image get a 512×512 PNG (Night background, Yolk egg, ticker in
+  Shell; "paired with NVDAx" for stock launches), rendered server-side with resvg + Archivo Black
+  (OFL, `web/assets/fonts`). Drafts get it on R2 (`images/fallback/…`); launches re-render it for
+  the final ticker as `images/<mint>.png`. Preview: `GET /api/fallback-image?symbol=&stock=`.
+- **Stable extension ID `knfkjiebkbhddjogcbniiachhomkmdkm`:** the manifest `key` is the public key in
+  `extension/extension-key.pub`; the private key is `extension/.keys/hatch-extension.pem` (gitignored,
+  keep a backup; only needed to sign packaged builds). Web CORS allows only that ID and the app's own origin.
+- **Partner fees:** `scripts/src/claim-partner-fees-mainnet.ts` claims from every pool under the mainnet
+  configs to the partner wallet. Simulated: HGTEST has 40575 raw NVDAx (≈0.0004 NVDAx) to claim;
+  cost ≈0.0016 SOL, mostly rent to reopen the partner's NVDAx account. Not run live.
+- **Pool lookup:** token pages derive the DBC pool PDA from Hatch configs. The mainnet RPC's
+  `getProgramAccounts` intermittently returned an empty list; list scans now retry once when empty.
+
+### Checks (read-only)
+- Web: `tsc` clean; production builds for devnet and mainnet. Extension: build + build:mainnet, 23 unit tests pass.
+- HGTEST page on mainnet dev: price 0.0₈174 NVDAx per HGTEST, 0.05% to hatch (0.002054 / 3.9066 NVDAx),
+  quote shown as NVDAx (Token-2022); hidden from the home list.
+- Jupiter quote 0.001 SOL → NVDAx: 49836 raw out, 49338 min (Meteora DLMM).
+
+### Known limits
+- `NEXT_PUBLIC_RPC_URL` is in the browser bundle. Before deploying, use a separate RPC key restricted to
+  the site's domain (or a proxy).
+- Pay with SOL depends on Jupiter's free lite-api (rate limits) and leaves any quote-token surplus above
+  Jupiter's minimum in the wallet. First buy also pays ~0.0016 SOL rent for the NVDAx account.
+- Only NVDA is pairable on mainnet; other stocks need a config each (`STOCK_CONFIGS`).
+- Rate limits for AI endpoints are in memory per server instance.
+- Not tested with a real wallet signing on mainnet; the operator does the first buy.
