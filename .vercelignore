@@ -1,0 +1,10 @@
+# CLI deploys upload only the web app (project root directory: web/). Never keys, scripts or env files.
+/*
+!web
+web/node_modules
+web/.next
+web/.next-*
+web/.env*
+!web/.env.example
+!web/.env.mainnet.example
+web/.vercel

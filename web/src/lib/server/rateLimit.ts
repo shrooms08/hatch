@@ -35,3 +35,24 @@ export function rateLimited(
   }
   return false;
 }
+
+let capDay = '';
+let capCount = 0;
+
+/**
+ * Global per-instance daily cap (AI_DAILY_CAP, default 300) on top of the per-IP limits. Returns true
+ * (and sends 503) once today's (UTC) count is used up.
+ */
+export function dailyCapReached(res: NextApiResponse, cap = Number(process.env.AI_DAILY_CAP) || 300): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== capDay) {
+    capDay = today;
+    capCount = 0;
+  }
+  if (capCount >= cap) {
+    res.status(503).json({ error: 'Hatch is resting, try again later' });
+    return true;
+  }
+  capCount++;
+  return false;
+}

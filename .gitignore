@@ -14,3 +14,5 @@ scripts/state/
 *.pem
 .next-*/
 web/next-env.d.ts
+.vercel
+.env*

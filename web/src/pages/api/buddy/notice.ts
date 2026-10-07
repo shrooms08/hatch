@@ -6,7 +6,7 @@ import { aiErrorResponse } from '@/lib/server/ai';
 import { handleCors } from '@/lib/server/cors';
 import { rateLimited } from '@/lib/server/rateLimit';
 
-const NOTICES_PER_HOUR = 120;
+const NOTICES_PER_HOUR = process.env.NODE_ENV === 'production' ? 30 : 120; // per IP
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse<BuddyNotice | { error: string; issues?: unknown }>) {
   if (handleCors(req, res, ['POST'])) return;

@@ -5,7 +5,7 @@ import { draftRequestSchema, type BuddyDraft } from '@/lib/buddy/schema';
 import { AiOutputError, draftToken } from '@/lib/server/buddy';
 import { aiErrorResponse } from '@/lib/server/ai';
 import { handleCors } from '@/lib/server/cors';
-import { rateLimited } from '@/lib/server/rateLimit';
+import { dailyCapReached, rateLimited } from '@/lib/server/rateLimit';
 import { uploadFallbackImage } from '@/lib/server/fallbackImage';
 import { isR2Configured } from '@/lib/server/r2';
 import { loadHatchConfigs } from '@/lib/server/presets';
@@ -24,13 +24,14 @@ async function withFallbackImage(draft: BuddyDraft): Promise<BuddyDraft> {
 
 export const config = { api: { bodyParser: { sizeLimit: '256kb' } } };
 
-const DRAFTS_PER_HOUR = 20;
+const DRAFTS_PER_HOUR = process.env.NODE_ENV === 'production' ? 10 : 20; // per IP
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse<BuddyDraft | { error: string; issues?: unknown }>) {
   if (handleCors(req, res, ['POST'])) return;
   const parsed = draftRequestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid request', issues: parsed.error.flatten().fieldErrors });
   if (rateLimited(req, res, 'draft', DRAFTS_PER_HOUR)) return;
+  if (dailyCapReached(res)) return;
 
   try {
     return res.status(200).json(await withFallbackImage(await draftToken(parsed.data)));

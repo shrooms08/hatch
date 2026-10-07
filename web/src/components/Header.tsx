@@ -32,13 +32,18 @@ export const Header = () => {
           <span className="truncate whitespace-nowrap text-base font-bold tracking-tight md:text-xl">
             Hatch
           </span>
-          {NETWORK === 'devnet' && (
+          {NETWORK === 'devnet' ? (
             <span className="rounded-full bg-neutral-900 px-2 py-0.5 text-xs text-neutral-400">devnet</span>
+          ) : (
+            <span className="hidden text-[10px] uppercase tracking-wider text-neutral-500 sm:inline">mainnet</span>
           )}
         </Link>
 
         {/* Navigation and Actions */}
         <div className="flex items-center gap-1.5 md:gap-3">
+          <Link href="/extension" className={cn(buttonVariants({ variant: 'ghost' }), 'hidden md:inline-flex')}>
+            Get the extension
+          </Link>
           <Link href="/my-hatches" className={cn(buttonVariants({ variant: 'ghost' }), 'hidden sm:inline-flex')}>
             My Hatches
           </Link>
