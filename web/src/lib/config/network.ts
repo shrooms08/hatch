@@ -10,12 +10,19 @@ const DEFAULT_RPC: Record<SolanaNetwork, string> = {
   'mainnet-beta': 'https://api.mainnet-beta.solana.com',
 };
 
-/** RPC used in the browser (wallet sends + chain reads). */
-export const PUBLIC_RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || DEFAULT_RPC[NETWORK];
+/**
+ * RPC used in the browser (wallet sends + chain reads). On mainnet this is Hatch's own /api/rpc proxy,
+ * so no provider key ever ships to the browser. A path ("/api/rpc") resolves against the page origin.
+ */
+const RAW_PUBLIC_RPC = process.env.NEXT_PUBLIC_RPC_URL || DEFAULT_RPC[NETWORK];
+export const PUBLIC_RPC_URL =
+  RAW_PUBLIC_RPC.startsWith('/') && typeof window !== 'undefined' ? `${window.location.origin}${RAW_PUBLIC_RPC}` : RAW_PUBLIC_RPC;
 
-/** RPC used by API routes. Falls back to the public one. */
+/** RPC used by API routes and the /api/rpc proxy (secret; server only). */
 export function serverRpcUrl() {
-  return process.env.RPC_URL || PUBLIC_RPC_URL;
+  const url = process.env.HATCH_SERVER_RPC_URL || process.env.RPC_URL;
+  if (url) return url;
+  return RAW_PUBLIC_RPC.startsWith('/') ? DEFAULT_RPC[NETWORK] : RAW_PUBLIC_RPC;
 }
 
 const clusterParam = NETWORK === 'devnet' ? '?cluster=devnet' : '';

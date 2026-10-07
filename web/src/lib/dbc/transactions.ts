@@ -122,8 +122,7 @@ export async function signAndSend(
   }
 
   const signature = await wallet.sendTransaction(tx, connection, { signers });
-  const res = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
-  if (res.value.err) throw new Error(`Transaction failed: ${JSON.stringify(res.value.err)}`);
+  await confirmByPolling(connection, signature, lastValidBlockHeight);
   return signature;
 }
 
@@ -145,7 +144,25 @@ export async function signAndSendVersioned(
     throw new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}${logs ? `\n${logs}` : ''}`);
   }
   const signature = await wallet.sendTransaction(tx, connection);
-  const res = await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
-  if (res.value.err) throw new Error(`Transaction failed: ${JSON.stringify(res.value.err)}`);
+  await confirmByPolling(connection, signature, lastValidBlockHeight);
   return signature;
+}
+
+/**
+ * Confirmation by polling getSignatureStatuses (no websocket: the browser RPC is the /api/rpc proxy,
+ * which is HTTP only). Gives up once the blockhash has expired.
+ */
+export async function confirmByPolling(connection: Connection, signature: string, lastValidBlockHeight: number): Promise<void> {
+  const started = Date.now();
+  for (let i = 0; Date.now() - started < 120_000; i++) {
+    const { value } = await connection.getSignatureStatuses([signature]);
+    const status = value[0];
+    if (status?.err) throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
+    if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') return;
+    if (i % 5 === 4 && (await connection.getBlockHeight('confirmed')) > lastValidBlockHeight) {
+      throw new Error(`Transaction ${signature} expired before it confirmed. Nothing was spent; try again.`);
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw new Error(`Still waiting for ${signature} to confirm. Check it in the explorer before retrying.`);
 }

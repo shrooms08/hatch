@@ -2,7 +2,7 @@
 // chrome-extension:// origin (stable ID from the manifest key) and the app's own origin. Returns true when it fully handled the request (preflight / blocked).
 import type { NextApiRequest, NextApiResponse } from 'next';
 
-function ownOrigin(req: NextApiRequest): string | null {
+export function ownOrigin(req: NextApiRequest): string | null {
   const host = req.headers['x-forwarded-host'] ?? req.headers.host;
   if (!host) return null;
   const proto = (req.headers['x-forwarded-proto'] as string | undefined)?.split(',')[0] ?? 'http';
