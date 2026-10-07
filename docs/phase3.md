@@ -127,3 +127,64 @@ Extension build vars: `WXT_HATCH_NETWORK=mainnet-beta`, `WXT_HATCH_WEB_URL=http:
 - Only NVDA is pairable on mainnet; other stocks need a config each (`STOCK_CONFIGS`).
 - Rate limits for AI endpoints are in memory per server instance.
 - Not tested with a real wallet signing on mainnet; the operator does the first buy.
+
+## Phase 3c: production (Vercel) + extension release
+
+- **Web app:** https://hatchfun.vercel.app (Vercel project `hatch`, root directory `web/`, mainnet).
+  Connected to GitHub `shrooms08/hatch`: every push to `master` deploys production.
+- **Extension:** v0.1.0, ID `knfkjiebkbhddjogcbniiachhomkmdkm`. Download:
+  https://pub-d237e2e1ade348e0af7801e5588300ab.r2.dev/releases/hatch-extension-v0.1.0.zip
+  (also on the GitHub release https://github.com/shrooms08/hatch/releases/tag/v0.1.0, private while the repo is).
+  Install steps are on https://hatchfun.vercel.app/extension.
+
+### RPC: no provider key in the browser
+The browser's Solana RPC is Hatch's own same-origin proxy, `POST /api/rpc`
+(`NEXT_PUBLIC_RPC_URL=https://hatchfun.vercel.app/api/rpc`; locally `/api/rpc`). It forwards to the
+server-only `HATCH_SERVER_RPC_URL` (falls back to `RPC_URL`):
+- allowlisted methods only: getAccountInfo, getMultipleAccounts, getBalance, getTokenAccountBalance,
+  getTokenAccountsByOwner, getProgramAccounts (Meteora DBC program only), getLatestBlockhash,
+  getBlockHeight, getSlot, getBlockTime, getSignatureStatuses, getFeeForMessage,
+  getRecentPrioritizationFees, getMinimumBalanceForRentExemption, simulateTransaction, sendTransaction;
+- same origin only (requests without a matching `Origin` get 403), 120 requests per minute per IP,
+  batches of up to 25 calls, bodies over 200 KB rejected (413);
+- HTTP only: transactions confirm by polling `getSignatureStatuses` (no websocket subscriptions).
+
+A refused method shows up in the Vercel logs as `rpc proxy refused: …`; add it to `ALLOWED` in
+`web/src/pages/api/rpc.ts` if the app legitimately needs it.
+
+### Production settings
+- AI: 10 drafts and 30 notices per IP per hour; `AI_DAILY_CAP` (default 300) drafts per server
+  instance per day, then "Hatch is resting, try again later".
+- CORS for extension routes: the site's own origin and `chrome-extension://knfkjiebkbhddjogcbniiachhomkmdkm`.
+- `NEXT_PUBLIC_ENABLE_JUPITER_DATA=false` (Hatch reads pools from chain; the Jupiter indexer features were not verified on mainnet).
+- Vercel production env: `NEXT_PUBLIC_SOLANA_NETWORK`, `NEXT_PUBLIC_RPC_URL`, `HATCH_SERVER_RPC_URL`, `RPC_URL`,
+  `POOL_CONFIGS`, `STOCK_CONFIGS`, `HIDDEN_MINTS`, `R2_*`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL_DRAFT`,
+  `ANTHROPIC_MODEL_FAST`, `NEXT_PUBLIC_PRIORITY_FEE_MICROLAMPORTS`, `NEXT_PUBLIC_ENABLE_JUPITER_DATA`, `AI_DAILY_CAP`.
+  Secrets are stored as sensitive. Change one with `printf '%s' "$VALUE" | npx vercel env add NAME production --force`
+  (add `--sensitive` for secrets, `--type config` for `NEXT_PUBLIC_*`), then redeploy.
+- `.vercelignore` limits CLI uploads to `web/` (never `scripts/keys`, env files or the extension key).
+- `web/package.json` pins `rpc-websockets`' `uuid` to v11: v14 is ESM-only and crashed every API route on Vercel.
+
+### Redeploy
+```bash
+git push origin master          # auto-deploys production
+npx vercel --prod               # or deploy the working tree from the repo root
+npx vercel logs -p hatch --since 30m --level error   # runtime errors
+```
+
+### Rebuild the extension release
+```bash
+cd extension
+# bump "version" in package.json, then:
+pnpm zip:prod                   # dist-prod + hatch-extension-v<version>.zip (prod URL, mainnet, no debug page)
+cd ../web && node --env-file=.env.mainnet.local --import tsx -e "require('./src/lib/server/r2.ts').uploadToR2('releases/hatch-extension-v<version>.zip', require('fs').readFileSync('../extension/hatch-extension-v<version>.zip'), 'application/zip').then(console.log)"
+gh release create v<version> extension/hatch-extension-v<version>.zip --repo shrooms08/hatch
+```
+Update `EXTENSION_VERSION` in `web/src/pages/extension.tsx` so the download button points at the new zip.
+
+### Checks (read-only, production)
+Home loads; HGTEST page by direct link shows price 0.0₈1741 NVDAx per HGTEST, 0.06% to hatch, NVDAx
+quote, loaded entirely through `/api/rpc` (no direct RPC hosts, no websockets); `/extension` download
+returns the zip (identical to the release asset); `/api/stocks` returns NVDA; one draft from the
+production extension build (origin `chrome-extension://knfkjiebkbhddjogcbniiachhomkmdkm`) returned a
+STOCK/NVDA draft with a generated image. Live browser JS (26 files) contains no `helius` or `api-key`.
