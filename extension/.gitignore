@@ -9,3 +9,4 @@ scripts/out/
 .env.local
 .env.*.local
 dist-*
+hatch-extension-*.zip

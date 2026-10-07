@@ -47,6 +47,12 @@ export default defineConfig({
       : {}),
   }),
   hooks: {
+    // Release builds (build:prod) leave out the buddy debug page.
+    "entrypoints:resolved": (_wxt, entrypoints) => {
+      if (process.env.WXT_EXCLUDE_DEBUG !== "true") return;
+      const i = entrypoints.findIndex((e) => e.name === "buddy-debug");
+      if (i >= 0) entrypoints.splice(i, 1);
+    },
     "build:publicAssets": (_wxt, files) => {
       const missing = SFX_FILES.filter((f) => !existsSync(`${SFX_DIR}${f}`));
       if (missing.length) {
