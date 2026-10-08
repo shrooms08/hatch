@@ -2,6 +2,7 @@
 //   POOL_CONFIGS  = {"MEME":"<config>","AI_AGENT":"<config>"}   (a "STOCK" entry is accepted for older envs)
 //   STOCK_CONFIGS = {"NVDA":{"config":"<config>","quoteMint":"<xStock mint>","symbol":"NVDAx","name":"NVIDIA"}}
 //   HIDDEN_MINTS  = comma-separated mints hidden from public lists
+//   TEST_MINTS    = comma-separated mints shown with a "Test launch" badge
 import { PublicKey } from '@solana/web3.js';
 import { NETWORK } from '@/lib/config/network';
 import { PRESET_IDS, type HatchConfigs, type PresetConfigMap, type PresetId, type StockInfo, type StockMap } from '@/lib/presets';
@@ -65,19 +66,19 @@ function loadStockConfigs(poolConfigs: PresetConfigMap): StockMap {
   return out;
 }
 
-function loadHiddenMints(): string[] {
-  return (process.env.HIDDEN_MINTS ?? '')
+function loadMintList(name: 'HIDDEN_MINTS' | 'TEST_MINTS'): string[] {
+  return (process.env[name] ?? '')
     .split(',')
     .map((m) => m.trim())
     .filter(Boolean)
-    .map((m) => pubkey(m, `HIDDEN_MINTS entry ${m.slice(0, 6)}…`));
+    .map((m) => pubkey(m, `${name} entry ${m.slice(0, 6)}…`));
 }
 
 export function loadHatchConfigs(): HatchConfigs {
   const configs = loadPoolConfigs();
   const stocks = loadStockConfigs(configs);
   delete configs.STOCK; // STOCK launches go through STOCK_CONFIGS (per ticker)
-  return { network: NETWORK, configs, stocks, hiddenMints: loadHiddenMints() };
+  return { network: NETWORK, configs, stocks, hiddenMints: loadMintList('HIDDEN_MINTS'), testMints: loadMintList('TEST_MINTS') };
 }
 
 /** Config for a launch. STOCK needs a ticker that exists in STOCK_CONFIGS on this network. */

@@ -18,6 +18,7 @@ import {
   Skeleton,
   StageEgg,
   StatusPill,
+  TestBadge,
 } from '@/components/ds';
 import { ChickenOrb } from '@/components/ds/ChickenOrb';
 import type { HatchPool } from '@/lib/dbc/pool';
@@ -25,7 +26,7 @@ import { formatAmount, formatPercent } from '@/lib/format/amount';
 import { explorerAddressUrl, meteoraPoolUrl } from '@/lib/config/network';
 import { sourceDomain } from '@/lib/metadata/token';
 import { stockForConfig, stockPreset } from '@/lib/presets';
-import { useHolders, usePresetConfigs, useQuoteSymbol, useTokenMetadata } from '@/hooks/useHatch';
+import { useHolders, useIsTestLaunch, usePresetConfigs, useQuoteSymbol, useTokenMetadata } from '@/hooks/useHatch';
 import { shortAddr } from '@/components/ds/Pill';
 import { cn } from '@/lib/utils';
 import { TokenAvatar } from './TokenAvatar';
@@ -85,8 +86,10 @@ export function TokenHero({ mint, pool }: { mint: string; pool: HatchPool | null
 }
 
 function HeroChips({ mint, pool, quote, domain, url }: { mint: string; pool: HatchPool | null | undefined; quote: string; domain: string | null; url?: string }) {
+  const isTest = useIsTestLaunch(mint);
   return (
     <>
+      {isTest && <TestBadge className="h-[30px]" />}
       {pool && <StatusPill status={pool.status} className="h-[30px]" />}
       {pool?.presetId && <PresetBadge preset={pool.presetId} quote={quote} className="h-[30px]" />}
       {domain && <InspiredChip domain={domain} href={url} />}

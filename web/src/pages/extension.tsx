@@ -4,7 +4,7 @@ import Page from '@/components/ui/Page/Page';
 import { Button, DotField, DownloadIcon, EGG_RADIUS, Overline } from '@/components/ds';
 import { ChickenOrb } from '@/components/ds/ChickenOrb';
 
-const EXTENSION_VERSION = '0.1.0';
+const EXTENSION_VERSION = '0.2.0';
 const FILE = `hatch-extension-v${EXTENSION_VERSION}.zip`;
 
 type Props = { downloadUrl: string; size: string | null };

@@ -26,7 +26,7 @@ export function usePresetConfigs() {
       const res = await fetch('/api/presets');
       if (!res.ok) throw new Error('Could not load presets');
       const body = (await res.json()) as PresetsResponse;
-      return { network: body.network, configs: body.configs, stocks: body.stocks, hiddenMints: body.hiddenMints };
+      return { network: body.network, configs: body.configs, stocks: body.stocks, hiddenMints: body.hiddenMints, testMints: body.testMints ?? [] };
     },
     staleTime: 60_000,
   });
@@ -143,4 +143,10 @@ export function useConfigThreshold(configKey: string | undefined) {
     enabled: !!configKey,
     staleTime: 10 * 60_000,
   });
+}
+
+/** True when `mint` is a test launch (TEST_MINTS). */
+export function useIsTestLaunch(mint: string | undefined) {
+  const { data } = usePresetConfigs();
+  return !!mint && !!data?.testMints.includes(mint);
 }

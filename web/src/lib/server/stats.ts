@@ -3,17 +3,17 @@
 //
 // How volume is measured: there is no indexer, so for every pool we read its transaction history
 // (getSignaturesForAddress on the pool account, incrementally) and, per successful transaction,
-// take the absolute change of the pool's quote-token vault (owned by the DBC pool authority) from
+// take the absolute change of the pool's own quote-token vault (matched by account address) from
 // the transaction's pre/post token balances. That is the quote-token amount that traded. It is
 // converted to USD with Jupiter's price API (lite-api /price/v3) for each quote mint (SOL, NVDAx,
 // ...), at the current price. Unique wallets are the distinct fee payers of those transactions.
 // Results are cached in memory for 60 seconds (and on the CDN via Cache-Control).
 import { Connection, PublicKey } from '@solana/web3.js';
-import { deriveDbcPoolAuthority } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import Decimal from 'decimal.js';
 import BN from 'bn.js';
 import { serverRpcUrl } from '@/lib/config/network';
-import { fetchHatchPools, type HatchPool } from '@/lib/dbc/pool';
+import { dbcClient, fetchHatchPools, type HatchPool } from '@/lib/dbc/pool';
+import { feePayer, quoteVaultDelta, type RawTx } from '@/lib/stats/volume';
 import { rawToUi } from '@/lib/solana/mint';
 import { loadHatchConfigs } from '@/lib/server/presets';
 
@@ -31,26 +31,12 @@ export type HatchStats = {
 
 const TTL_MS = 60_000;
 const MAX_SIGS_PER_REFRESH = 1000;
-const POOL_AUTHORITY = deriveDbcPoolAuthority().toBase58();
 const JUP_PRICE = `${process.env.NEXT_PUBLIC_JUPITER_API_URL || 'https://lite-api.jup.ag'}/price/v3`;
 
-type PoolTally = { newest?: string; createdAt?: number; volumeRaw: BN; wallets: Set<string> };
+type PoolTally = { newest?: string; createdAt?: number; vault?: string; volumeRaw: BN; wallets: Set<string> };
 const tallies = new Map<string, PoolTally>();
 let cached: { at: number; value: HatchStats } | null = null;
 let inflight: Promise<HatchStats> | null = null;
-
-type TokenBalance = { mint: string; owner?: string; uiTokenAmount: { amount: string } };
-type RawTx = {
-  meta: { err: unknown; preTokenBalances?: TokenBalance[]; postTokenBalances?: TokenBalance[] } | null;
-  transaction: { message: { accountKeys: ({ pubkey: string } | string)[] } };
-};
-
-function quoteVaultDelta(tx: RawTx, quoteMint: string): BN {
-  const meta = tx.meta;
-  if (!meta || meta.err) return new BN(0);
-  const amount = (list?: TokenBalance[]) => new BN(list?.find((b) => b.mint === quoteMint && b.owner === POOL_AUTHORITY)?.uiTokenAmount.amount ?? '0');
-  return amount(meta.postTokenBalances).sub(amount(meta.preTokenBalances)).abs();
-}
 
 /**
  * getTransaction as a raw JSON-RPC batch: web3.js v1 cannot decode newer transaction versions, and
@@ -70,11 +56,6 @@ async function fetchTransactions(signatures: string[]): Promise<(RawTx | null)[]
   return signatures.map((_, i) => byId.get(i) ?? null);
 }
 
-const feePayer = (tx: RawTx) => {
-  const k = tx.transaction.message.accountKeys[0];
-  return typeof k === 'string' ? k : k?.pubkey;
-};
-
 /** New signatures for `pool` since the last refresh (newest first), capped per refresh. */
 async function newSignatures(connection: Connection, pool: PublicKey, until?: string) {
   const out: { signature: string; blockTime?: number | null; err: unknown }[] = [];
@@ -90,6 +71,11 @@ async function newSignatures(connection: Connection, pool: PublicKey, until?: st
 
 async function tallyPool(connection: Connection, pool: HatchPool) {
   const t = tallies.get(pool.address) ?? { volumeRaw: new BN(0), wallets: new Set<string>() };
+  if (!t.vault) {
+    const state = await dbcClient(connection).state.getPool(pool.address);
+    if (!state) return t;
+    t.vault = state.poolState.quoteVault.toBase58();
+  }
   const sigs = await newSignatures(connection, new PublicKey(pool.address), t.newest);
   if (sigs.length) {
     const oldest = sigs[sigs.length - 1];
@@ -99,7 +85,7 @@ async function tallyPool(connection: Connection, pool: HatchPool) {
       const txs = await fetchTransactions(ok.slice(i, i + 50));
       for (const tx of txs) {
         if (!tx) continue;
-        t.volumeRaw = t.volumeRaw.add(quoteVaultDelta(tx, pool.quote.address));
+        t.volumeRaw = t.volumeRaw.add(quoteVaultDelta(tx, t.vault));
         const payer = feePayer(tx);
         if (payer) t.wallets.add(payer);
       }

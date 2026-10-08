@@ -5,9 +5,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter';
 import Decimal from 'decimal.js';
 import Page from '@/components/ui/Page/Page';
-import { Amount, Button, Card, EGG_RADIUS, EggGlyph, Overline, ShellBar, Skeleton, StatusPill, notify } from '@/components/ds';
+import { Amount, Button, Card, EGG_RADIUS, EggGlyph, Overline, ShellBar, Skeleton, StatusPill, TestBadge, notify } from '@/components/ds';
 import { TokenAvatar } from '@/components/Hatch/TokenAvatar';
-import { useHatchPools, useQuoteSymbol, useTokenMetadata } from '@/hooks/useHatch';
+import { useHatchPools, useIsTestLaunch, useQuoteSymbol, useTokenMetadata } from '@/hooks/useHatch';
 import type { HatchPool } from '@/lib/dbc/pool';
 import { buildClaimCreatorFees, signAndSend } from '@/lib/dbc/transactions';
 import { formatAmount, formatPercent } from '@/lib/format/amount';
@@ -37,12 +37,16 @@ function MyHatchCard({ pool }: { pool: HatchPool }) {
   const claim = useClaim();
   const [busy, setBusy] = useState(false);
   const label = md?.symbol ? `$${md.symbol}` : 'your token';
+  const isTest = useIsTestLaunch(pool.baseMint);
   return (
     <Card className="flex flex-col gap-3 rounded-[18px] p-3.5 transition-colors hover:border-line md:p-5">
       <Link href={`/token/${pool.baseMint}`} className="group flex items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yolk/50">
         <TokenAvatar mint={pool.baseMint} size={48} paired={pool.presetId === 'STOCK' ? quote : null} />
         <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
-          <span className="truncate text-[15px] font-semibold text-ink group-hover:text-ink-accent">{md?.name ?? '…'}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-[15px] font-semibold text-ink group-hover:text-ink-accent">{md?.name ?? '…'}</span>
+            {isTest && <TestBadge size="sm" />}
+          </span>
           <span className="truncate font-mono text-xs font-medium text-ink-muted">
             <span className={progressInk(pool.progress, pool.isMigrated)}>{formatPercent(pool.isMigrated ? 1 : pool.progress)}</span> ·{' '}
             {formatAmount(pool.isMigrated ? pool.thresholdUi : pool.quoteReserveUi)} / {formatAmount(pool.thresholdUi)} {quote}

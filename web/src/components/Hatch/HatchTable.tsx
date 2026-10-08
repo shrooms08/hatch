@@ -2,12 +2,12 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
-import { Amount, Button, ChevronRight, MiniEgg, PresetBadge, SearchIcon, Segmented, ShellBar, Skeleton, StatusPill, progressInk, presetLabel } from '@/components/ds';
+import { Amount, Button, ChevronRight, MiniEgg, PresetBadge, SearchIcon, Segmented, ShellBar, Skeleton, StatusPill, TestBadge, progressInk, presetLabel } from '@/components/ds';
 import type { HatchPool, HatchStatus } from '@/lib/dbc/pool';
 import { fetchTokenMetadata, type HatchTokenMetadata as TokenMetadata } from '@/lib/metadata/token';
 import { formatAmount, formatPercent } from '@/lib/format/amount';
 import { timeAgo } from '@/lib/format/time';
-import { useQuoteSymbol } from '@/hooks/useHatch';
+import { useIsTestLaunch, useQuoteSymbol } from '@/hooks/useHatch';
 import { cn } from '@/lib/utils';
 import { TokenAvatar } from './TokenAvatar';
 
@@ -29,6 +29,7 @@ function Row({ pool, md, created }: { pool: HatchPool; md?: TokenMetadata | null
   const age = timeAgo(created);
   const name = md?.name ?? '…';
   const symbol = md?.symbol ?? '';
+  const isTest = useIsTestLaunch(pool.baseMint);
   return (
     <Link
       href={`/token/${pool.baseMint}`}
@@ -43,10 +44,13 @@ function Row({ pool, md, created }: { pool: HatchPool; md?: TokenMetadata | null
         <TokenAvatar mint={pool.baseMint} size={52} paired={paired} />
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <span className="truncate text-base font-semibold text-ink">{name}</span>
-          <span className="truncate font-mono text-[13px] font-medium text-ink-muted">
-            {symbol && `$${symbol}`}
-            {age && ` · ${age} ago`}
-            <span className="md:hidden"> · {presetLabel(pool.presetId)}</span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate font-mono text-[13px] font-medium text-ink-muted">
+              {symbol && `$${symbol}`}
+              {age && ` · ${age} ago`}
+              <span className="md:hidden"> · {presetLabel(pool.presetId)}</span>
+            </span>
+            {isTest && <TestBadge size="sm" />}
           </span>
         </div>
         <StatusPill status={pool.status} size="sm" className="md:hidden" />
