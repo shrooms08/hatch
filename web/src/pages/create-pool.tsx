@@ -136,7 +136,10 @@ export default function CreatePool() {
 
   const presetCards = (
     <div role="radiogroup" aria-label="Launch preset" className="flex flex-col gap-2.5">
-      {(['STOCK', 'MEME', 'AI_AGENT'] as const).filter((id) => PRESET_IDS.includes(id)).map((id) => {
+      {(['STOCK', 'MEME', 'AI_AGENT'] as const)
+        // Presets without a config on this network are hidden (STOCK stays, shown as "coming soon").
+        .filter((id) => id === 'STOCK' || !enabledPresets || !!enabledPresets.configs[id])
+        .map((id) => {
         const stockSymbols = enabledPresets ? Object.values(enabledPresets.stocks).map((s) => s.symbol) : [];
         const isEnabled = !enabledPresets || (id === 'STOCK' ? stockSymbols.length > 0 : !!enabledPresets.configs[id]);
         return (

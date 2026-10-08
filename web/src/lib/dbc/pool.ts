@@ -10,6 +10,7 @@ import {
   type VirtualPool,
 } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import Decimal from 'decimal.js';
+import { memoAsync } from '@/lib/cache/memoAsync';
 import { fetchMintInfo, rawToUi, type MintInfo } from '@/lib/solana/mint';
 import { allConfigKeys, presetForConfig, EMPTY_HATCH_CONFIGS, type HatchConfigs, type PresetId } from '@/lib/presets';
 
@@ -55,8 +56,7 @@ export function dbcClient(connection: Connection) {
 
 const quoteInfoCache = new Map<string, Promise<MintInfo>>();
 function cachedMintInfo(connection: Connection, mint: string) {
-  if (!quoteInfoCache.has(mint)) quoteInfoCache.set(mint, fetchMintInfo(connection, mint));
-  return quoteInfoCache.get(mint)!;
+  return memoAsync(quoteInfoCache, mint, () => fetchMintInfo(connection, mint));
 }
 
 export function statusFor(progress: number, isMigrated: boolean): HatchStatus {

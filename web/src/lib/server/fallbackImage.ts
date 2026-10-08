@@ -5,7 +5,7 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { Resvg } from '@resvg/resvg-js';
-import { uploadToR2 } from '@/lib/server/r2';
+import { R2ObjectExistsError, publicR2Url, uploadToR2 } from '@/lib/server/r2';
 
 const FONT_DIR = path.join(process.cwd(), 'assets/fonts'); // SIL OFL, see FONTS.md
 const FONT_FILES = ['Unbounded-Bold.ttf', 'GeistMono-Medium.ttf', 'GeistMono-SemiBold.ttf'].map((f) => path.join(FONT_DIR, f));
@@ -76,5 +76,12 @@ export function renderFallbackPng(symbol: string, pairedWith?: string | null): B
 /** Renders and uploads to R2 under a content-derived key (same ticker + pairing reuses one object). */
 export async function uploadFallbackImage(symbol: string, pairedWith?: string | null): Promise<string> {
   const id = createHash('sha256').update(`v2|${symbol}|${pairedWith ?? ''}`).digest('hex').slice(0, 24);
-  return uploadToR2(`${FALLBACK_PREFIX}${id}.png`, renderFallbackPng(symbol, pairedWith), 'image/png');
+  const key = `${FALLBACK_PREFIX}${id}.png`;
+  try {
+    return await uploadToR2(key, renderFallbackPng(symbol, pairedWith), 'image/png');
+  } catch (e) {
+    // Same ticker + pairing renders the same image: the existing object is the one we want.
+    if (e instanceof R2ObjectExistsError) return publicR2Url(key);
+    throw e;
+  }
 }

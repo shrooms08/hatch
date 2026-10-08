@@ -15,7 +15,9 @@
     "format:check": "prettier --check .",
     "test:buddy": "node --env-file-if-exists=.env.local --import tsx scripts/test-buddy.mts",
     "brand-assets": "node --import tsx scripts/brand-assets.mts",
-    "test:stats": "node --import tsx --test scripts/test-stats.mts"
+    "test:stats": "node --import tsx --test scripts/test-stats.mts",
+    "test:security": "node --import tsx --test scripts/test-security.mts",
+    "test": "node --import tsx --test scripts/test-stats.mts scripts/test-security.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

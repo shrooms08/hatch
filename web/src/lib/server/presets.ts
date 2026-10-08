@@ -1,5 +1,6 @@
 // Server-only: the launch allowlist for the current network.
-//   POOL_CONFIGS  = {"MEME":"<config>","AI_AGENT":"<config>"}   (a "STOCK" entry is accepted for older envs)
+//   POOL_CONFIGS  = {"MEME":"<config>","AI_AGENT":"<config>"}   (each preset needs its own config;
+//                   a "STOCK" entry is accepted for older envs)
 //   STOCK_CONFIGS = {"NVDA":{"config":"<config>","quoteMint":"<xStock mint>","symbol":"NVDAx","name":"NVIDIA"}}
 //   HIDDEN_MINTS  = comma-separated mints hidden from public lists
 //   TEST_MINTS    = comma-separated mints shown with a "Test launch" badge
@@ -36,8 +37,18 @@ function loadPoolConfigs(): PresetConfigMap {
   for (const id of PRESET_IDS) {
     if (typeof parsed[id] === 'string' && parsed[id]) out[id] = pubkey(parsed[id], `POOL_CONFIGS.${id}`);
   }
+  // Each preset needs its own config: a preset that reuses another preset's config would promise a
+  // curve it does not have (and blur pool labels), so it is left out. On mainnet the AI agent preset
+  // stays hidden until it gets a dedicated config; add "AI_AGENT":"<config>" to POOL_CONFIGS to enable it.
+  if (out.AI_AGENT && out.AI_AGENT === out.MEME) {
+    if (!warnedShared) console.warn('POOL_CONFIGS.AI_AGENT reuses the MEME config; the AI agent preset is disabled until it has its own config.');
+    warnedShared = true;
+    delete out.AI_AGENT;
+  }
   return out;
 }
+
+let warnedShared = false;
 
 function loadStockConfigs(poolConfigs: PresetConfigMap): StockMap {
   const parsed = parseJson('STOCK_CONFIGS');
@@ -94,4 +105,9 @@ export function configKeyFor(preset: PresetId, stockTicker?: string | null): Pub
   const key = hc.configs[preset];
   if (!key) throw new PresetError(`Preset ${preset} is not enabled on this server`);
   return new PublicKey(key);
+}
+
+/** Presets that can launch on this network: MEME/AI_AGENT with a config, STOCK with at least one stock. */
+export function enabledPresets(hc: HatchConfigs): PresetId[] {
+  return PRESET_IDS.filter((id) => (id === 'STOCK' ? Object.keys(hc.stocks).length > 0 : !!hc.configs[id]));
 }

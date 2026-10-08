@@ -55,6 +55,9 @@ export function SettingsTab({ activeUrl }: { activeUrl: string | null }) {
         <Row title="Sounds" sub="A soft chirp when the panel opens, a double chirp on hatch">
           <Toggle label="Sounds" checked={settings.sounds !== false} onChange={(v) => void updateSettings((s) => ({ ...s, sounds: v }))} />
         </Row>
+        <Row title="Notice pages automatically" sub="Stock pages and tweets only, once per page">
+          <Toggle label="Notice pages automatically" checked={settings.noticeAuto !== false} onChange={(v) => void updateSettings((s) => ({ ...s, noticeAuto: v }))} />
+        </Row>
         <Row title="Hide on this site" sub={host ?? "Open a web page first"} mono>
           <Toggle
             label="Hide on this site"
@@ -103,6 +106,10 @@ export function SettingsTab({ activeUrl }: { activeUrl: string | null }) {
           </button>
         )}
         <span className="text-[11px] leading-normal text-ink-muted">Hatch only stores your public address. Keys never leave your wallet.</span>
+        <span className="text-[11px] leading-normal text-ink-muted">
+          Privacy: when you draft, the page&apos;s title, address (without query string) and text go to Hatch to write the draft. Automatic hints send the
+          same for stock pages and tweets only, once per page. Nothing else leaves your browser.
+        </span>
       </Card>
 
       <div className="flex flex-col items-center gap-2.5 py-7">

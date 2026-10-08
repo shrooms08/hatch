@@ -6,6 +6,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { serverRpcUrl } from '@/lib/config/network';
 import { fetchOnChainMetadata, pickMetadataJson, type HatchTokenMetadata } from '@/lib/metadata/token';
 import { SafeFetchError, safeFetchBytes } from '@/lib/server/safeFetch';
+import { rateLimited } from '@/lib/server/rateLimit';
 
 const MAX_JSON_BYTES = 256 * 1024;
 
@@ -20,6 +21,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   } catch {
     return res.status(400).json({ error: 'mint is not a valid address' });
   }
+  // Pages load one of these per token shown; the CDN caches responses for 60s.
+  if (rateLimited(req, res, 'token-metadata', 240, 60_000)) return;
 
   try {
     const onChain = await fetchOnChainMetadata(new Connection(serverRpcUrl(), 'confirmed'), mint);

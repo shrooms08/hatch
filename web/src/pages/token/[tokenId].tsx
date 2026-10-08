@@ -21,6 +21,20 @@ import { useEffect } from 'react';
 
 const Terminal = dynamic(() => import('@/components/Terminal'), { ssr: false });
 
+/**
+ * A DBC pool exists for this mint, but not under one of Hatch's configs: Hatch did not launch it and
+ * cannot vouch for its curve or fees, so trading (and Pay with SOL) is not offered here.
+ */
+const NotHatchLaunch = () => (
+  <Card className="flex flex-col gap-3 rounded-[24px] border-danger/40 bg-danger/[0.06] p-6" role="alert">
+    <span className="font-display text-lg font-semibold text-ink">Not a Hatch launch</span>
+    <span className="text-sm leading-normal text-ink-2">
+      This token has a Meteora bonding-curve pool, but it was not launched with Hatch. Hatch does not trade it, and Pay with SOL is off.
+      Check the pool on an explorer before trading it anywhere.
+    </span>
+  </Card>
+);
+
 /** On-chain Hatch token page body: works on any network, no indexers. */
 const HatchOnChain = ({ mint }: { mint: string }) => {
   const { data: pool, isLoading, error, refetch } = useHatchPool(mint);
@@ -64,7 +78,13 @@ const HatchOnChain = ({ mint }: { mint: string }) => {
         </div>
       </div>
       <div className="flex min-w-0 flex-col gap-5 max-lg:order-2 lg:sticky lg:top-24">
-        {pool.isMigrated ? <TradeOnMeteora pool={pool} /> : <TradePanel pool={pool} baseSymbol={symbol} />}
+        {pool.presetId === null ? (
+          <NotHatchLaunch />
+        ) : pool.isMigrated ? (
+          <TradeOnMeteora pool={pool} />
+        ) : (
+          <TradePanel pool={pool} baseSymbol={symbol} />
+        )}
         <ClaimCreatorFees pool={pool} baseSymbol={symbol} />
       </div>
     </div>

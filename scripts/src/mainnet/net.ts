@@ -16,11 +16,11 @@ import {
   type Signer,
 } from '@solana/web3.js'
 import { DynamicBondingCurveClient } from '@meteora-ag/dynamic-bonding-curve-sdk'
-import { StepError, loadOrCreateKeypair } from '../lib.js'
+import { StepError, hostOf, loadOrCreateKeypair } from '../lib.js'
 
 export const MAINNET_RPC_URL = process.env.MAINNET_RPC_URL || 'https://api.mainnet-beta.solana.com'
 if (/devnet|testnet|localhost|127\.0\.0\.1/i.test(MAINNET_RPC_URL)) {
-  console.error(`MAINNET_RPC_URL points at ${MAINNET_RPC_URL}; mainnet scripts need a mainnet RPC.`)
+  console.error(`MAINNET_RPC_URL points at ${hostOf(MAINNET_RPC_URL)}; mainnet scripts need a mainnet RPC.`)
   process.exit(1)
 }
 
@@ -62,7 +62,7 @@ export function writeState(update: (s: MainnetState) => void) {
 }
 
 export function header(step: string) {
-  console.log(`\n=== ${step} [MAINNET ${ARMED ? 'ARMED: will ask before sending' : 'SIMULATION ONLY'}] rpc=${new URL(MAINNET_RPC_URL).host} ===`)
+  console.log(`\n=== ${step} [MAINNET ${ARMED ? 'ARMED: will ask before sending' : 'SIMULATION ONLY'}] rpc=${hostOf(MAINNET_RPC_URL)} ===`)
 }
 
 export const sol = (lamports: number | bigint) => (Number(lamports) / LAMPORTS_PER_SOL).toFixed(6)

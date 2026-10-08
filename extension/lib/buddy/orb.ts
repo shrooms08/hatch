@@ -3,7 +3,7 @@
  *
  * Base: the thinking orb from GLANCE (entrypoints/content/orb.ts), i.e. the `thinking-orbs` engine
  * (Jakub Antalik, MIT; see THIRD_PARTY_NOTICES.md) painted on a plain canvas, with GLANCE's
- * crossfade between engine states, 30 fps cap while resting, pause while hidden, and a single still
+ * crossfade between engine states, 10 fps cap while resting (full rate on pecks and hover), pause while hidden, and a single still
  * frame for reduced motion. Recoloured to the Hatch palette and set inside a glassy Night body
  * with a state-coloured glow. On top: a figure of ~200 dots that morphs chicken <-> egg.
  */
@@ -77,6 +77,7 @@ export class OrbBuddy {
   private lastPaint = 0;
   private nextPeck = 0;
   private peckAt = -1e9;
+  private hovered = false;
   private twinkle: { i: number; at: number }[] = [];
   private nextTwinkle = 0;
   private hatchQueue: (() => void)[] = [];
@@ -153,6 +154,12 @@ export class OrbBuddy {
       this.setEngine("hatching");
       this.kick();
     });
+  }
+
+  /** Pointer over the orb: animate at full rate while hovered. */
+  setHover(v: boolean) {
+    this.hovered = v;
+    if (v) this.kick();
   }
 
   /** The host hides/shows the orb (e.g. "Hide on this site"): no frames while hidden. */
@@ -298,7 +305,10 @@ export class OrbBuddy {
     }
     const loop = (ms: number) => {
       this.raf = requestAnimationFrame(loop);
-      const resting = this.phase === "rest" && this.state === "idle" && !this.enginePrev;
+      // Resting (idle chicken, no transition): ~10 fps is enough for breathing. A peck or the
+      // pointer over the orb get full frame rate so they stay smooth.
+      const pecking = ms - this.peckAt < TIMING.peckMs;
+      const resting = this.phase === "rest" && this.state === "idle" && !this.enginePrev && !pecking && !this.hovered;
       if (resting && ms - this.lastPaint < 1000 / TIMING.idleFps) return;
       this.lastPaint = ms;
       this.tick(ms);

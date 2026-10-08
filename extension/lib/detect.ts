@@ -88,9 +88,16 @@ function hasMeta(prop: string, value?: string): boolean {
   return !!el && (value === undefined || el.content === value);
 }
 
-/** Full DOM detection for the current page. */
+/** Stock pages and tweets: the only kinds the buddy ever notices automatically (URL check only). */
+export function canAutoNotice(href: string): boolean {
+  return isStockPageUrl(href) || isTweetUrl(href);
+}
+
+/**
+ * Full DOM detection for the current page. URL patterns are checked first; the whole page text is
+ * only read for other pages, which are never sent automatically (the side panel asks for them).
+ */
 export function detectFromDom(href = location.href): Detection {
-  const pageText = (document.body?.innerText ?? "").slice(0, 50_000);
   if (isStockPageUrl(href)) {
     let tickers = tickersFromUrl(href);
     if (!tickers.length) {
@@ -103,6 +110,7 @@ export function detectFromDom(href = location.href): Detection {
     const tweetText = document.querySelector<HTMLElement>("article[data-testid='tweet'] [data-testid='tweetText']")?.innerText ?? "";
     return { kind: "tweet", tickers: cashtags(tweetText), flagged: true, reason: "tweet" };
   }
+  const pageText = (document.body?.innerText ?? "").slice(0, 50_000);
   const tickers = cashtags(pageText);
   const isArticle = hasMeta("og:type", "article") || !!document.querySelector("article");
   if (tickers.length) return { kind: isArticle ? "article" : "generic", tickers, flagged: true, reason: "cashtags" };

@@ -4,7 +4,7 @@ import { noticeRequestSchema, type BuddyNotice } from '@/lib/buddy/schema';
 import { AiOutputError, noticePage } from '@/lib/server/buddy';
 import { aiErrorResponse } from '@/lib/server/ai';
 import { handleCors } from '@/lib/server/cors';
-import { rateLimited } from '@/lib/server/rateLimit';
+import { dailyCapReached, rateLimited } from '@/lib/server/rateLimit';
 
 const NOTICES_PER_HOUR = process.env.NODE_ENV === 'production' ? 30 : 120; // per IP
 
@@ -13,6 +13,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   const parsed = noticeRequestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid request', issues: parsed.error.flatten().fieldErrors });
   if (rateLimited(req, res, 'notice', NOTICES_PER_HOUR)) return;
+  if (dailyCapReached(res, 'notice')) return;
 
   try {
     return res.status(200).json(await noticePage(parsed.data));

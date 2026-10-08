@@ -38,7 +38,8 @@ export default defineConfig({
     description: "Your Hatch browser buddy: notices pages worth a token, drafts it with AI, and tracks your hatches.",
     minimum_chrome_version: "116",
     // offscreen: all buddy sounds play from an offscreen document (page autoplay rules can't block it).
-    permissions: ["storage", "sidePanel", "tabs", "alarms", "notifications", "offscreen"],
+    // No "tabs": the side panel gets the page (and its URL) from our content script, never tab.url.
+    permissions: ["storage", "sidePanel", "alarms", "notifications", "offscreen"],
     // Only the Hatch web app (AI + hatches API). Content scripts declare their own matches.
     host_permissions: [HATCH_WEB_MATCH],
     action: { default_title: "Hatch" },

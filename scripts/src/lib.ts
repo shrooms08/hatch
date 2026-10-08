@@ -21,9 +21,18 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const KEYS_DIR = path.join(ROOT, 'keys')
 const STATE_FILE = path.join(ROOT, 'state', 'devnet.json')
 
+/** Only the host of an RPC URL is ever printed: the URL can carry an API key. */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return '(invalid URL)'
+  }
+}
+
 // Hard guard: this project must never talk to mainnet.
 if (/mainnet/i.test(RPC_URL)) {
-  console.error(`Refusing to run against ${RPC_URL}: these scripts are devnet-only.`)
+  console.error(`Refusing to run against ${hostOf(RPC_URL)}: these scripts are devnet-only.`)
   process.exit(1)
 }
 
