@@ -68,7 +68,7 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
   const hasQuoteAccount = useHasTokenAccount(usingSol ? wallet.publicKey : null, pool.quote);
   const solIn = side === 'buy' && spendsSol && isValidAmount(amount) ? Math.round(Number(amount) * LAMPORTS_PER_SOL) : 0;
   const buyNeed =
-    side === 'buy' && rent.data != null && hasBaseAccount.data !== undefined
+    side === 'buy' && rent.data != null && hasBaseAccount.data !== undefined && (!usingSol || hasQuoteAccount.data !== undefined)
       ? buyCostLamports({ perByte: rent.data, solIn, needsBaseAccount: !hasBaseAccount.data, spendsSol, payWithSol: usingSol, needsQuoteAccount: usingSol && hasQuoteAccount.data === false })
       : null;
   const solShort = !!wallet.publicKey && side === 'buy' && buyNeed != null && solLamports.data != null && solLamports.data < buyNeed;
