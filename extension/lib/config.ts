@@ -9,4 +9,22 @@ export const NETWORK: HatchNetwork = (import.meta.env.WXT_HATCH_NETWORK as strin
 export const POLL_MINUTES = 1;
 
 export const tokenPageUrl = (mintOrPath: string) =>
-  mintOrPath.startsWith("/") ? `${HATCH_WEB_URL}${mintOrPath}` : `${HATCH_WEB_URL}/token/${mintOrPath}`;
+  withPreviewBypass(mintOrPath.startsWith("/") ? `${HATCH_WEB_URL}${mintOrPath}` : `${HATCH_WEB_URL}/token/${mintOrPath}`, true);
+
+/**
+ * Preview builds only (build:preview): Vercel's protection-bypass secret for a protected preview
+ * deployment, sent as a query parameter so it also passes CORS preflights. Empty in real builds.
+ */
+const VERCEL_BYPASS = (import.meta.env.WXT_VERCEL_BYPASS as string | undefined) ?? "";
+
+/** Adds the preview bypass to a web app URL (and asks Vercel to set the bypass cookie for opened pages). */
+export function withPreviewBypass(url: string, setCookie = false): string {
+  if (!VERCEL_BYPASS) return url;
+  const u = new URL(url);
+  u.searchParams.set("x-vercel-protection-bypass", VERCEL_BYPASS);
+  if (setCookie) u.searchParams.set("x-vercel-set-bypass-cookie", "samesitenone");
+  return u.toString();
+}
+
+/** A web app page the panel opens in a tab (preview builds add the bypass). */
+export const webUrl = (path = "") => withPreviewBypass(`${HATCH_WEB_URL}${path}`, true);

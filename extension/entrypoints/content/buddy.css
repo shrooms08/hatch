@@ -93,11 +93,13 @@
   position: absolute;
   bottom: calc(100% + 10px);
   right: 0;
-  min-width: 170px;
-  background: var(--hb-night);
-  border: 1px solid rgba(138, 129, 120, 0.5);
-  border-radius: 10px;
-  padding: 4px;
+  min-width: 190px;
+  background: #221b16;
+  border: 1px solid #382e26;
+  border-radius: 16px;
+  padding: 6px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+  font-family: "Hatch Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
   display: none;
 }
 .hatch-egg__menu[data-open="true"] { display: block; }
@@ -109,27 +111,81 @@
   border: 0;
   color: inherit;
   font: inherit;
-  padding: 6px 8px;
-  border-radius: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
   cursor: pointer;
 }
-.hatch-egg__menu button:hover { background: rgba(246, 238, 220, 0.08); }
+.hatch-egg__menu button:hover { background: #2c241e; }
 
+/* Hint bubble (design/v1 "on-page buddy"): Night card beside the orb, bottom-aligned, tail toward it. */
 .hatch-egg__bubble {
   position: absolute;
-  bottom: calc(100% + 10px);
-  right: 0;
-  width: max-content;
-  max-width: 260px;
+  bottom: 0;
+  right: calc(100% + 14px);
+  width: 300px;
+  max-width: calc(100vw - 110px);
+  box-sizing: border-box;
   background: var(--hb-night);
-  border: 1px solid rgba(242, 169, 59, 0.45);
-  border-radius: 12px;
-  padding: 8px 10px;
+  color: var(--hb-shell);
+  border-radius: 20px 20px 6px 20px;
+  padding: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(74, 62, 52, 0.6);
+  font-family: "Hatch Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
   display: none;
+  flex-direction: column;
+  gap: 12px;
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+  transform-origin: bottom right;
+  transition: opacity 180ms ease-out, transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
-.hatch-egg__bubble[data-open="true"] { display: block; }
-.hatch-egg__bubble a { color: var(--hb-yolk); margin-left: 4px; }
+.hatch-egg__bubble[data-open="true"] {
+  display: flex;
+  opacity: 1;
+  transform: none;
+  animation: hatch-bubble-in 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes hatch-bubble-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.hatch-egg__bubble-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+.hatch-egg__bubble-text { font: 600 15px/1.4 "Hatch Geist", system-ui, -apple-system, "Segoe UI", sans-serif; }
+.hatch-egg__bubble-close {
+  border: 0;
+  background: none;
+  color: var(--hb-ash);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+.hatch-egg__bubble-close:hover { color: var(--hb-shell); }
+.hatch-egg__bubble-actions { display: flex; gap: 8px; }
+.hatch-egg__bubble-primary,
+.hatch-egg__bubble-secondary {
+  height: 40px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 14px "Hatch Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 150ms ease-out, border-color 150ms ease-out, transform 150ms ease-out;
+}
+.hatch-egg__bubble-primary { flex: 1; border: 0; background: var(--hb-yolk); color: var(--hb-night); }
+.hatch-egg__bubble-primary:hover { background: #ffbd57; }
+.hatch-egg__bubble-secondary { padding: 0 14px; border: 1px solid #4a3e34; background: none; color: #c9bfb1; }
+.hatch-egg__bubble-secondary:hover { border-color: var(--hb-ash); color: var(--hb-shell); }
+.hatch-egg__bubble-primary:active,
+.hatch-egg__bubble-secondary:active { transform: scale(0.97); }
+.hatch-egg__bubble button:focus-visible,
+.hatch-egg__bubble a:focus-visible { outline: 2px solid var(--hb-yolk); outline-offset: 2px; }
 
 @media (prefers-reduced-motion: reduce) {
   .hatch-egg__button { transition: none; }
+  .hatch-egg__bubble { transition: none; animation: none !important; }
 }

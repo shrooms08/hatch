@@ -86,9 +86,11 @@ export type HatchConfigs = {
   stocks: StockMap;
   /** Mints hidden from public lists (their token pages still work by direct link). */
   hiddenMints: string[];
+  /** Test launches: listed, but badged "Test launch". */
+  testMints: string[];
 };
 
-export const EMPTY_HATCH_CONFIGS: HatchConfigs = { network: '', configs: {}, stocks: {}, hiddenMints: [] };
+export const EMPTY_HATCH_CONFIGS: HatchConfigs = { network: '', configs: {}, stocks: {}, hiddenMints: [], testMints: [] };
 
 /** Every config key Hatch launches under (deduped: on mainnet AI_AGENT reuses the MEME config). */
 export function allConfigKeys(hc: HatchConfigs): string[] {

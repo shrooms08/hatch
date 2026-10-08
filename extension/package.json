@@ -1,12 +1,13 @@
 {
   "name": "hatch-extension",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Hatch browser buddy (MV3)",
   "scripts": {
     "dev": "wxt",
     "build": "wxt build",
     "build:mainnet": "WXT_HATCH_NETWORK=mainnet-beta WXT_HATCH_WEB_URL=http://localhost:3000 WXT_OUT_DIR=dist-mainnet wxt build",
     "build:prod": "WXT_HATCH_NETWORK=mainnet-beta WXT_HATCH_WEB_URL=https://hatchfun.vercel.app WXT_OUT_DIR=dist-prod WXT_EXCLUDE_DEBUG=true wxt build",
+    "build:preview": "WXT_HATCH_NETWORK=mainnet-beta WXT_OUT_DIR=dist-preview WXT_EXCLUDE_DEBUG=true wxt build",
     "zip:prod": "pnpm build:prod && cd dist-prod/chrome-mv3 && rm -f ../../hatch-extension-v$npm_package_version.zip && zip -qr ../../hatch-extension-v$npm_package_version.zip .",
     "zip": "wxt zip",
     "compile": "tsc --noEmit -p tsconfig.json",
@@ -15,6 +16,9 @@
   },
   "type": "module",
   "dependencies": {
+    "@fontsource/geist": "^5.3.0",
+    "@fontsource/geist-mono": "^5.3.0",
+    "@fontsource/unbounded": "^5.3.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "thinking-orbs": "0.3.1"

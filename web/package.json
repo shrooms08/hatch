@@ -13,7 +13,9 @@
     "lint": "next lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:buddy": "node --env-file-if-exists=.env.local --import tsx scripts/test-buddy.mts"
+    "test:buddy": "node --env-file-if-exists=.env.local --import tsx scripts/test-buddy.mts",
+    "brand-assets": "node --import tsx scripts/brand-assets.mts",
+    "test:stats": "node --import tsx --test scripts/test-stats.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",

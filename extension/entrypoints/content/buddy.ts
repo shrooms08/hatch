@@ -4,11 +4,27 @@
  * and goes out through callbacks.
  */
 import { OrbBuddy } from "../../lib/buddy/orb";
+import geist500 from "@fontsource/geist/files/geist-latin-500-normal.woff2?inline";
+import geist600 from "@fontsource/geist/files/geist-latin-600-normal.woff2?inline";
 import { SIZE } from "../../lib/buddy/config";
 import type { EggPos } from "../../lib/storage";
 import type { EggState } from "../../lib/types";
 
 const MARGIN = 8;
+
+/**
+ * Geist for the bubble, registered as page fonts from inlined bytes under a private family name.
+ * Nothing is fetched and no extension URL is exposed to the page.
+ */
+let fontsLoaded = false;
+function loadBubbleFonts() {
+  if (fontsLoaded || typeof FontFace === "undefined") return;
+  fontsLoaded = true;
+  for (const [src, weight] of [[geist500, "500"], [geist600, "600"]] as const) {
+    const face = new FontFace("Hatch Geist", `url(${src})`, { weight, style: "normal", display: "swap" });
+    void face.load().then((f) => document.fonts.add(f)).catch(() => undefined);
+  }
+}
 const DRAG_THRESHOLD = 4;
 
 export type BuddyCallbacks = {
@@ -22,6 +38,8 @@ export class BuddyView {
   private button: HTMLButtonElement;
   private badge: HTMLSpanElement;
   private bubble: HTMLDivElement;
+  private bubbleText: HTMLSpanElement;
+  private bubbleActions: HTMLDivElement;
   private menu: HTMLDivElement;
   private orb: OrbBuddy;
   private bubbleTimer: number | undefined;
@@ -34,7 +52,10 @@ export class BuddyView {
     this.root.className = "hatch-egg";
     this.root.dataset.state = "idle";
     this.root.innerHTML = `
-      <div class="hatch-egg__bubble" role="status" aria-live="polite"></div>
+      <div class="hatch-egg__bubble" role="status" aria-live="polite">
+        <div class="hatch-egg__bubble-row"><span class="hatch-egg__bubble-text"></span><button type="button" class="hatch-egg__bubble-close" aria-label="Dismiss">×</button></div>
+        <div class="hatch-egg__bubble-actions"></div>
+      </div>
       <div class="hatch-egg__menu" role="menu">
         <button type="button" role="menuitem" data-hide="site">Hide on this site</button>
         <button type="button" role="menuitem" data-hide="everywhere">Hide everywhere</button>
@@ -44,6 +65,10 @@ export class BuddyView {
     this.button = this.root.querySelector(".hatch-egg__button")!;
     this.badge = this.root.querySelector(".hatch-egg__badge")!;
     this.bubble = this.root.querySelector(".hatch-egg__bubble")!;
+    this.bubbleText = this.root.querySelector(".hatch-egg__bubble-text")!;
+    this.bubbleActions = this.root.querySelector(".hatch-egg__bubble-actions")!;
+    this.root.querySelector<HTMLButtonElement>(".hatch-egg__bubble-close")!.addEventListener("click", () => this.hideBubble());
+    loadBubbleFonts();
     this.menu = this.root.querySelector(".hatch-egg__menu")!;
     this.orb = new OrbBuddy();
     this.button.prepend(this.orb.canvas);
@@ -84,16 +109,39 @@ export class BuddyView {
     this.button.setAttribute("aria-label", count > 0 ? `Open Hatch (${count} incubating)` : "Open Hatch");
   }
 
+  /**
+   * A hint ("This is about NVIDIA…"): Show me opens the side panel, Not now dismisses.
+   * A milestone with a link: the link is the primary action.
+   */
   showBubble(text: string, opts: { url?: string; linkText?: string; timeoutMs?: number } = {}) {
-    this.bubble.textContent = text;
+    this.bubbleText.textContent = text;
+    this.bubbleActions.replaceChildren();
+    let primary: HTMLElement;
     if (opts.url) {
       const a = document.createElement("a");
       a.href = opts.url;
       a.target = "_blank";
       a.rel = "noopener";
       a.textContent = opts.linkText ?? "Open";
-      this.bubble.append(a);
+      a.addEventListener("click", () => this.hideBubble());
+      primary = a;
+    } else {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = "Show me";
+      b.addEventListener("click", () => {
+        this.hideBubble();
+        this.cb.onOpen();
+      });
+      primary = b;
     }
+    primary.className = "hatch-egg__bubble-primary";
+    const later = document.createElement("button");
+    later.type = "button";
+    later.className = "hatch-egg__bubble-secondary";
+    later.textContent = "Not now";
+    later.addEventListener("click", () => this.hideBubble());
+    this.bubbleActions.append(primary, later);
     this.bubble.dataset.open = "true";
     window.clearTimeout(this.bubbleTimer);
     this.bubbleTimer = window.setTimeout(() => this.hideBubble(), opts.timeoutMs ?? 12_000);

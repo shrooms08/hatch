@@ -1,4 +1,5 @@
 import '@/styles/globals.css';
+import { fontVariablesCss } from '@/lib/fonts';
 import { Adapter, UnifiedWalletProvider } from '@jup-ag/wallet-adapter';
 import type { AppProps } from 'next/app';
 import { ThemeProvider, useTheme } from 'next-themes';
@@ -43,7 +44,7 @@ function AppProviders({ Component, pageProps }: AppProps) {
             name: 'Hatch',
             description: 'Launch a token quoted in the stock you are looking at.',
             url: typeof window === 'undefined' ? 'https://hatch.local' : window.location.origin,
-            iconUrls: ['/favicon.ico'],
+            iconUrls: ['/brand/icon-192.png'],
           },
           // notificationCallback: WalletNotification,
           theme: walletTheme,
@@ -51,7 +52,8 @@ function AppProviders({ Component, pageProps }: AppProps) {
         }}
       >
         <HatchEvents />
-        <Toaster theme={walletTheme} richColors closeButton />
+        {/* Toasts are rendered by components/ds/Toast (sonner custom), placed under the header. */}
+        <Toaster theme={walletTheme} position="top-right" offset={{ top: 88, right: 24 }} mobileOffset={{ top: 72 }} gap={12} />
         <Component {...pageProps} />
       </UnifiedWalletProvider>
     </QueryClientProvider>
@@ -60,7 +62,8 @@ function AppProviders({ Component, pageProps }: AppProps) {
 
 export default function App(props: AppProps) {
   return (
-    <ThemeProvider attribute="class" defaultTheme="dark" disableTransitionOnChange>
+    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
+      <style dangerouslySetInnerHTML={{ __html: fontVariablesCss }} />
       <AppProviders {...props} />
     </ThemeProvider>
   );

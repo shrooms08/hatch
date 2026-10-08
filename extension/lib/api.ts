@@ -3,7 +3,7 @@
  * no keys or sessions). Used by the background worker and the side panel; content scripts go
  * through the background.
  */
-import { HATCH_WEB_URL } from "./config";
+import { HATCH_WEB_URL, withPreviewBypass } from "./config";
 import type { BuddyDraft, BuddyNotice, ChatMessage, Draft, HatchSummary, PageContext, PresetInfo, Result, StockMap } from "./types";
 
 const OFFLINE = `Can't reach Hatch at ${HATCH_WEB_URL}. Is the web app running?`;
@@ -11,7 +11,7 @@ const OFFLINE = `Can't reach Hatch at ${HATCH_WEB_URL}. Is the web app running?`
 async function request<T>(method: "GET" | "POST", path: string, body?: unknown, timeoutMs = 45_000): Promise<Result<T>> {
   let res: Response;
   try {
-    res = await fetch(`${HATCH_WEB_URL}${path}`, {
+    res = await fetch(withPreviewBypass(`${HATCH_WEB_URL}${path}`), {
       method,
       headers: { accept: "application/json", ...(body === undefined ? {} : { "content-type": "application/json" }) },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -55,5 +55,5 @@ export function launchUrl(draft: Draft, sourceUrl: string): string {
   });
   if (draft.imageUrl) q.set("image", draft.imageUrl);
   if (draft.preset === "STOCK" && draft.stockTicker) q.set("stock", draft.stockTicker);
-  return `${HATCH_WEB_URL}/launch?${q.toString()}`;
+  return withPreviewBypass(`${HATCH_WEB_URL}/launch?${q.toString()}`, true);
 }

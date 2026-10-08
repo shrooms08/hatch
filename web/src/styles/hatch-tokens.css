@@ -1,0 +1,80 @@
+/*
+ * Hatch design system v1 tokens (design/v1/Hatch Design System.html).
+ * Values are RGB triplets so Tailwind alpha modifiers work: bg-yolk/15 -> rgb(var(--hatch-yolk) / 0.15).
+ * Dark is the default theme. The light ("Shell") theme is derived from the same palette.
+ */
+:root,
+.dark {
+  /* Brand */
+  --hatch-night: 18 14 11; /* #120E0B */
+  --hatch-yolk: 242 169 59; /* #F2A93B */
+  --hatch-yolk-hi: 255 189 87; /* #FFBD57 */
+  --hatch-yolk-deep: 185 120 26; /* #B9781A */
+  --hatch-ember: 232 87 42; /* #E8572A */
+  --hatch-shell: 246 238 220; /* #F6EEDC */
+
+  /* Surfaces, low -> high */
+  --hatch-bg: 18 14 11; /* page: Night */
+  --surface-inset: 14 11 9; /* #0E0B09 inputs */
+  --surface-1: 26 21 17; /* #1A1511 cards */
+  --surface-2: 34 27 22; /* #221B16 raised */
+  --surface-3: 44 36 30; /* #2C241E hover / track */
+  --line: 56 46 38; /* #382E26 borders */
+  --line-strong: 74 62 52; /* #4A3E34 dividers */
+
+  /* Text */
+  --text-primary: 246 238 220; /* #F6EEDC */
+  --text-secondary: 201 191 177; /* #C9BFB1 */
+  --text-nav: 181 171 159; /* #B5AB9F */
+  --text-muted: 138 129 120; /* #8A8178 ash */
+  --text-disabled: 110 101 92; /* #6E655C */
+  --text-on-yolk: 18 14 11; /* #120E0B */
+  /* Yolk used as text (links, highlights); stays readable on the light theme too. */
+  --accent-ink: 242 169 59;
+
+  /* Status */
+  --success: 123 211 137; /* #7BD389 */
+  --warning: 247 209 84; /* #F7D154 */
+  --error: 242 95 92; /* #F25F5C */
+  --info: 141 180 255; /* #8DB4FF */
+
+  --dot-field: 246 238 220;
+  color-scheme: dark;
+}
+
+/* Light theme, derived: Shell becomes the page, Night becomes the ink. */
+.light {
+  --hatch-bg: 246 238 220; /* #F6EEDC */
+  --surface-inset: 255 252 245; /* #FFFCF5 */
+  --surface-1: 251 246 236; /* #FBF6EC */
+  --surface-2: 239 229 211; /* #EFE5D3 */
+  --surface-3: 230 218 197; /* #E6DAC5 */
+  --line: 220 207 186; /* #DCCFBA */
+  --line-strong: 201 185 160; /* #C9B9A0 */
+
+  --text-primary: 18 14 11;
+  --text-secondary: 74 62 52; /* #4A3E34 */
+  --text-nav: 92 80 70; /* #5C5046 */
+  --text-muted: 110 101 92; /* #6E655C */
+  --text-disabled: 160 150 138; /* #A0968A */
+  --accent-ink: 154 97 16; /* #9A6110 */
+
+  --success: 46 140 72; /* #2E8C48 */
+  --warning: 160 120 10; /* #A0780A */
+  --error: 200 52 49; /* #C83431 */
+  --info: 52 102 204; /* #3466CC */
+
+  --dot-field: 18 14 11;
+  color-scheme: light;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

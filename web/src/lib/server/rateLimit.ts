@@ -43,7 +43,13 @@ let capCount = 0;
  * Global per-instance daily cap (AI_DAILY_CAP, default 300) on top of the per-IP limits. Returns true
  * (and sends 503) once today's (UTC) count is used up.
  */
-export function dailyCapReached(res: NextApiResponse, cap = Number(process.env.AI_DAILY_CAP) || 300): boolean {
+const envCap = () => {
+  const v = Number(process.env.AI_DAILY_CAP);
+  return process.env.AI_DAILY_CAP !== undefined && process.env.AI_DAILY_CAP !== '' && Number.isFinite(v) && v >= 0 ? v : 300;
+};
+
+/** AI_DAILY_CAP=0 rests the AI routes entirely. */
+export function dailyCapReached(res: NextApiResponse, cap = envCap()): boolean {
   const today = new Date().toISOString().slice(0, 10);
   if (today !== capDay) {
     capDay = today;
