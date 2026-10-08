@@ -53,13 +53,13 @@ export function MiniEgg({ progress, hatched = false, className }: { progress: nu
  * The big egg on the token page: a dark shell that fills with yolk from the bottom. The yolk line
  * glows; past 80% a crack appears; scale marks run down the right side.
  */
-export function EggVessel({ progress, hatched = false, className }: { progress: number; hatched?: boolean; className?: string }) {
+export function EggVessel({ progress, hatched = false, compact = false, className }: { progress: number; hatched?: boolean; compact?: boolean; className?: string }) {
   const s = stageOf(progress, hatched);
   const pct = Math.min(1, Math.max(0, hatched ? 1 : progress));
   // Fill height in px of a 330px egg, with a 5px minimum so a tiny raise still shows.
   const fill = Math.max(5, pct * 330);
   return (
-    <div className={cn('relative flex h-[380px] items-center justify-center', className)}>
+    <div className={cn('relative flex items-center justify-center', compact ? 'h-[330px] w-[260px]' : 'h-[380px]', className)}>
       <div
         className={cn('relative h-[330px] w-[260px] overflow-hidden border-[3px] bg-night', s === 0 ? 'border-line-strong' : s === 1 ? 'border-yolk' : 'border-ember')}
         style={{ borderRadius: EGG_RADIUS, boxShadow: 'inset -20px -24px 0 rgba(0,0,0,0.25)' }}
@@ -91,13 +91,13 @@ export function EggVessel({ progress, hatched = false, className }: { progress: 
           </svg>
         )}
       </div>
-      <div className="absolute bottom-[30px] right-[-6px] top-10 flex flex-col justify-between text-right font-mono text-[11px] font-medium text-ink-disabled" aria-hidden>
+      {!compact && <div className="absolute bottom-[30px] right-[-6px] top-10 flex flex-col justify-between text-right font-mono text-[11px] font-medium text-ink-disabled" aria-hidden>
         <span>100</span>
         <span className="text-ink-accent">80 · crack</span>
         <span>50</span>
         <span>25</span>
         <span>0</span>
-      </div>
+      </div>}
     </div>
   );
 }

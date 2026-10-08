@@ -169,7 +169,7 @@ export default function MyHatches() {
             }
           />
         ) : isLoading ? (
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2">
             <Skeleton className="h-24 rounded-[18px] md:col-span-2" />
             {[0, 1, 2, 3].map((i) => (
               <Skeleton key={i} className="h-36 rounded-[18px]" />
@@ -199,7 +199,7 @@ export default function MyHatches() {
         ) : (
           <>
             <ClaimableSummary pools={data} />
-            <div className={cn('grid gap-4', data.length > 1 && 'md:grid-cols-2')}>
+            <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', data.length > 1 && 'md:grid-cols-2')}>
               {data.map((p) => (
                 <MyHatchCard key={p.address} pool={p} />
               ))}

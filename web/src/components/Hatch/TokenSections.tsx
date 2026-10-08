@@ -102,7 +102,7 @@ export function ProgressCard({ pool }: { pool: HatchPool }) {
   const toGo = pool.thresholdUi.minus(pool.quoteReserveUi);
   const stock = useStockName(pool);
   return (
-    <Card className="relative grid items-center gap-8 overflow-hidden rounded-[24px] p-5 md:p-9 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-11">
+    <Card className="relative grid grid-cols-[minmax(0,1fr)] items-center gap-8 overflow-hidden rounded-[24px] p-5 md:p-9 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-11">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0"
@@ -111,9 +111,17 @@ export function ProgressCard({ pool }: { pool: HatchPool }) {
       <EggVessel progress={pool.progress} className="relative max-lg:hidden" />
       <div className="relative flex min-w-0 flex-col gap-[22px]">
         <Overline>Hatching progress</Overline>
-        <div className="flex flex-wrap items-baseline gap-3.5">
-          <span className="font-display text-[56px] font-bold leading-[0.9] tracking-[-0.04em] text-yolk md:text-[80px]">{formatPercent(pool.progress)}</span>
-          <span className="text-base text-ink-2">to hatch</span>
+        <div className="flex items-center gap-4">
+          {/* Mobile: the egg sits beside the number (design M3) */}
+          <div className="relative h-[96px] w-[76px] shrink-0 lg:hidden" aria-hidden>
+            <div className="absolute left-0 top-0 origin-top-left scale-[0.29]">
+              <EggVessel progress={pool.progress} compact />
+            </div>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3.5 gap-y-1">
+            <span className="font-display text-[44px] font-bold leading-[0.9] tracking-[-0.04em] text-yolk sm:text-[56px] md:text-[80px]">{formatPercent(pool.progress)}</span>
+            <span className="text-base text-ink-2">to hatch</span>
+          </div>
         </div>
         <div className="flex flex-col gap-2.5">
           <div className="flex flex-wrap justify-between gap-2 font-mono text-[15px] font-medium">
@@ -158,7 +166,7 @@ export function StageTimeline({ pool }: { pool: HatchPool }) {
     { title: 'Hatched', here: 'Moved to a full Meteora pool.', note: 'Moves to a full Meteora pool.' },
   ];
   return (
-    <Card className="grid gap-5 rounded-[24px] px-5 py-6 sm:grid-cols-3 md:px-9 md:py-7">
+    <Card className="grid grid-cols-[minmax(0,1fr)] gap-5 rounded-[24px] px-5 py-6 sm:grid-cols-3 md:px-9 md:py-7">
       {stages.map((s, i) => (
         <div key={s.title} className={cn('flex items-center gap-3.5', i > idx && 'opacity-55')}>
           <StageEgg state={i < idx ? 'done' : i === idx ? 'current' : 'next'} />
@@ -192,7 +200,7 @@ export function AboutCard({ pool, mint }: { pool: HatchPool | null | undefined; 
 export function HatchedCard({ pool, symbol }: { pool: HatchPool; symbol: string }) {
   const quote = useQuoteSymbol(pool.quote);
   return (
-    <Card className="relative grid items-center gap-8 overflow-hidden rounded-[24px] border-ember/50 p-6 md:grid-cols-[260px_minmax(0,1fr)] md:gap-11 md:p-10">
+    <Card className="relative grid grid-cols-[minmax(0,1fr)] items-center gap-8 overflow-hidden rounded-[24px] border-ember/50 p-6 md:grid-cols-[260px_minmax(0,1fr)] md:gap-11 md:p-10">
       <div aria-hidden className="pointer-events-none absolute -left-20 -top-20 h-[520px] w-[520px] bg-[radial-gradient(circle,rgba(232,87,42,0.28)_0%,rgba(232,87,42,0)_60%)]" />
       <div className="relative mx-auto h-[300px] w-[260px]" aria-hidden>
         <div

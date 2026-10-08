@@ -50,15 +50,20 @@ const HatchOnChain = ({ mint }: { mint: string }) => {
     );
 
   return (
-    <div className="grid items-start gap-5 md:gap-7 lg:grid-cols-[minmax(0,1fr)_420px]">
-      <div className="flex min-w-0 flex-col gap-5 md:gap-6">
-        {pool.isMigrated ? <HatchedCard pool={pool} symbol={md?.symbol ?? ''} /> : <ProgressCard pool={pool} />}
-        {!pool.isMigrated && <StageTimeline pool={pool} />}
-        <div className="max-lg:order-last">
+    // Desktop: two columns. Mobile (design M3): progress, trade, fees, then stages and About.
+    <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 md:gap-7 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <div className="flex min-w-0 flex-col gap-5 max-lg:contents md:gap-6">
+        <div className="max-lg:order-1">{pool.isMigrated ? <HatchedCard pool={pool} symbol={md?.symbol ?? ''} /> : <ProgressCard pool={pool} />}</div>
+        {!pool.isMigrated && (
+          <div className="max-lg:order-3">
+            <StageTimeline pool={pool} />
+          </div>
+        )}
+        <div className="max-lg:order-4">
           <AboutCard pool={pool} mint={mint} />
         </div>
       </div>
-      <div className="flex flex-col gap-5 lg:sticky lg:top-24">
+      <div className="flex min-w-0 flex-col gap-5 max-lg:order-2 lg:sticky lg:top-24">
         {pool.isMigrated ? <TradeOnMeteora pool={pool} /> : <TradePanel pool={pool} baseSymbol={symbol} />}
         <ClaimCreatorFees pool={pool} baseSymbol={symbol} />
       </div>

@@ -182,7 +182,7 @@ export default function CreatePool() {
         <meta name="description" content="Launch a token on Hatch, built on Meteora DBC." />
       </Head>
 
-      <form onSubmit={onSubmit} noValidate className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-12">
+      <form onSubmit={onSubmit} noValidate className="grid grid-cols-[minmax(0,1fr)] items-start gap-8 lg:grid-cols-[minmax(0,1fr)_400px] lg:gap-12">
         <div className="flex min-w-0 flex-col gap-[18px] md:gap-6">
           {domain && <InspiredChip domain={domain} href={form.source} className="self-start" />}
           <div className="flex flex-col gap-2">
