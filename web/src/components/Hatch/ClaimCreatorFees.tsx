@@ -7,7 +7,9 @@ import { buildClaimCreatorFees, signAndSend } from '@/lib/dbc/transactions';
 import { formatAmount } from '@/lib/format/amount';
 import { getConnection } from '@/lib/solana/connection';
 import { EXPLORER_NAME, explorerTxUrl } from '@/lib/config/network';
-import { useQuoteSymbol, useUsdPrice } from '@/hooks/useHatch';
+import { useQuoteSymbol, useSolLamports, useUsdPrice } from '@/hooks/useHatch';
+import { reportTxError, type FriendlyError } from '@/lib/txErrors';
+import { TxErrorNote } from './TxErrorNote';
 
 /** Rendered only for the pool creator's wallet. */
 export function ClaimCreatorFees({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: string }) {
@@ -16,6 +18,8 @@ export function ClaimCreatorFees({ pool, baseSymbol }: { pool: HatchPool; baseSy
   const quoteSymbol = useQuoteSymbol(pool.quote);
   const usd = useUsdPrice(pool.quote.address);
   const [busy, setBusy] = useState(false);
+  const [txError, setTxError] = useState<FriendlyError | null>(null);
+  const solLamports = useSolLamports(wallet.publicKey);
 
   if (!wallet.publicKey || wallet.publicKey.toBase58() !== pool.creator) return null;
 
@@ -24,6 +28,7 @@ export function ClaimCreatorFees({ pool, baseSymbol }: { pool: HatchPool; baseSy
 
   const claim = async () => {
     setBusy(true);
+    setTxError(null);
     try {
       const connection = getConnection();
       const tx = await buildClaimCreatorFees({ connection, creator: wallet.publicKey!, pool: pool.address });
@@ -35,7 +40,9 @@ export function ClaimCreatorFees({ pool, baseSymbol }: { pool: HatchPool; baseSy
       });
       await queryClient.invalidateQueries(['hatch']);
     } catch (e) {
-      notify.error({ title: "Claim didn't go through", body: e instanceof Error ? e.message : 'Claim failed', action: { label: 'Try again', onClick: () => void claim() } });
+      const f = reportTxError(e, { balanceLamports: solLamports.data }, 'claim');
+      setTxError(f);
+      notify.error({ title: "Claim didn't go through", body: f.message, action: { label: 'Try again', onClick: () => void claim() } });
     } finally {
       setBusy(false);
     }
@@ -57,6 +64,7 @@ export function ClaimCreatorFees({ pool, baseSymbol }: { pool: HatchPool; baseSy
       <Button variant={pool.isMigrated ? 'primary' : 'secondary'} block onClick={claim} loading={busy} disabled={nothing}>
         {busy ? 'Confirm in your wallet…' : nothing ? 'Nothing to claim yet' : 'Claim fees'}
       </Button>
+      <TxErrorNote error={txError} onDismiss={() => setTxError(null)} />
     </Card>
   );
 }

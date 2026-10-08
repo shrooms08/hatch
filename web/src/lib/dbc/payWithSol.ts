@@ -18,6 +18,7 @@ import { fetchMintInfo, fetchRawBalance, uiToRaw, type MintInfo } from '@/lib/so
 const SOL_UNITS = { decimals: 9, multiplier: 1 };
 import { PRIORITY_FEE_MICROLAMPORTS } from '@/lib/config/network';
 import { WSOL, jupQuote, jupSwapInstructions, jupSwapTransaction, type JupQuote } from '@/lib/jupiter';
+import { UserError } from '@/lib/txErrors';
 
 const TX_SIZE_LIMIT = 1232;
 
@@ -44,10 +45,10 @@ async function currentPoint(connection: Connection, activationType: number) {
 async function poolAndConfig(connection: Connection, pool: string) {
   const client = dbcClient(connection);
   const virtualPool = await client.state.getPool(pool);
-  if (!virtualPool) throw new Error('Pool not found');
+  if (!virtualPool) throw new UserError('Pool not found');
   const config = await client.state.getPoolConfig(virtualPool.poolState.config);
-  if (!config) throw new Error('Pool config not found');
-  if (virtualPool.poolState.isMigrated === 1) throw new Error('This token has hatched; the curve is closed.');
+  if (!config) throw new UserError('Pool config not found');
+  if (virtualPool.poolState.isMigrated === 1) throw new UserError('This token has hatched; the curve is closed.');
   return { client, virtualPool, config };
 }
 
@@ -55,9 +56,9 @@ export async function quotePayWithSol(params: { connection: Connection; pool: st
   const { connection, slippageBps } = params;
   const solUi = String(params.solUi).trim();
   // Exact decimal -> lamports (no float rounding); anything that is not a plain number is refused.
-  if (!/^\d*\.?\d+$/.test(solUi)) throw new Error('Enter a valid SOL amount');
+  if (!/^\d*\.?\d+$/.test(solUi)) throw new UserError('Enter a valid SOL amount');
   const lamportsIn = BigInt(uiToRaw(solUi, SOL_UNITS).toString());
-  if (!(lamportsIn > BigInt(0))) throw new Error('Enter an amount greater than zero');
+  if (!(lamportsIn > BigInt(0))) throw new UserError('Enter an amount greater than zero');
   const { client, virtualPool, config } = await poolAndConfig(connection, params.pool);
   const [quoteMint, baseMint] = await Promise.all([fetchMintInfo(connection, config.quoteMint), fetchMintInfo(connection, virtualPool.poolState.baseMint)]);
   const jup = await jupQuote(WSOL, config.quoteMint, lamportsIn, slippageBps);
@@ -118,7 +119,7 @@ export async function buildPayWithSol(connection: Connection, owner: PublicKey, 
     step2: async () => {
       const after = await fetchRawBalance(connection, owner, q.quoteMint);
       const received = after.sub(before);
-      if (received.lte(new BN(0))) throw new Error('The SOL swap did not deliver any tokens; nothing was bought.');
+      if (received.lte(new BN(0))) throw new UserError('The SOL swap did not deliver any tokens; nothing was bought.');
       const fresh = await quotePayWithSolFromQuoteAmount(connection, q.pool, received, q.jup.slippageBps);
       const ixs2 = await dbcBuyInstructions(connection, owner, q.pool, received, fresh);
       const { blockhash: bh } = await connection.getLatestBlockhash('confirmed');

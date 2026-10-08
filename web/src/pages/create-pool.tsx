@@ -8,7 +8,11 @@ import { TokenArt } from '@/components/ds/TokenArt';
 import { HatchedMoment } from '@/components/Hatch/HatchedMoment';
 import { OpenInWallet } from '@/components/Hatch/OpenInWallet';
 import { Tip } from '@/components/Onboarding/Tip';
-import { useConfigThreshold, usePresetConfigs, useShieldedConfigs } from '@/hooks/useHatch';
+import { useConfigThreshold, usePresetConfigs, useRentPerByte, useShieldedConfigs, useSolLamports } from '@/hooks/useHatch';
+import { reportTxError, type FriendlyError } from '@/lib/txErrors';
+import { formatSol, formatSolNeed, launchCostLamports } from '@/lib/costs';
+import { LEGACY_FEE_SENTENCE, shieldFeeSentence } from '@/lib/dbc/feeSchedule';
+import { SolShortNote, TxErrorNote } from '@/components/Hatch/TxErrorNote';
 import { PRESET_IDS, PRESETS, parsePresetId, stockPreset, type PresetId } from '@/lib/presets';
 import { DESCRIPTION_MAX, NAME_MAX, SYMBOL_MAX, launchFieldsSchema, type LaunchFields } from '@/lib/validation/launch';
 import { checkImageFile, launchToken } from '@/lib/launch/client';
@@ -61,7 +65,7 @@ export default function CreatePool() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageUrl, setImageUrl] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<FriendlyError | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [created, setCreated] = useState<{ mint: string; signature: string } | null>(null);
 
@@ -96,6 +100,14 @@ export default function CreatePool() {
   // Sniper shield per card: STOCK shows it when the selected (or first) stock's config has one.
   const shieldKeys = { STOCK: (selectedStock ?? stocks[0])?.config, MEME: enabledPresets?.configs.MEME, AI_AGENT: enabledPresets?.configs.AI_AGENT };
   const shielded = useShieldedConfigs(Object.values(shieldKeys).filter((k): k is string => !!k));
+  const shieldOn = !!configKey && !!shielded.data?.has(configKey);
+
+  // Balance preflight: what this launch costs (fees + rent for mint, metadata, pool, vaults) vs the wallet.
+  const rent = useRentPerByte();
+  const solLamports = useSolLamports(wallet.publicKey);
+  const launchNeed = rent.data != null ? launchCostLamports({ perByte: rent.data, name: form.name || 'Hatchling', symbol: form.symbol || 'HATCH', stockQuote: form.preset === 'STOCK' }) : null;
+  const solShort = !!wallet.publicKey && launchNeed != null && solLamports.data != null && solLamports.data < launchNeed;
+  const costLine = launchNeed != null ? `Launch costs about ${formatSolNeed(launchNeed)} SOL.` : 'Launch costs a little SOL for network fees and storage.';
   const domain = sourceDomain(form.source || undefined);
   const paired = form.preset === 'STOCK' ? selectedStock?.symbol ?? null : null;
 
@@ -130,10 +142,9 @@ export default function CreatePool() {
       setCreated(result);
       emitHatchEvent('launched', wallet.publicKey!.toBase58(), result.mint);
     } catch (err) {
-      console.error('Launch failed:', err);
-      const message = err instanceof Error ? err.message : 'Launch failed';
-      setFormError(message);
-      notify.error({ title: "Launch didn't go through", body: message });
+      const f = reportTxError(err, { balanceLamports: solLamports.data, neededLamports: launchNeed }, 'launch');
+      setFormError(f);
+      notify.error({ title: "Launch didn't go through", body: f.message });
     } finally {
       setIsLoading(false);
     }
@@ -174,12 +185,13 @@ export default function CreatePool() {
     <Note title="How it works">
       Buyers pay with {quoteSymbol}
       {form.preset === 'STOCK' ? ' or SOL' : ''}. Every buy nudges the price up.{' '}
-      {threshold.data ? `At ${formatAmount(threshold.data)} ${quoteSymbol} it hatches into a Meteora pool.` : 'When the goal is reached it hatches into a Meteora pool.'} 1% fee per trade, split with Hatch.
+      {threshold.data ? `At ${formatAmount(threshold.data)} ${quoteSymbol} it hatches into a Meteora pool.` : 'When the goal is reached it hatches into a Meteora pool.'}{' '}
+      {shieldOn ? shieldFeeSentence() : LEGACY_FEE_SENTENCE}
     </Note>
   );
   const honest = form.preset === 'STOCK' ? <HonestNote>{preset.explainer[2]?.replace("The stock token's issuer", 'The issuer')}</HonestNote> : null;
   const submit = (
-    <Button type="submit" size="lg" block glow loading={isLoading} className="h-[62px]">
+    <Button type="submit" size="lg" block glow loading={isLoading} disabled={solShort} className="h-[62px]">
       {!wallet.publicKey ? (
         'Connect wallet'
       ) : isLoading ? (
@@ -328,8 +340,9 @@ export default function CreatePool() {
           <div className="flex flex-col gap-[18px] lg:hidden">
             {howItWorks}
             {honest}
-            {formError && <p className="text-sm text-danger" role="alert">{formError}</p>}
-            <Tip id="launch-sign" media="(max-width: 1023px)">You&apos;ll sign once in your wallet. Launch costs about 0.01 SOL.</Tip>
+            <TxErrorNote error={formError} onDismiss={() => setFormError(null)} />
+            {solShort && <SolShortNote need={formatSolNeed(launchNeed!)} have={formatSol(solLamports.data!)} />}
+            <Tip id="launch-sign" media="(max-width: 1023px)">You&apos;ll sign once in your wallet. {costLine}</Tip>
             {submit}
             <OpenInWallet />
           </div>
@@ -354,8 +367,9 @@ export default function CreatePool() {
           </Card>
           {howItWorks}
           {honest}
-          {formError && <p className="text-sm text-danger" role="alert">{formError}</p>}
-          <Tip id="launch-sign" media="(min-width: 1024px)">You&apos;ll sign once in your wallet. Launch costs about 0.01 SOL.</Tip>
+          <TxErrorNote error={formError} onDismiss={() => setFormError(null)} />
+          {solShort && <SolShortNote need={formatSolNeed(launchNeed!)} have={formatSol(solLamports.data!)} />}
+          <Tip id="launch-sign" media="(min-width: 1024px)">You&apos;ll sign once in your wallet. {costLine}</Tip>
           {submit}
           <p className="text-center text-xs text-ink-muted">You sign and pay the network fee with your wallet. Hatch never holds your keys.</p>
         </aside>

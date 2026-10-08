@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/router';
 import { PublicKey } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { perByteFromRent0 } from '@/lib/costs';
 import { getConnection } from '@/lib/solana/connection';
 import { dbcClient, fetchHatchPoolByMint, fetchHatchPools, type HatchPool } from '@/lib/dbc/pool';
 import { baseFeePercentAt, feeScheduleOf, hasSniperShield, shieldDuration, shieldRange } from '@/lib/dbc/feeSchedule';
@@ -185,6 +187,40 @@ export function useLiveBaseFee(pool: HatchPool | null | undefined) {
   if (!pool || !f) return null;
   if (!shield) return { percent: hasSniperShield(f) ? shieldRange(f).end : baseFeePercentAt(f, '0', 0), shield: null, decaying: false, secondsLeft: 0 };
   return { percent: baseFeePercentAt(shield, pool.activationPoint, now), shield: shieldRange(shield), decaying, secondsLeft: Math.max(0, Math.ceil(end - now)) };
+}
+
+/** Lamports per byte of rent-exempt storage (rent(0) / 128). One RPC call per session. */
+export function useRentPerByte() {
+  return useQuery({
+    queryKey: ['hatch', 'rent-per-byte'],
+    queryFn: async () => perByteFromRent0(await getConnection().getMinimumBalanceForRentExemption(0)),
+    staleTime: Infinity,
+  });
+}
+
+/** The wallet's SOL balance in lamports. */
+export function useSolLamports(owner: PublicKey | null | undefined) {
+  return useQuery({
+    queryKey: ['hatch', 'sol-lamports', owner?.toBase58()],
+    queryFn: () => getConnection().getBalance(owner!, 'confirmed'),
+    enabled: !!owner,
+    refetchInterval: POLL_MS,
+  });
+}
+
+/** Whether `owner` already has the associated token account for `mint` (no rent needed to buy). */
+export function useHasTokenAccount(owner: PublicKey | null | undefined, mint: MintInfo | string | undefined) {
+  return useQuery({
+    queryKey: ['hatch', 'has-ata', owner?.toBase58(), typeof mint === 'string' ? mint : mint?.address],
+    queryFn: async () => {
+      const connection = getConnection();
+      const info = typeof mint === 'string' ? await fetchMintInfo(connection, mint) : mint!;
+      const ata = getAssociatedTokenAddressSync(new PublicKey(info.address), owner!, true, new PublicKey(info.programId));
+      return !!(await connection.getAccountInfo(ata, 'confirmed'));
+    },
+    enabled: !!owner && !!mint,
+    refetchInterval: POLL_MS,
+  });
 }
 
 /** True when `mint` is a test launch (TEST_MINTS). */

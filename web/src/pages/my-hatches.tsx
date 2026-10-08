@@ -15,6 +15,8 @@ import { getConnection } from '@/lib/solana/connection';
 import { EXPLORER_NAME, explorerTxUrl } from '@/lib/config/network';
 import { progressInk } from '@/components/ds/Progress';
 import { cn } from '@/lib/utils';
+import { reportTxError, type FriendlyError } from '@/lib/txErrors';
+import { TxErrorNote } from '@/components/Hatch/TxErrorNote';
 
 const hasFees = (p: HatchPool) => !p.fees.creatorQuote.isZero() || !p.fees.creatorBase.isZero();
 
@@ -36,6 +38,7 @@ function MyHatchCard({ pool }: { pool: HatchPool }) {
   const quote = useQuoteSymbol(pool.quote);
   const claim = useClaim();
   const [busy, setBusy] = useState(false);
+  const [txError, setTxError] = useState<FriendlyError | null>(null);
   const label = md?.symbol ? `$${md.symbol}` : 'your token';
   const isTest = useIsTestLaunch(pool.baseMint);
   return (
@@ -67,10 +70,13 @@ function MyHatchCard({ pool }: { pool: HatchPool }) {
           loading={busy}
           onClick={async () => {
             setBusy(true);
+            setTxError(null);
             try {
               await claim(pool, label);
             } catch (e) {
-              notify.error({ title: "Claim didn't go through", body: e instanceof Error ? e.message : 'Claim failed' });
+              const f = reportTxError(e, {}, 'claim');
+              setTxError(f);
+              notify.error({ title: "Claim didn't go through", body: f.message });
             } finally {
               setBusy(false);
             }
@@ -79,6 +85,7 @@ function MyHatchCard({ pool }: { pool: HatchPool }) {
           Claim
         </Button>
       </div>
+      <TxErrorNote error={txError} onDismiss={() => setTxError(null)} />
     </Card>
   );
 }
@@ -86,6 +93,7 @@ function MyHatchCard({ pool }: { pool: HatchPool }) {
 function ClaimableSummary({ pools }: { pools: HatchPool[] }) {
   const claim = useClaim();
   const [busy, setBusy] = useState<string | null>(null);
+  const [txError, setTxError] = useState<FriendlyError | null>(null);
   const withFees = pools.filter(hasFees);
   // Totals per quote token (SOL pools and NVDAx pools add up separately).
   const totals = new Map<string, { pool: HatchPool; sum: Decimal }>();
@@ -95,12 +103,15 @@ function ClaimableSummary({ pools }: { pools: HatchPool[] }) {
     totals.set(p.quote.address, t);
   }
   const claimAll = async () => {
+    setTxError(null);
     for (const [i, p] of withFees.entries()) {
       setBusy(`Claiming ${i + 1} of ${withFees.length}… confirm in your wallet`);
       try {
         await claim(p, `token ${i + 1} of ${withFees.length}`);
       } catch (e) {
-        notify.error({ title: "Claim didn't go through", body: e instanceof Error ? e.message : 'Claim failed' });
+        const f = reportTxError(e, {}, 'claim');
+        setTxError(f);
+        notify.error({ title: "Claim didn't go through", body: f.message });
         break;
       }
     }
@@ -120,6 +131,7 @@ function ClaimableSummary({ pools }: { pools: HatchPool[] }) {
       <Button size="header" onClick={claimAll} disabled={!withFees.length || !!busy} loading={!!busy}>
         Claim all
       </Button>
+      <TxErrorNote error={txError} onDismiss={() => setTxError(null)} className="w-full" />
     </Card>
   );
 }

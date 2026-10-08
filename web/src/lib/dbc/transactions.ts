@@ -7,6 +7,7 @@ import BN from 'bn.js';
 import { dbcClient } from '@/lib/dbc/pool';
 import { fetchMintInfo, uiToRaw, type MintInfo } from '@/lib/solana/mint';
 import { addPriorityFee } from '@/lib/solana/priorityFee';
+import { TxError, UserError } from '@/lib/txErrors';
 
 export type TradeSide = 'buy' | 'sell';
 
@@ -37,10 +38,10 @@ export async function buildSwap(params: {
   const { connection, owner, side, amountUi, slippageBps } = params;
   const client = dbcClient(connection);
   const virtualPool = await client.state.getPool(params.pool);
-  if (!virtualPool) throw new Error('Pool not found');
+  if (!virtualPool) throw new UserError('Pool not found');
   const config = await client.state.getPoolConfig(virtualPool.poolState.config);
-  if (!config) throw new Error('Pool config not found');
-  if (virtualPool.poolState.isMigrated === 1) throw new Error('This token has hatched; the curve is closed.');
+  if (!config) throw new UserError('Pool config not found');
+  if (virtualPool.poolState.isMigrated === 1) throw new UserError('This token has hatched; the curve is closed.');
 
   const quoteMint = await fetchMintInfo(connection, config.quoteMint);
   const baseMint = await fetchMintInfo(connection, virtualPool.poolState.baseMint);
@@ -48,7 +49,7 @@ export async function buildSwap(params: {
   const inMint = swapBaseForQuote ? baseMint : quoteMint;
   const outMint = swapBaseForQuote ? quoteMint : baseMint;
   const amountIn = uiToRaw(amountUi, inMint);
-  if (amountIn.lten(0)) throw new Error('Enter an amount greater than zero');
+  if (amountIn.lten(0)) throw new UserError('Enter an amount greater than zero');
 
   const quote = client.pool.swapQuote2({
     virtualPool,
@@ -86,10 +87,10 @@ export async function buildClaimCreatorFees(params: {
 }): Promise<Transaction> {
   const client = dbcClient(params.connection);
   const pool = await client.state.getPool(params.pool);
-  if (!pool) throw new Error('Pool not found');
-  if (!pool.poolState.creator.equals(params.creator)) throw new Error('Only the pool creator can claim');
+  if (!pool) throw new UserError('Pool not found');
+  if (!pool.poolState.creator.equals(params.creator)) throw new UserError('Only the pool creator can claim');
   const { creatorBaseFee, creatorQuoteFee } = pool.poolState;
-  if (creatorBaseFee.isZero() && creatorQuoteFee.isZero()) throw new Error('No creator fees to claim yet');
+  if (creatorBaseFee.isZero() && creatorQuoteFee.isZero()) throw new UserError('No creator fees to claim yet');
   const tx = await client.creator.claimCreatorTradingFee({
     creator: params.creator,
     payer: params.creator,
@@ -110,7 +111,7 @@ export async function signAndSend(
   tx: Transaction,
   signers: Signer[] = []
 ): Promise<string> {
-  if (!wallet.publicKey) throw new Error('Connect your wallet first');
+  if (!wallet.publicKey) throw new UserError('Connect your wallet first');
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   tx.feePayer = wallet.publicKey;
   tx.recentBlockhash = blockhash;
@@ -118,10 +119,10 @@ export async function signAndSend(
   const sim = await connection.simulateTransaction(tx);
   if (sim.value.err) {
     const logs = sim.value.logs?.slice(-6).join('\n') ?? '';
-    throw new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}${logs ? `\n${logs}` : ''}`);
+    throw new TxError(`Simulation failed: ${JSON.stringify(sim.value.err)}${logs ? `\n${logs}` : ''}`, 'simulate', { err: sim.value.err, logs: sim.value.logs ?? [] });
   }
 
-  const signature = await wallet.sendTransaction(tx, connection, { signers });
+  const signature = await walletSend(() => wallet.sendTransaction(tx, connection, { signers }));
   await confirmByPolling(connection, signature, lastValidBlockHeight);
   return signature;
 }
@@ -135,17 +136,26 @@ export async function signAndSendVersioned(
   connection: Connection,
   tx: VersionedTransaction
 ): Promise<string> {
-  if (!wallet.publicKey) throw new Error('Connect your wallet first');
+  if (!wallet.publicKey) throw new UserError('Connect your wallet first');
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   tx.message.recentBlockhash = blockhash;
   const sim = await connection.simulateTransaction(tx, { sigVerify: false });
   if (sim.value.err) {
     const logs = sim.value.logs?.slice(-6).join('\n') ?? '';
-    throw new Error(`Simulation failed: ${JSON.stringify(sim.value.err)}${logs ? `\n${logs}` : ''}`);
+    throw new TxError(`Simulation failed: ${JSON.stringify(sim.value.err)}${logs ? `\n${logs}` : ''}`, 'simulate', { err: sim.value.err, logs: sim.value.logs ?? [] });
   }
-  const signature = await wallet.sendTransaction(tx, connection);
+  const signature = await walletSend(() => wallet.sendTransaction(tx, connection));
   await confirmByPolling(connection, signature, lastValidBlockHeight);
   return signature;
+}
+
+/** The wallet's own errors (cancelled, failed to send) keep their details but are tagged 'wallet'. */
+async function walletSend(send: () => Promise<string>): Promise<string> {
+  try {
+    return await send();
+  } catch (e) {
+    throw new TxError(e instanceof Error ? e.message : String(e), 'wallet', { cause: e, err: (e as { error?: unknown })?.error });
+  }
 }
 
 /**
@@ -157,12 +167,12 @@ export async function confirmByPolling(connection: Connection, signature: string
   for (let i = 0; Date.now() - started < 120_000; i++) {
     const { value } = await connection.getSignatureStatuses([signature]);
     const status = value[0];
-    if (status?.err) throw new Error(`Transaction failed: ${JSON.stringify(status.err)}`);
+    if (status?.err) throw new TxError(`Transaction failed: ${JSON.stringify(status.err)}`, 'onchain', { err: status.err, signature });
     if (status?.confirmationStatus === 'confirmed' || status?.confirmationStatus === 'finalized') return;
     if (i % 5 === 4 && (await connection.getBlockHeight('confirmed')) > lastValidBlockHeight) {
-      throw new Error(`Transaction ${signature} expired before it confirmed. Nothing was spent; try again.`);
+      throw new TxError(`Transaction ${signature} expired before it confirmed. Nothing was spent; try again.`, 'expired', { signature });
     }
     await new Promise((r) => setTimeout(r, 1500));
   }
-  throw new Error(`Still waiting for ${signature} to confirm. Check it in the explorer before retrying.`);
+  throw new TxError(`Still waiting for ${signature} to confirm. Check it in the explorer before retrying.`, 'pending', { signature });
 }

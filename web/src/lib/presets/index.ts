@@ -28,7 +28,7 @@ export const PRESETS: Record<PresetId, Preset> = {
     explainer: [
       'People buy your token with SOL, and every purchase nudges the price up, so early buyers pay the least.',
       'Once enough SOL has come in, your token "hatches" into a full trading pool on Meteora.',
-      'Every trade pays a 1% fee, split evenly between you (the creator) and Hatch.',
+      'Fees start at 50% for the first minute so bots pay, then 1% per trade, split evenly between you (the creator) and Hatch.',
     ],
   },
   STOCK: {
@@ -40,7 +40,7 @@ export const PRESETS: Record<PresetId, Preset> = {
     quoteDecimals: 8,
     explainer: [
       'People buy your token with tokenized NVIDIA (NVDAx) instead of SOL, and every purchase nudges the price up.',
-      'Once enough NVDAx has come in, your token "hatches" into a full trading pool paired with NVDAx; every trade pays a 1% fee, split evenly between you and Hatch.',
+      'Once enough NVDAx has come in, your token "hatches" into a full trading pool paired with NVDAx. Fees start at 50% for the first minute so bots pay, then 1% per trade, split evenly between you and Hatch.',
       "This token is not the stock. Its pool holds tokenized NVIDIA. The stock token's issuer can pause transfers.",
     ],
   },
@@ -54,7 +54,7 @@ export const PRESETS: Record<PresetId, Preset> = {
     explainer: [
       'People buy your token with SOL; the price climbs more gently than a meme launch, so supporters can keep buying at fair prices for longer.',
       'Once enough SOL has come in, your token "hatches" into a full trading pool on Meteora.',
-      'You keep most of the fees: 80% of every 1% trading fee goes to you, the rest to Hatch.',
+      'Fees start at 50% for the first minute so bots pay, then 1% per trade. You keep most of it: 80% goes to you, the rest to Hatch.',
     ],
   },
 };
@@ -134,7 +134,7 @@ export function stockPreset(stock: Pick<StockInfo, 'symbol' | 'name' | 'quoteMin
     quoteSymbol: stock.symbol,
     explainer: [
       `People buy your token with tokenized ${stock.name} (${stock.symbol}) instead of SOL, and every purchase nudges the price up.`,
-      `Once enough ${stock.symbol} has come in, your token "hatches" into a full trading pool paired with ${stock.symbol}; every trade pays a 1% fee, split evenly between you and Hatch.`,
+      `Once enough ${stock.symbol} has come in, your token "hatches" into a full trading pool paired with ${stock.symbol}. Fees start at 50% for the first minute so bots pay, then 1% per trade, split evenly between you and Hatch.`,
       `This token is not the stock. Its pool holds tokenized ${stock.name}. The stock token's issuer can pause transfers.`,
     ],
   };

@@ -2,6 +2,7 @@
 import { Connection, Keypair, Transaction } from '@solana/web3.js';
 import type { WalletContextState } from '@jup-ag/wallet-adapter';
 import { signAndSend } from '@/lib/dbc/transactions';
+import { TxError, UserError } from '@/lib/txErrors';
 import { IMAGE_MAX_BYTES, IMAGE_MIME_TYPES, type LaunchFields } from '@/lib/validation/launch';
 
 export function checkImageFile(file: File): string | null {
@@ -27,14 +28,14 @@ export async function launchToken(params: {
   image: File | string;
 }): Promise<{ signature: string; mint: string; pool: string }> {
   const { wallet, connection, fields } = params;
-  if (!wallet.publicKey) throw new Error('Connect your wallet first');
+  if (!wallet.publicKey) throw new UserError('Connect your wallet first');
 
   let image: string;
   if (typeof params.image === 'string') {
     image = params.image;
   } else {
     const problem = checkImageFile(params.image);
-    if (problem) throw new Error(problem);
+    if (problem) throw new UserError(problem);
     image = await readAsDataUrl(params.image);
   }
 
@@ -52,11 +53,13 @@ export async function launchToken(params: {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const issues = body.issues ? Object.values(body.issues).flat().join(', ') : '';
-    throw new Error(issues || body.error || `Upload failed (HTTP ${res.status})`);
+    // Validation problems are written for people; anything else (rate limit, server) goes to the mapper.
+    if (res.status === 400 || res.status === 409) throw new UserError(issues || body.error || 'Check the form and try again.');
+    throw new TxError(`Upload failed (HTTP ${res.status}): ${body.error ?? ''}`, 'prepare');
   }
 
   if (!body.poolTx || !body.imageUrl || !body.metadataUrl) {
-    throw new Error('Image or metadata upload did not complete; nothing was launched. Please try again.');
+    throw new UserError('Image or metadata upload did not complete; nothing was launched. Please try again.');
   }
   const tx = Transaction.from(Buffer.from(body.poolTx, 'base64'));
   const signature = await signAndSend(wallet, connection, tx, [mintKeypair]);

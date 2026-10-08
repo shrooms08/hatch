@@ -56,5 +56,9 @@ export function shieldRange(f: FeeSchedule): { start: number; end: number } {
 /** The one plain line shown with the Sniper shield badge. */
 export const SNIPER_SHIELD_LINE = 'Fees start high for the first minute so bots pay, then drop to 1%.';
 
+/** How fees work, in one sentence: v2 configs (Sniper shield) vs legacy flat-fee configs. */
+export const shieldFeeSentence = (start = '50%', end = '1%') => `Fees start at ${start} for the first minute so bots pay, then ${end} per trade, split with Hatch.`;
+export const LEGACY_FEE_SENTENCE = '1% fee per trade, split with Hatch.';
+
 /** "36%", "7.1%", "1%". */
 export const formatFeePercent = (p: number) => `${Number(p.toFixed(p < 10 ? 1 : 0))}%`;

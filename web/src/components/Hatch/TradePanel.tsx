@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter';
 import { Amount, Button, Card, ChipGroup, DefRow, Segmented, SubscriptNumber, Toggle, TokenBadge, inputShell, notify } from '@/components/ds';
@@ -10,10 +10,13 @@ import { rawToUi } from '@/lib/solana/mint';
 import { formatAmount } from '@/lib/format/amount';
 import { getConnection } from '@/lib/solana/connection';
 import { NETWORK, explorerTxUrl, EXPLORER_NAME } from '@/lib/config/network';
-import { JupiterBusyError, WSOL } from '@/lib/jupiter';
-import { useLiveBaseFee, useQuoteSymbol, useTokenBalance, useTokenMetadata } from '@/hooks/useHatch';
+import { WSOL } from '@/lib/jupiter';
+import { friendlyTxError, reportTxError, type FriendlyError } from '@/lib/txErrors';
+import { LAMPORTS_PER_SOL, buyCostLamports, formatSol, formatSolNeed } from '@/lib/costs';
+import { SolShortNote, TxErrorNote } from './TxErrorNote';
+import { useHasTokenAccount, useLiveBaseFee, useQuoteSymbol, useRentPerByte, useSolLamports, useTokenBalance, useTokenMetadata } from '@/hooks/useHatch';
 import { OpenInWallet } from './OpenInWallet';
-import { SNIPER_SHIELD_LINE, formatFeePercent } from '@/lib/dbc/feeSchedule';
+import { LEGACY_FEE_SENTENCE, SNIPER_SHIELD_LINE, formatFeePercent, shieldFeeSentence } from '@/lib/dbc/feeSchedule';
 
 const SLIPPAGE_OPTIONS = [50, 100, 200];
 const SOL_FEE_BUFFER = 0.01; // keep some SOL for fees (and new token-account rent) when paying with SOL
@@ -21,9 +24,6 @@ const SOL_FEE_BUFFER = 0.01; // keep some SOL for fees (and new token-account re
 function isValidAmount(v: string) {
   return /^\d*\.?\d+$/.test(v) && Number(v) > 0;
 }
-
-const errorText = (e: unknown, fallback: string) =>
-  e instanceof JupiterBusyError ? e.message : e instanceof Error ? e.message : fallback;
 
 const pctLabel = (bps: number) => `${(bps / 100).toFixed(bps % 100 === 0 ? 0 : 1)}%`;
 
@@ -60,6 +60,23 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
   const outSymbol = side === 'buy' ? baseSymbol : quoteSymbol;
   const inBalance = usingSol ? solBalance.data : side === 'buy' ? quoteBalance.data : baseBalance.data;
 
+  // Balance preflight: SOL this buy needs (fees, new accounts, SOL spent) vs the wallet's SOL.
+  const solLamports = useSolLamports(wallet.publicKey);
+  const rent = useRentPerByte();
+  const spendsSol = usingSol || pool.quote.isNativeSol;
+  const hasBaseAccount = useHasTokenAccount(side === 'buy' ? wallet.publicKey : null, pool.baseMint);
+  const hasQuoteAccount = useHasTokenAccount(usingSol ? wallet.publicKey : null, pool.quote);
+  const solIn = side === 'buy' && spendsSol && isValidAmount(amount) ? Math.round(Number(amount) * LAMPORTS_PER_SOL) : 0;
+  const buyNeed =
+    side === 'buy' && rent.data != null && hasBaseAccount.data !== undefined
+      ? buyCostLamports({ perByte: rent.data, solIn, needsBaseAccount: !hasBaseAccount.data, spendsSol, payWithSol: usingSol, needsQuoteAccount: usingSol && hasQuoteAccount.data === false })
+      : null;
+  const solShort = !!wallet.publicKey && side === 'buy' && buyNeed != null && solLamports.data != null && solLamports.data < buyNeed;
+
+  const [txError, setTxError] = useState<FriendlyError | null>(null);
+  const noteRef = useRef<string | undefined>(undefined);
+  useEffect(() => setTxError(null), [amount, side, usingSol]);
+
   const preview = useQuery({
     queryKey: ['hatch', 'swap-preview', pool.address, side, amount, slippageBps, usingSol, wallet.publicKey?.toBase58()],
     queryFn: async () => {
@@ -78,6 +95,10 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
     staleTime: 5_000,
     retry: false,
   });
+
+  useEffect(() => {
+    if (preview.error) console.error('[hatch] quote failed:', preview.error);
+  }, [preview.error]);
 
   if (pool.isMigrated) return null; // the page shows "Trade on Meteora" instead
   if (pool.presetId === null) return null; // not a Hatch launch: no trading here
@@ -113,11 +134,9 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
     const sig1 = await signAndSendVersioned(wallet, connection, plan.step1);
     notify.success({ title: `Step 1 of 2 done: got ${quoteSymbol}`, action: { label: `View on ${EXPLORER_NAME}`, href: explorerTxUrl(sig1) } });
     setStep(`Step 2 of 2: buy ${baseSymbol} with ${quoteSymbol}. Confirm in your wallet…`);
-    try {
-      return done(await signAndSendVersioned(wallet, connection, await plan.step2()), out);
-    } catch (e) {
-      throw new Error(`Step 2 failed: ${errorText(e, 'buy failed')}. Your ${quoteSymbol} is in your wallet; turn off "Pay with SOL" to buy with it.`);
-    }
+    // If step 2 fails, the swapped tokens are already in the wallet: say so with the error.
+    noteRef.current = `Your ${quoteSymbol} from step 1 is in your wallet; turn off "Pay with SOL" to buy with it.`;
+    return done(await signAndSendVersioned(wallet, connection, await plan.step2()), out);
   };
 
   const submit = async () => {
@@ -125,6 +144,8 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
     if (!isValidAmount(amount)) return notify.error('Enter an amount');
     if (inBalance && inBalance.lt(amount)) return notify.error(`Not enough ${inSymbol}`);
     const out = preview.data ? formatAmount(preview.data.out) : null;
+    setTxError(null);
+    noteRef.current = undefined;
     setSubmitting(true);
     try {
       if (usingSol) await submitWithSol(out);
@@ -134,7 +155,9 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
         await done(await signAndSend(wallet, connection, tx), out);
       }
     } catch (e) {
-      notify.error({ title: "Transaction didn't go through", body: errorText(e, 'Swap failed'), action: { label: 'Try again', onClick: () => void submit() } });
+      const f = reportTxError(e, { balanceLamports: solLamports.data, neededLamports: buyNeed, symbol: inSymbol, note: noteRef.current }, side);
+      setTxError(f);
+      notify.error({ title: "Transaction didn't go through", body: f.message, action: { label: 'Try again', onClick: () => void submit() } });
     } finally {
       setSubmitting(false);
       setStep(null);
@@ -261,12 +284,12 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
             formatFeePercent(fee?.percent ?? 1)
           )}
         </DefRow>
-        {fee?.shield && <p className="text-xs text-ink-muted">Sniper shield: {SNIPER_SHIELD_LINE}</p>}
-        {preview.error ? (
-          <p className="text-[13px] text-danger" role="alert">
-            {errorText(preview.error, 'Could not get a quote')}
+        {fee && (
+          <p className="text-xs text-ink-muted">
+            {fee.shield ? shieldFeeSentence(formatFeePercent(fee.shield.start), formatFeePercent(fee.shield.end)) : LEGACY_FEE_SENTENCE}
           </p>
-        ) : null}
+        )}
+        {preview.error ? <TxErrorNote error={friendlyTxError(preview.error, { symbol: inSymbol })} /> : null}
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -333,9 +356,11 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
           {step}
         </p>
       )}
-      <Button size="lg" block glow onClick={submit} loading={submitting} className="h-[60px] text-lg">
+      {solShort && <SolShortNote need={formatSolNeed(buyNeed!)} have={formatSol(solLamports.data!)} />}
+      <Button size="lg" block glow onClick={submit} loading={submitting} disabled={solShort} className="h-[60px] text-lg">
         {!wallet.publicKey ? 'Connect wallet' : submitting ? 'Working…' : `${side === 'buy' ? 'Buy' : 'Sell'} ${baseSymbol}`}
       </Button>
+      <TxErrorNote error={txError} onDismiss={() => setTxError(null)} />
       <OpenInWallet />
     </Card>
   );
