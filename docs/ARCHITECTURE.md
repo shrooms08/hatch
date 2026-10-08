@@ -38,7 +38,7 @@ flowchart LR
 
 ## Extension (`extension/`, WXT, MV3)
 
-- **Content script** (`entrypoints/content`): the floating orb (`lib/buddy/orb.ts`, a thinking-orbs engine) in a Shadow DOM. Local detection (`lib/detect.ts`) checks the URL first. Only stock pages and tweets can be noticed automatically. It answers the side panel's "what's on this page?" request.
+- **Content script** (`entrypoints/content`): the floating buddy (`lib/buddy/grid.ts`: the website's dot-matrix chicken and egg, art in `lib/buddy/art.ts` copied from `web/src/lib/buddyArt.ts`) in a Shadow DOM. Local detection (`lib/detect.ts`) checks the URL first. Only stock pages and tweets can be noticed automatically. It answers the side panel's "what's on this page?" request.
 - **Background** (`entrypoints/background.ts`): the only context that calls the web app for content scripts. It asks for a hint once per URL per session and polls the user's hatches: every minute while one incubates, otherwise every 10 minutes. It announces milestones and plays sounds through an offscreen document.
 - **Side panel** (`entrypoints/sidepanel`): drafts with the AI and chats about the draft. "Hatch it" opens `/launch?…` prefilled.
 - **Bridge** (`entrypoints/hatch-bridge.content.ts`): runs only on the Hatch web app. It forwards the connected wallet's public address and launch events.

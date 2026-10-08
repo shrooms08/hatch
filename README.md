@@ -141,4 +141,4 @@ pnpm create-config-v2-mainnet meme-v2  # same rules; presets: stock-nvda-v2, sto
 
 ## Credits
 
-Built on Meteora's fun-launch scaffold and SDKs. The orb uses thinking-orbs. See [CREDITS.md](CREDITS.md) and [LICENSE](LICENSE).
+Built on Meteora's fun-launch scaffold and SDKs. See [CREDITS.md](CREDITS.md) and [LICENSE](LICENSE).

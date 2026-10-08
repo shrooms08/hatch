@@ -1,6 +1,7 @@
 /** Side panel building blocks in the Hatch design system v1 (same tokens and shapes as the web app). */
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 import type { HatchStatus, PresetId } from "../../../lib/types";
+import { CELL_COLOR, CHICKEN, EGG } from "../../../lib/buddy/art";
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
@@ -113,11 +114,8 @@ export function HatchMark({ size = 24 }: { size?: number }) {
   );
 }
 
-const CHICKEN = ["......EE...", ".....SSSS..", ".....SNSSY.", "S....SSSSYY", "SS..SSSSS..", "SSSSSSSSS..", "SSSSSSSSS..", ".SSSSSSSS..", "..SSSSSS...", "....Y.Y....", "...YY.YY..."];
-const EGG = ["....SSS....", "...SSSSS...", "..SSSSSSS..", "..SSSSSSS..", ".SSSYYYSSS.", ".SSYYYYYSS.", ".SSYYYYYSS.", ".SSSYYYSSS.", "..SSSSSSS..", "...SSSSS...", "..........."];
-const DOT: Record<string, string> = { ".": "rgba(246,238,220,0.07)", S: "#F6EEDC", Y: "#F2A93B", E: "#E8572A", N: "#120E0B" };
 
-/** Static dot picture of the buddy (chat avatars, empty states). The live buddy is lib/buddy/orb. */
+/** Static dot picture of the buddy (chat avatars, empty states), art from lib/buddy/art. The live buddy is lib/buddy/grid. */
 export function BuddyDots({ size = 26, mood = "egg", className }: { size?: number; mood?: "egg" | "chicken"; className?: string }) {
   const cell = (size * 0.56) / 11;
   const s = +(cell * 0.74).toFixed(2);
@@ -133,7 +131,7 @@ export function BuddyDots({ size = 26, mood = "egg", className }: { size?: numbe
           .join("")
           .split("")
           .map((c, i) => (
-            <span key={i} style={{ width: s, height: s, borderRadius: "50%", background: DOT[c] }} />
+            <span key={i} style={{ width: s, height: s, borderRadius: "50%", background: CELL_COLOR[c] }} />
           ))}
       </span>
     </span>

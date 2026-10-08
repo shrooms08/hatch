@@ -1,73 +1,112 @@
 /**
- * Dev/debug page for the orb buddy (unlisted: not linked from the UI). Open it at
- * chrome-extension://<extension id>/buddy-debug.html. Shows the orb at 200 px and docked 64 px on
- * dark and light backgrounds, every state and transition, both sounds, and an FPS readout.
+ * Dev/debug page for the buddy (unlisted: not linked from the UI). Open it at
+ * chrome-extension://<extension id>/buddy-debug.html. Every state of the grid renderer at docked 64 px and
+ * hover 80 px, next to the website's static art (same formula as web ChickenOrb), plus a redraw counter.
  */
 import { browser } from "wxt/browser";
-import { OrbBuddy, type BuddyState } from "../../lib/buddy/orb";
+import { GridBuddy, type BuddyState } from "../../lib/buddy/grid";
+import { ART, CELL_COLOR, CHICKEN, EGG, GRID } from "../../lib/buddy/art";
 import type { SoundName } from "../../lib/buddy/config";
 
-const SIZES = [200, 64];
+const STATES: (BuddyState | "hatch")[] = ["idle", "noticed", "thinking", "ready", "hatch"];
+const SIZES = [64, 80];
 let reduced = false;
 let badge = 0;
-let orbs: { orb: OrbBuddy; badge?: HTMLElement }[] = [];
-let current: BuddyState = "idle";
-const fpsEl = document.getElementById("fps")!;
+let buddies: { b: GridBuddy; state: BuddyState | "hatch"; badge?: HTMLElement }[] = [];
+const drawsEl = document.getElementById("draws")!;
+
+/** The website's ChickenOrb, rebuilt with the same maths (CSS grid of round dots). */
+function websiteArt(size: number, mood: "chicken" | "egg") {
+  const cell = (size * ART.gridRatio) / GRID;
+  const s = +(cell * ART.dotRatio).toFixed(2);
+  const gap = +(cell * (1 - ART.dotRatio)).toFixed(2);
+  const disc = document.createElement("div");
+  disc.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;border:1px solid ${ART.border};background:${ART.background};box-shadow:${ART.shadow}, 0 0 0 ${ART.ringWidth(size)}px ${ART.ring};display:flex;align-items:center;justify-content:center;box-sizing:border-box`;
+  const grid = document.createElement("div");
+  grid.style.cssText = `display:grid;grid-template-columns:repeat(${GRID}, ${s}px);gap:${gap}px`;
+  for (const c of (mood === "egg" ? EGG : CHICKEN).join("")) {
+    const d = document.createElement("div");
+    d.style.cssText = `width:${s}px;height:${s}px;border-radius:50%;background:${CELL_COLOR[c]}`;
+    grid.append(d);
+  }
+  disc.append(grid);
+  return disc;
+}
+
+function figure(label: string, slotSize: number, content: (slot: HTMLElement) => void) {
+  const fig = document.createElement("figure");
+  const slot = document.createElement("div");
+  slot.className = "slot";
+  slot.style.width = slot.style.height = `${slotSize}px`;
+  content(slot);
+  const cap = document.createElement("figcaption");
+  cap.textContent = label;
+  fig.append(slot, cap);
+  return fig;
+}
 
 function build() {
-  orbs.forEach((o) => o.orb.destroy());
-  orbs = [];
-  for (const id of ["dark", "light"]) {
-    const stage = document.getElementById(id)!;
+  buddies.forEach((x) => x.b.destroy());
+  buddies = [];
+  for (const theme of ["dark", "light"]) {
+    const stage = document.getElementById(theme)!;
     stage.innerHTML = "";
     for (const size of SIZES) {
-      const fig = document.createElement("figure");
-      const slot = document.createElement("div");
-      slot.className = "slot";
-      slot.style.width = slot.style.height = `${size}px`;
-      const orb = new OrbBuddy({
-        renderSize: size,
-        reducedMotion: reduced,
-        onFps: id === "dark" && size === 200 ? (f) => (fpsEl.textContent = `${f.toFixed(0)} fps`) : undefined,
-      });
-      slot.append(orb.canvas);
-      let b: HTMLElement | undefined;
-      if (size === 64) {
-        b = document.createElement("span");
-        b.className = "badge";
-        slot.append(b);
+      const row = document.createElement("div");
+      row.className = "row";
+      row.append(figure(`website chicken · ${size}`, size, (s) => s.append(websiteArt(size, "chicken"))));
+      row.append(figure(`website egg · ${size}`, size, (s) => s.append(websiteArt(size, "egg"))));
+      for (const state of STATES) {
+        row.append(
+          figure(`${state} · ${size}`, size, (slot) => {
+            const b = new GridBuddy({ reducedMotion: reduced });
+            slot.append(b.el);
+            let badgeEl: HTMLElement | undefined;
+            if (state === "idle") {
+              badgeEl = document.createElement("span");
+              badgeEl.className = "badge";
+              slot.append(badgeEl);
+            }
+            buddies.push({ b, state, badge: badgeEl });
+          })
+        );
       }
-      const cap = document.createElement("figcaption");
-      cap.textContent = `${size}px · ${id}`;
-      fig.append(slot, cap);
-      stage.append(fig);
-      orb.setState(current);
-      orbs.push({ orb, badge: b });
+      stage.append(row);
     }
   }
-  renderBadge();
+  // Let the ResizeObserver size each canvas, then apply the states.
+  requestAnimationFrame(() => {
+    for (const x of buddies) {
+      if (x.state === "hatch") {
+        x.b.setState("ready");
+        void x.b.hatch();
+      } else x.b.setState(x.state);
+    }
+    renderBadge();
+  });
 }
 
 function renderBadge() {
-  for (const o of orbs) {
-    if (!o.badge) continue;
-    o.badge.textContent = String(badge);
-    o.badge.classList.toggle("on", badge > 0);
+  for (const x of buddies) {
+    if (!x.badge) continue;
+    x.badge.textContent = String(badge);
+    x.badge.classList.toggle("on", badge > 0);
   }
 }
+
+// For automated checks: per-buddy redraw counts.
+(window as unknown as { __buddies: () => unknown }).__buddies = () => buddies.map((x) => ({ state: x.state, draws: x.b.draws }));
+
+setInterval(() => {
+  drawsEl.textContent = `${buddies.reduce((n, x) => n + x.b.draws, 0)} redraws`;
+}, 500);
 
 document.getElementById("controls")!.addEventListener("click", (e) => {
   const btn = (e.target as HTMLElement).closest("button");
   if (!btn) return;
-  const state = btn.dataset.state as BuddyState | undefined;
-  if (state) {
-    current = state;
-    orbs.forEach((o) => o.orb.setState(state));
-  }
   switch (btn.dataset.action) {
     case "hatch":
-      current = "idle";
-      orbs.forEach((o) => void o.orb.hatch());
+      buddies.filter((x) => x.state === "hatch").forEach((x) => void x.b.hatch());
       break;
     case "badge-up":
       badge++;
@@ -80,8 +119,12 @@ document.getElementById("controls")!.addEventListener("click", (e) => {
     case "reduced":
       reduced = !reduced;
       btn.setAttribute("aria-pressed", String(reduced));
-      fpsEl.textContent = reduced ? "still (reduced motion)" : "– fps";
       build();
+      break;
+  }
+  const sound = btn.dataset.sound as SoundName | undefined;
+  if (sound) void browser.runtime.sendMessage({ type: "play-sound", sound });
+});
 
 // Last sound the background played (name, whether audio.play() succeeded).
 const soundEl = document.getElementById("sound")!;
@@ -89,14 +132,11 @@ const showSound = (v: unknown) => {
   const s = v as { name: string; at: number; played: boolean; error?: string } | undefined;
   if (s) soundEl.textContent = `last sound: ${s.name} ${s.played ? "played" : `failed (${s.error ?? "?"})`} at ${new Date(s.at).toLocaleTimeString()}`;
 };
-void browser.storage.session.get("hatch:lastSound").then((r) => showSound(r["hatch:lastSound"]));
-browser.storage.onChanged.addListener((c, area) => {
-  if (area === "session" && c["hatch:lastSound"]) showSound(c["hatch:lastSound"].newValue);
-});
-      break;
-  }
-  const sound = btn.dataset.sound as SoundName | undefined;
-  if (sound) void browser.runtime.sendMessage({ type: "play-sound", sound });
-});
+if (browser?.storage?.session) {
+  void browser.storage.session.get("hatch:lastSound").then((r) => showSound(r["hatch:lastSound"]));
+  browser.storage.onChanged.addListener((c, area) => {
+    if (area === "session" && c["hatch:lastSound"]) showSound(c["hatch:lastSound"].newValue);
+  });
+}
 
 build();

@@ -2,8 +2,8 @@ import { useEffect, useRef } from "react";
 import { browser } from "wxt/browser";
 import { NETWORK } from "../../../lib/config";
 import { sendToBackground } from "../../../lib/messages";
-import { OrbBuddy } from "../../../lib/buddy/orb";
-import { DOTS } from "../../../lib/buddy/config";
+import { GridBuddy } from "../../../lib/buddy/grid";
+import { GRID } from "../../../lib/buddy/art";
 import { DEFAULT_SETTINGS, KEYS, updateSettings, type Settings } from "../../../lib/storage";
 import { useStorageValue } from "../hooks";
 import { Card, DefRow, Toggle } from "./ui";
@@ -16,14 +16,13 @@ const hostOf = (url: string | null) => {
   }
 };
 
-/** The real buddy (same orb engine as on the page), idling. */
+/** The real buddy (same renderer as on the page), idling. */
 function LiveBuddy({ size = 72 }: { size?: number }) {
   const holder = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const orb = new OrbBuddy({ renderSize: size, reducedMotion: window.matchMedia("(prefers-reduced-motion: reduce)").matches });
-    orb.canvas.style.cssText = "position:absolute;left:-25%;top:-25%;width:150%;height:150%;pointer-events:none";
-    holder.current?.append(orb.canvas);
-    return () => orb.destroy();
+    const buddy = new GridBuddy();
+    holder.current?.append(buddy.el);
+    return () => buddy.destroy();
   }, [size]);
   return <div ref={holder} aria-hidden className="relative" style={{ width: size, height: size }} />;
 }
@@ -114,7 +113,7 @@ export function SettingsTab({ activeUrl }: { activeUrl: string | null }) {
 
       <div className="flex flex-col items-center gap-2.5 py-7">
         <LiveBuddy size={72} />
-        <span className="text-xs text-ink-muted">Your buddy, made of {DOTS.count} dots.</span>
+        <span className="text-xs text-ink-muted">Your buddy, made of {GRID * GRID} dots.</span>
       </div>
     </div>
   );

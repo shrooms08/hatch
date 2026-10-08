@@ -1,6 +1,6 @@
 {
   "name": "hatch-extension",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Hatch browser buddy (MV3)",
   "scripts": {
     "dev": "wxt",
@@ -20,8 +20,7 @@
     "@fontsource/geist-mono": "^5.3.0",
     "@fontsource/unbounded": "^5.3.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "thinking-orbs": "0.3.1"
+    "react-dom": "^19.3.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

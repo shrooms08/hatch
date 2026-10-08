@@ -10,27 +10,24 @@
       header strong { margin-right: 8px; }
       button { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid #8a8178; background: #120e0b; color: #f6eedc; cursor: pointer; }
       button[aria-pressed="true"] { border-color: #f2a93b; color: #f2a93b; }
-      .stages { display: grid; grid-template-columns: 1fr 1fr; }
-      .stage { min-height: 420px; display: flex; gap: 48px; align-items: center; justify-content: center; position: relative; }
+      .stages { display: grid; grid-template-columns: 1fr; }
+      .stage { padding: 28px 24px; display: flex; flex-direction: column; gap: 28px; position: relative; }
+      .row { display: flex; gap: 34px; align-items: flex-end; flex-wrap: wrap; }
+      figcaption { font-size: 11px; color: #8a8178; font-family: ui-monospace, monospace; }
       .stage.dark { background: #0d0a08; }
       .stage.light { background: #f4efe4; color: #120e0b; }
       .stage figure { margin: 0; display: grid; justify-items: center; gap: 8px; }
       .slot { position: relative; display: grid; place-items: center; }
-      .slot canvas { position: absolute; left: -25%; top: -25%; width: 150%; height: 150%; }
       .badge { position: absolute; top: 1px; right: 1px; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box; border-radius: 9px; background: #f2a93b; color: #120e0b; font-size: 11px; font-weight: 800; display: none; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #120e0b; }
       .badge.on { display: flex; }
-      #fps { font-variant-numeric: tabular-nums; margin-left: auto; color: #f2a93b; }
+      #draws { font-variant-numeric: tabular-nums; margin-left: auto; color: #f2a93b; }
       .sep { width: 1px; height: 24px; background: #8a8178; margin: 0 4px; }
     </style>
   </head>
   <body>
     <header id="controls">
       <strong>Hatch buddy</strong>
-      <button data-state="idle">idle</button>
-      <button data-state="noticed">noticed</button>
-      <button data-state="thinking">thinking</button>
-      <button data-state="ready">ready</button>
-      <button data-action="hatch">launched / hatched</button>
+      <button data-action="hatch">replay launched / hatched</button>
       <span class="sep"></span>
       <button data-action="badge-up">badge +1</button>
       <button data-action="badge-down">badge −1</button>
@@ -40,7 +37,7 @@
       <span class="sep"></span>
       <button data-action="reduced" aria-pressed="false">reduced motion</button>
       <span id="sound" style="color:#8a8178">no sound yet</span>
-      <span id="fps">– fps</span>
+      <span id="draws">0 redraws</span>
     </header>
     <div class="stages">
       <section class="stage dark" id="dark"></section>

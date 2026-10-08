@@ -1,9 +1,9 @@
 /**
- * The floating buddy's view: the orb (lib/buddy/orb.ts), dragging, badge, bubble and menu.
+ * The floating buddy's view: the dot-matrix disc (lib/buddy/grid.ts), dragging, badge, bubble and menu.
  * No storage, network or page logic here (see index.ts); everything comes in through methods
  * and goes out through callbacks.
  */
-import { OrbBuddy } from "../../lib/buddy/orb";
+import { GridBuddy } from "../../lib/buddy/grid";
 import geist500 from "@fontsource/geist/files/geist-latin-500-normal.woff2?inline";
 import geist600 from "@fontsource/geist/files/geist-latin-600-normal.woff2?inline";
 import { SIZE } from "../../lib/buddy/config";
@@ -41,7 +41,7 @@ export class BuddyView {
   private bubbleText: HTMLSpanElement;
   private bubbleActions: HTMLDivElement;
   private menu: HTMLDivElement;
-  private orb: OrbBuddy;
+  private orb: GridBuddy;
   private bubbleTimer: number | undefined;
   private pos: EggPos;
   private onResize = () => this.applyPos();
@@ -70,14 +70,12 @@ export class BuddyView {
     this.root.querySelector<HTMLButtonElement>(".hatch-egg__bubble-close")!.addEventListener("click", () => this.hideBubble());
     loadBubbleFonts();
     this.menu = this.root.querySelector(".hatch-egg__menu")!;
-    this.orb = new OrbBuddy();
-    this.button.prepend(this.orb.canvas);
+    this.orb = new GridBuddy();
+    this.button.prepend(this.orb.el);
     container.append(this.root);
 
     this.applyPos();
     this.bindDrag();
-    this.button.addEventListener("pointerenter", () => this.orb.setHover(true));
-    this.button.addEventListener("pointerleave", () => this.orb.setHover(false));
     this.root.querySelector<HTMLButtonElement>(".hatch-egg__more")!.addEventListener("click", (e) => {
       e.stopPropagation();
       this.menu.dataset.open = this.menu.dataset.open === "true" ? "false" : "true";
