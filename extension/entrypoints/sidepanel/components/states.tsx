@@ -2,16 +2,17 @@
 import type { ReactNode } from "react";
 import { BuddyDots, Button, Card, EGG_RADIUS, Skeleton } from "./ui";
 
-export function DraftSkeleton() {
+/** `withPage`: also a placeholder for the page card (before the page has been read). */
+export function DraftSkeleton({ withPage = false }: { withPage?: boolean }) {
   return (
     <div className="flex flex-col gap-3" aria-busy="true" aria-label="Drafting">
-      <Card className="flex h-[52px] items-center gap-2.5 px-3">
+      {withPage && <Card className="flex h-[52px] items-center gap-2.5 px-3">
         <Skeleton className="h-[30px] w-[30px] rounded-[9px]" />
         <div className="flex flex-1 flex-col gap-1.5">
           <Skeleton className="h-[9px] w-4/5" />
           <Skeleton className="h-2 w-[45%]" />
         </div>
-      </Card>
+      </Card>}
       <Card className="flex flex-col gap-3 rounded-[18px] p-3.5">
         <div className="flex items-center gap-3">
           <Skeleton className="h-16 w-16 rounded-[12px]" />

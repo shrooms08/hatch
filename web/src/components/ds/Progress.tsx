@@ -61,7 +61,7 @@ export function EggVessel({ progress, hatched = false, compact = false, classNam
   return (
     <div className={cn('relative flex items-center justify-center', compact ? 'h-[330px] w-[260px]' : 'h-[380px]', className)}>
       <div
-        className={cn('relative h-[330px] w-[260px] overflow-hidden border-[3px] bg-night', s === 0 ? 'border-line-strong' : s === 1 ? 'border-yolk' : 'border-ember')}
+        className={cn('relative h-[330px] w-[260px] overflow-hidden border-[3px] bg-night [.light_&]:bg-surface-3', s === 0 ? 'border-line-strong' : s === 1 ? 'border-yolk' : 'border-ember')}
         style={{ borderRadius: EGG_RADIUS, boxShadow: 'inset -20px -24px 0 rgba(0,0,0,0.25)' }}
       >
         <div

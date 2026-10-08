@@ -199,7 +199,7 @@ export default function MyHatches() {
         ) : (
           <>
             <ClaimableSummary pools={data} />
-            <div className={cn('grid grid-cols-[minmax(0,1fr)] gap-4', data.length > 1 && 'md:grid-cols-2')}>
+            <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2">
               {data.map((p) => (
                 <MyHatchCard key={p.address} pool={p} />
               ))}

@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { HATCH_WEB_URL, tokenPageUrl } from "../../../lib/config";
+import { tokenPageUrl, webUrl } from "../../../lib/config";
 import { sendToBackground } from "../../../lib/messages";
 import { KEYS, type HatchesCache } from "../../../lib/storage";
 import { useStorageValue } from "../hooks";
@@ -32,7 +32,7 @@ export function HatchesTab() {
         title="Connect on the web app"
         body="Connect your wallet on Hatch once and the tokens you launch show up here, with their progress and fees."
         action={
-          <Button variant="secondary" onClick={() => window.open(`${HATCH_WEB_URL}/my-hatches`, "_blank")}>
+          <Button variant="secondary" onClick={() => window.open(webUrl("/my-hatches"), "_blank")}>
             Open Hatch <ArrowUpRight size={13} />
           </Button>
         }
@@ -48,7 +48,7 @@ export function HatchesTab() {
         title="Your nest is empty"
         body="Your first token is one click away. Draft one from any page."
         action={
-          <Button onClick={() => window.open(`${HATCH_WEB_URL}/launch`, "_blank")}>Hatch your first token</Button>
+          <Button onClick={() => window.open(webUrl("/launch"), "_blank")}>Hatch your first token</Button>
         }
       />
     );
@@ -61,7 +61,7 @@ export function HatchesTab() {
           <span className="truncate font-mono text-[13px] font-medium">{totals.length ? totals.join(" · ") : "Nothing to claim yet"}</span>
         </div>
         <a
-          href={`${HATCH_WEB_URL}/my-hatches`}
+          href={webUrl("/my-hatches")}
           target="_blank"
           rel="noreferrer"
           className="flex shrink-0 items-center gap-1 text-[13px] font-semibold text-yolk hover:underline"
@@ -101,7 +101,7 @@ export function HatchesTab() {
       ))}
 
       <div className="mt-1.5 flex items-center justify-center gap-4">
-        <a href={`${HATCH_WEB_URL}/my-hatches`} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[13px] font-semibold text-yolk hover:underline">
+        <a href={webUrl("/my-hatches")} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[13px] font-semibold text-yolk hover:underline">
           Open My Hatches on the web <ArrowUpRight size={12} />
         </a>
         <button type="button" onClick={() => void sendToBackground({ type: "refresh-hatches" })} className="text-[13px] font-medium text-ink-muted hover:text-ink">

@@ -68,6 +68,10 @@ export default function CreatePool() {
     const { fields, imageUrl: url } = prefillFromQuery(router.query);
     setForm((f) => ({ ...f, ...fields }));
     if (url) setImageUrl(url);
+    // Development only: preview the Hatched! moment without launching (?demo=hatched&mint=...).
+    if (process.env.NODE_ENV !== 'production' && router.query.demo === 'hatched' && typeof router.query.mint === 'string') {
+      setCreated({ mint: router.query.mint, signature: '' });
+    }
   }, [router.isReady, router.query]);
 
   const previewSrc = useMemo(() => (imageFile ? URL.createObjectURL(imageFile) : imageUrl), [imageFile, imageUrl]);

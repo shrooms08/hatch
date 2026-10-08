@@ -31,7 +31,8 @@ export function Modal({
     window.addEventListener('keydown', onKey);
     // Focus the first focusable element (the primary action), else the panel.
     const t = setTimeout(() => {
-      const first = panel.current?.querySelector<HTMLElement>('[data-autofocus], a[href], button:not([disabled])');
+      const first =
+        panel.current?.querySelector<HTMLElement>('[data-autofocus]') ?? panel.current?.querySelector<HTMLElement>('a[href], button:not([disabled])');
       (first ?? panel.current)?.focus();
     }, 30);
     return () => {

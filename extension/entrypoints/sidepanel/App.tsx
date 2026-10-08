@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { browser } from "wxt/browser";
 import { SIDEPANEL_PORT } from "../../lib/messages";
-import { HATCH_WEB_URL } from "../../lib/config";
+import { webUrl } from "../../lib/config";
 import { DraftTab } from "./components/DraftTab";
 import { HatchesTab } from "./components/HatchesTab";
 import { SettingsTab } from "./components/SettingsTab";
@@ -38,7 +38,7 @@ export function App() {
     <div className="flex h-screen flex-col bg-night">
       <header className="flex shrink-0 flex-col gap-3.5 border-b border-surface-3 px-4 pt-4">
         <div className="flex items-center justify-between">
-          <a href={HATCH_WEB_URL} target="_blank" rel="noreferrer" className="flex items-center gap-[9px] rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yolk/50">
+          <a href={webUrl()} target="_blank" rel="noreferrer" className="flex items-center gap-[9px] rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yolk/50">
             <HatchMark size={24} />
             <span className="font-display text-[17px] font-bold tracking-[-0.02em]">Hatch</span>
           </a>
@@ -78,7 +78,7 @@ export function App() {
             <DraftTab key={active.page.url} tabId={active.tabId} page={active.page} presets={presets} />
           ) : active.status === "loading" ? (
             <div className="p-3.5">
-              <DraftSkeleton />
+              <DraftSkeleton withPage />
             </div>
           ) : (
             <EmptyState
@@ -94,7 +94,7 @@ export function App() {
                     Try again
                   </Button>
                 ) : (
-                  <Button variant="secondary" onClick={() => void browser.tabs.create({ url: `${HATCH_WEB_URL}/launch` })}>
+                  <Button variant="secondary" onClick={() => void browser.tabs.create({ url: webUrl("/launch") })}>
                     Start from scratch
                   </Button>
                 )
