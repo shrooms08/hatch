@@ -26,9 +26,12 @@ export function serverRpcUrl() {
 }
 
 const clusterParam = NETWORK === 'devnet' ? '?cluster=devnet' : '';
-export const explorerTxUrl = (sig: string) => `https://explorer.solana.com/tx/${sig}${clusterParam}`;
-export const explorerAddressUrl = (address: string) =>
-  `https://explorer.solana.com/address/${address}${clusterParam}`;
+export const EXPLORER_NAME = 'Solscan';
+export const explorerTxUrl = (sig: string) => `https://solscan.io/tx/${sig}${clusterParam}`;
+export const explorerAddressUrl = (address: string) => `https://solscan.io/account/${address}${clusterParam}`;
+/** Meteora's pool page (DAMM v2 after a token hatches). */
+export const meteoraPoolUrl = (pool: string) =>
+  NETWORK === 'devnet' ? `https://devnet.meteora.ag/dammv2/${pool}` : `https://www.meteora.ag/dammv2/${pool}`;
 
 export const PRIORITY_FEE_MICROLAMPORTS = Number(
   process.env.NEXT_PUBLIC_PRIORITY_FEE_MICROLAMPORTS ?? 100_000

@@ -1,0 +1,257 @@
+// Token page sections (design/v1 "Token Page" + "Hatched States"). Display only: all data comes
+// from chain via the existing hooks.
+import Link from 'next/link';
+import {
+  AddressChip,
+  Amount,
+  ArrowUpRight,
+  Button,
+  Card,
+  DefRow,
+  EGG_RADIUS,
+  EggVessel,
+  HonestNote,
+  InspiredChip,
+  Overline,
+  PresetBadge,
+  ShellBar,
+  Skeleton,
+  StageEgg,
+  StatusPill,
+} from '@/components/ds';
+import { ChickenOrb } from '@/components/ds/ChickenOrb';
+import type { HatchPool } from '@/lib/dbc/pool';
+import { formatAmount, formatPercent } from '@/lib/format/amount';
+import { explorerAddressUrl, meteoraPoolUrl } from '@/lib/config/network';
+import { sourceDomain } from '@/lib/metadata/token';
+import { stockForConfig, stockPreset } from '@/lib/presets';
+import { useHolders, usePresetConfigs, useQuoteSymbol, useTokenMetadata } from '@/hooks/useHatch';
+import { shortAddr } from '@/components/ds/Pill';
+import { cn } from '@/lib/utils';
+import { TokenAvatar } from './TokenAvatar';
+
+export function shareOnXUrl(name: string, symbol: string, mint: string) {
+  const url = typeof window === 'undefined' ? '' : `${window.location.origin}/token/${mint}`;
+  const text = `${name} ($${symbol}) is incubating on Hatch. Help fill the egg 🥚`;
+  return `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
+}
+
+export function TokenHero({ mint, pool }: { mint: string; pool: HatchPool | null | undefined }) {
+  const { data: md, isLoading } = useTokenMetadata(mint);
+  const quote = useQuoteSymbol(pool?.quote);
+  const domain = sourceDomain(md?.json?.external_url);
+  const symbol = md?.symbol ?? '';
+  return (
+    <div className="flex flex-col gap-5 md:gap-7">
+      <nav aria-label="Breadcrumb" className="text-[13px] font-medium text-ink-muted">
+        <Link href="/" className="hover:text-ink">
+          Hatches
+        </Link>
+        <span className="mx-1.5">/</span>
+        <span className="text-ink">{symbol || shortAddr(mint, 4)}</span>
+      </nav>
+      <div className="flex flex-col gap-5 md:flex-row md:items-center md:gap-7">
+        <div className="flex min-w-0 flex-1 items-center gap-4 md:gap-7">
+          <TokenAvatar mint={mint} size={112} paired={pool?.presetId === 'STOCK' ? quote : null} className="max-md:!h-[72px] max-md:!w-[72px]" />
+          <div className="flex min-w-0 flex-1 flex-col gap-3.5">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-3.5 gap-y-1">
+              {isLoading ? (
+                <Skeleton className="h-10 w-72 rounded-md" />
+              ) : (
+                <h1 className="min-w-0 break-words font-display text-[26px] font-bold leading-none tracking-[-0.035em] text-ink md:text-[48px]">
+                  {md?.name || 'Unknown token'}
+                </h1>
+              )}
+              {symbol && <span className="font-mono text-sm font-medium text-ink-muted md:text-xl">${symbol}</span>}
+            </div>
+            <div className="hidden flex-wrap items-center gap-2.5 md:flex">
+              <HeroChips mint={mint} pool={pool} quote={quote} domain={domain} url={md?.json?.external_url} />
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 md:hidden">
+          <HeroChips mint={mint} pool={pool} quote={quote} domain={domain} url={md?.json?.external_url} />
+        </div>
+        {md?.name && (
+          <Button asChild variant="outline" size="header" className="self-start md:self-center">
+            <a href={shareOnXUrl(md.name, symbol, mint)} target="_blank" rel="noreferrer">
+              Share on X
+            </a>
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HeroChips({ mint, pool, quote, domain, url }: { mint: string; pool: HatchPool | null | undefined; quote: string; domain: string | null; url?: string }) {
+  return (
+    <>
+      {pool && <StatusPill status={pool.status} className="h-[30px]" />}
+      {pool?.presetId && <PresetBadge preset={pool.presetId} quote={quote} className="h-[30px]" />}
+      {domain && <InspiredChip domain={domain} href={url} />}
+      <AddressChip address={mint} label="Mint" />
+    </>
+  );
+}
+
+/** Incubating / almost hatched: the big egg, % to hatch, raised vs goal, pool facts. */
+export function ProgressCard({ pool }: { pool: HatchPool }) {
+  const quote = useQuoteSymbol(pool.quote);
+  const holders = useHolders(pool.baseMint);
+  const toGo = pool.thresholdUi.minus(pool.quoteReserveUi);
+  const stock = useStockName(pool);
+  return (
+    <Card className="relative grid items-center gap-8 overflow-hidden rounded-[24px] p-5 md:p-9 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-11">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        style={{ backgroundImage: 'radial-gradient(rgb(var(--dot-field) / 0.05) 1px, transparent 1px)', backgroundSize: '20px 20px' }}
+      />
+      <EggVessel progress={pool.progress} className="relative max-lg:hidden" />
+      <div className="relative flex min-w-0 flex-col gap-[22px]">
+        <Overline>Hatching progress</Overline>
+        <div className="flex flex-wrap items-baseline gap-3.5">
+          <span className="font-display text-[56px] font-bold leading-[0.9] tracking-[-0.04em] text-yolk md:text-[80px]">{formatPercent(pool.progress)}</span>
+          <span className="text-base text-ink-2">to hatch</span>
+        </div>
+        <div className="flex flex-col gap-2.5">
+          <div className="flex flex-wrap justify-between gap-2 font-mono text-[15px] font-medium">
+            <span>
+              <Amount value={pool.quoteReserveUi} className="text-ink" /> <span className="text-ink-muted">/ {formatAmount(pool.thresholdUi)} {quote}</span>
+            </span>
+            <span className="text-ink-muted">{formatAmount(toGo.gt(0) ? toGo : 0)} to go</span>
+          </div>
+          <ShellBar progress={pool.progress} height={12} />
+        </div>
+        <div className="flex flex-col gap-3 pt-1.5">
+          <DefRow label="Price">
+            <Amount value={pool.price} unit={quote} className="text-[15px]" />
+          </DefRow>
+          <DefRow label="Quote token">
+            {quote}
+            {stock ? ` · tokenized ${stock}` : pool.quote.isNativeSol ? ' · Solana' : ''}
+          </DefRow>
+          <DefRow label="Pool">
+            <a href={explorerAddressUrl(pool.address)} target="_blank" rel="noreferrer" className="text-ink-accent hover:underline">
+              Meteora DBC · {shortAddr(pool.address, 4)} ↗
+            </a>
+          </DefRow>
+          <DefRow label="Holders">{holders.data ?? (holders.isLoading ? '…' : '-')}</DefRow>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function useStockName(pool: HatchPool) {
+  const { data: hc } = usePresetConfigs();
+  return pool.presetId === 'STOCK' && hc ? stockForConfig(hc, pool.configKey)?.name ?? null : null;
+}
+
+/** Incubating -> Almost hatched (80%, shell cracks) -> Hatched (full Meteora pool). */
+export function StageTimeline({ pool }: { pool: HatchPool }) {
+  const idx = pool.status === 'HATCHED' ? 2 : pool.status === 'ALMOST_HATCHED' ? 1 : 0;
+  const stages = [
+    { title: 'Incubating', here: 'You are here. Buys fill the egg.', note: 'Buys fill the egg.' },
+    { title: 'Almost hatched', here: 'You are here. The shell is cracking.', note: 'From 80%. The shell cracks.' },
+    { title: 'Hatched', here: 'Moved to a full Meteora pool.', note: 'Moves to a full Meteora pool.' },
+  ];
+  return (
+    <Card className="grid gap-5 rounded-[24px] px-5 py-6 sm:grid-cols-3 md:px-9 md:py-7">
+      {stages.map((s, i) => (
+        <div key={s.title} className={cn('flex items-center gap-3.5', i > idx && 'opacity-55')}>
+          <StageEgg state={i < idx ? 'done' : i === idx ? 'current' : 'next'} />
+          <div className="flex flex-col gap-[3px]">
+            <span className="text-[15px] font-semibold text-ink">{s.title}</span>
+            <span className="text-[13px] text-ink-2">{i === idx ? s.here : s.note}</span>
+          </div>
+        </div>
+      ))}
+    </Card>
+  );
+}
+
+export function AboutCard({ pool, mint }: { pool: HatchPool | null | undefined; mint: string }) {
+  const { data: md } = useTokenMetadata(mint);
+  const { data: hc } = usePresetConfigs();
+  const stock = pool?.presetId === 'STOCK' && hc ? stockForConfig(hc, pool.configKey) : null;
+  const honest = pool?.presetId === 'STOCK' ? stockPreset(stock).explainer[2] : null;
+  const description = md?.json?.description?.trim();
+  if (!description && !honest) return null;
+  return (
+    <Card className="flex flex-col gap-4 rounded-[24px] px-5 py-6 md:px-9 md:py-8">
+      <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-ink">About</h2>
+      {description && <p className="max-w-[720px] whitespace-pre-line break-words text-base leading-relaxed text-ink-2">{description}</p>}
+      {honest && <HonestNote>{honest.replace("The stock token's issuer", 'The issuer')}</HonestNote>}
+    </Card>
+  );
+}
+
+/** Hatched: ember card with cracked shell + buddy, final raise. */
+export function HatchedCard({ pool, symbol }: { pool: HatchPool; symbol: string }) {
+  const quote = useQuoteSymbol(pool.quote);
+  return (
+    <Card className="relative grid items-center gap-8 overflow-hidden rounded-[24px] border-ember/50 p-6 md:grid-cols-[260px_minmax(0,1fr)] md:gap-11 md:p-10">
+      <div aria-hidden className="pointer-events-none absolute -left-20 -top-20 h-[520px] w-[520px] bg-[radial-gradient(circle,rgba(232,87,42,0.28)_0%,rgba(232,87,42,0)_60%)]" />
+      <div className="relative mx-auto h-[300px] w-[260px]" aria-hidden>
+        <div
+          className="absolute left-[30px] top-2.5 h-[250px] w-[200px] -translate-x-3 -translate-y-[26px] -rotate-12 bg-ember motion-safe:animate-shell-top"
+          style={{ borderRadius: EGG_RADIUS, clipPath: 'polygon(0 0,100% 0,100% 42%,84% 52%,70% 40%,55% 54%,40% 41%,26% 53%,12% 42%,0 50%)' }}
+        />
+        <div
+          className="absolute left-[30px] top-10 h-[250px] w-[200px] bg-ember"
+          style={{ borderRadius: EGG_RADIUS, clipPath: 'polygon(0 50%,12% 42%,26% 53%,40% 41%,55% 54%,70% 40%,84% 52%,100% 42%,100% 100%,0 100%)' }}
+        />
+        <div className="absolute left-24 top-24 motion-safe:animate-pop-in">
+          <ChickenOrb size={68} />
+        </div>
+      </div>
+      <div className="relative flex flex-col gap-[18px]">
+        <span className="font-display text-[48px] font-bold leading-[0.95] tracking-[-0.04em] text-ink md:text-[64px]">
+          Hatched<span className="text-ember">.</span>
+        </span>
+        <span className="max-w-[440px] text-[17px] leading-[1.55] text-ink-2">
+          {symbol || 'This token'} reached its goal and moved into a full Meteora pool. Trading continues there, with deeper liquidity.
+        </span>
+        <div className="flex flex-col gap-2.5">
+          <div className="flex justify-between font-mono text-[15px] font-medium">
+            <span className="text-ink">
+              {formatAmount(pool.thresholdUi)} <span className="text-ink-muted">/ {formatAmount(pool.thresholdUi)} {quote}</span>
+            </span>
+            <span className="text-ember">100%</span>
+          </div>
+          <ShellBar progress={1} hatched height={12} />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+export function TradeOnMeteora({ pool }: { pool: HatchPool }) {
+  const quote = useQuoteSymbol(pool.quote);
+  return (
+    <Card className="flex flex-col gap-4 rounded-[24px] p-6">
+      <h2 className="font-display text-lg font-semibold tracking-[-0.01em] text-ink">Trade on Meteora</h2>
+      <div className="flex flex-col gap-2.5">
+        <DefRow label="Price">
+          <Amount value={pool.price} unit={quote} />
+        </DefRow>
+        {pool.dammV2Pool && (
+          <DefRow label="Pool">
+            <a href={explorerAddressUrl(pool.dammV2Pool)} target="_blank" rel="noreferrer" className="text-ink-accent hover:underline">
+              DAMM v2 · {shortAddr(pool.dammV2Pool, 4)} ↗
+            </a>
+          </DefRow>
+        )}
+      </div>
+      {pool.dammV2Pool && (
+        <Button asChild variant="ember" glow className="h-14 font-display text-base font-bold">
+          <a href={meteoraPoolUrl(pool.dammV2Pool)} target="_blank" rel="noreferrer">
+            Open pool on Meteora <ArrowUpRight size={14} />
+          </a>
+        </Button>
+      )}
+    </Card>
+  );
+}

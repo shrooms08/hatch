@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/router';
 import { PublicKey } from '@solana/web3.js';
 import { getConnection } from '@/lib/solana/connection';
-import { fetchHatchPoolByMint, fetchHatchPools } from '@/lib/dbc/pool';
+import { dbcClient, fetchHatchPoolByMint, fetchHatchPools } from '@/lib/dbc/pool';
 import { fetchTokenMetadata } from '@/lib/metadata/token';
 import { fetchMintInfo, fetchRawBalance, rawToUi, type MintInfo } from '@/lib/solana/mint';
 import type { HatchConfigs } from '@/lib/presets';
@@ -80,5 +80,67 @@ export function useTokenBalance(owner: PublicKey | null | undefined, mint: strin
     },
     enabled: !!owner && !!mint,
     refetchInterval: POLL_MS,
+  });
+}
+
+/** Home live stats + pool creation times (GET /api/stats, cached 60s server-side). */
+export function useHatchStats() {
+  return useQuery({
+    queryKey: ['hatch', 'stats'],
+    queryFn: async () => {
+      const res = await fetch('/api/stats');
+      if (!res.ok) throw new Error('Could not load stats');
+      return (await res.json()) as import('@/lib/server/stats').HatchStats;
+    },
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+  });
+}
+
+/** Number of holders of a base mint (GET /api/holders, cached 60s server-side). */
+export function useHolders(mint: string | undefined) {
+  return useQuery({
+    queryKey: ['hatch', 'holders', mint],
+    queryFn: async () => {
+      const res = await fetch(`/api/holders?mint=${mint}`);
+      if (!res.ok) throw new Error('holders unavailable');
+      return ((await res.json()) as { holders: number }).holders;
+    },
+    enabled: !!mint,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+}
+
+/** USD price of a mint from Jupiter's price API (mainnet only; null when unknown). */
+export function useUsdPrice(mint: string | undefined) {
+  return useQuery({
+    queryKey: ['hatch', 'usd-price', mint],
+    queryFn: async () => {
+      const base = process.env.NEXT_PUBLIC_JUPITER_API_URL || 'https://lite-api.jup.ag';
+      const res = await fetch(`${base}/price/v3?ids=${mint}`);
+      if (!res.ok) return null;
+      const body = (await res.json()) as Record<string, { usdPrice?: number } | null>;
+      return body[mint!]?.usdPrice ?? null;
+    },
+    enabled: !!mint && process.env.NEXT_PUBLIC_SOLANA_NETWORK === 'mainnet-beta',
+    staleTime: 60_000,
+    retry: false,
+  });
+}
+
+/** A launch config's hatch goal (migration threshold) in UI units of its quote token. */
+export function useConfigThreshold(configKey: string | undefined) {
+  return useQuery({
+    queryKey: ['hatch', 'config-threshold', configKey],
+    queryFn: async () => {
+      const connection = getConnection();
+      const config = await dbcClient(connection).state.getPoolConfig(configKey!);
+      if (!config) return null;
+      const quote = await fetchMintInfo(connection, config.quoteMint);
+      return rawToUi(config.migrationQuoteThreshold, quote);
+    },
+    enabled: !!configKey,
+    staleTime: 10 * 60_000,
   });
 }
