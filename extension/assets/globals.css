@@ -1,19 +1,104 @@
 @import "tailwindcss";
+/* Fonts bundled with the extension (its CSP blocks remote fonts). */
+@import "@fontsource/unbounded/latin-600.css";
+@import "@fontsource/unbounded/latin-700.css";
+@import "@fontsource/geist/latin-400.css";
+@import "@fontsource/geist/latin-500.css";
+@import "@fontsource/geist/latin-600.css";
+@import "@fontsource/geist-mono/latin-500.css";
+@import "@fontsource/geist-mono/latin-600.css";
 
-/* Plain dark theme for the side panel. Claude Design restyles later. */
+/*
+ * Hatch design system v1 tokens (same names and values as web/src/styles/hatch-tokens.css).
+ * The side panel is always dark.
+ */
+@theme {
+  --color-night: #120e0b;
+  --color-yolk: #f2a93b;
+  --color-yolk-hi: #ffbd57;
+  --color-yolk-deep: #b9781a;
+  --color-ember: #e8572a;
+  --color-shell: #f6eedc;
+
+  --color-inset: #0e0b09;
+  --color-surface-1: #1a1511;
+  --color-surface-2: #221b16;
+  --color-surface-3: #2c241e;
+  --color-line: #382e26;
+  --color-line-strong: #4a3e34;
+
+  --color-ink: #f6eedc;
+  --color-ink-2: #c9bfb1;
+  --color-ink-muted: #8a8178;
+  --color-ink-disabled: #6e655c;
+  --color-on-yolk: #120e0b;
+
+  --color-success: #7bd389;
+  --color-warning: #f7d154;
+  --color-danger: #f25f5c;
+  --color-info: #8db4ff;
+
+  --font-display: "Unbounded", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.6);
+  --shadow-cta: 0 10px 32px rgba(242, 169, 59, 0.22);
+  --shadow-focus: 0 0 0 4px rgba(242, 169, 59, 0.18);
+
+  --animate-shimmer: shimmer 1.4s ease-in-out infinite;
+  --animate-rise-in: rise-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-typing: typing 1.2s ease-in-out infinite;
+
+  @keyframes shimmer {
+    from { background-position: 100% 0; }
+    to { background-position: -100% 0; }
+  }
+  @keyframes rise-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes typing {
+    0%, 100% { opacity: 0.35; transform: translateY(0); }
+    50% { opacity: 1; transform: translateY(-2px); }
+  }
+}
+
 :root {
   color-scheme: dark;
-  --background: #0b0d0f;
-  --foreground: #f4f4f6;
-  --muted: #8b8b96;
-  --border: rgba(255, 255, 255, 0.12);
-  --accent: #c8f27a;
 }
 
 html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--color-night);
+  color: var(--color-ink);
+  font: 14px/1.45 var(--font-sans);
   margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-mono {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: rgba(242, 169, 59, 0.3);
+}
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: var(--color-line-strong); border-radius: 999px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }
