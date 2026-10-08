@@ -13,7 +13,9 @@ import {
 } from '@solana/web3.js';
 import { SwapMode } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import { dbcClient } from '@/lib/dbc/pool';
-import { fetchMintInfo, fetchRawBalance, type MintInfo } from '@/lib/solana/mint';
+import { fetchMintInfo, fetchRawBalance, uiToRaw, type MintInfo } from '@/lib/solana/mint';
+
+const SOL_UNITS = { decimals: 9, multiplier: 1 };
 import { PRIORITY_FEE_MICROLAMPORTS } from '@/lib/config/network';
 import { WSOL, jupQuote, jupSwapInstructions, jupSwapTransaction, type JupQuote } from '@/lib/jupiter';
 
@@ -51,7 +53,10 @@ async function poolAndConfig(connection: Connection, pool: string) {
 
 export async function quotePayWithSol(params: { connection: Connection; pool: string; solUi: string; slippageBps: number }): Promise<PayWithSolQuote> {
   const { connection, slippageBps } = params;
-  const lamportsIn = BigInt(Math.floor(Number(params.solUi) * 1e9));
+  const solUi = String(params.solUi).trim();
+  // Exact decimal -> lamports (no float rounding); anything that is not a plain number is refused.
+  if (!/^\d*\.?\d+$/.test(solUi)) throw new Error('Enter a valid SOL amount');
+  const lamportsIn = BigInt(uiToRaw(solUi, SOL_UNITS).toString());
   if (!(lamportsIn > BigInt(0))) throw new Error('Enter an amount greater than zero');
   const { client, virtualPool, config } = await poolAndConfig(connection, params.pool);
   const [quoteMint, baseMint] = await Promise.all([fetchMintInfo(connection, config.quoteMint), fetchMintInfo(connection, virtualPool.poolState.baseMint)]);

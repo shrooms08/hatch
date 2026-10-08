@@ -27,35 +27,47 @@ export type ActivePage =
   | { status: "unavailable"; reason: string }
   | { status: "ready"; tabId: number; page: PageContext };
 
-/** The active tab's page context, re-read when the user switches tabs or the tab navigates. */
+/**
+ * The active tab's page context, re-read when the user switches tabs, the tab finishes loading, or
+ * its content script reports an in-page navigation. Works without the "tabs" permission: the page's
+ * URL comes from our content script, never from tab.url.
+ */
 export function useActivePage(): { active: ActivePage; reload: () => void } {
   const [active, setActive] = useState<ActivePage>({ status: "loading" });
+  const activeTabId = useRef<number | null>(null);
   const load = useCallback(async () => {
     const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id || !tab.url || !/^https?:/.test(tab.url)) {
+    activeTabId.current = tab?.id ?? null;
+    if (!tab?.id) {
       setActive({ status: "unavailable", reason: "Open a web page to hatch a token from it." });
       return;
     }
     try {
       const page = (await browser.tabs.sendMessage(tab.id, { type: "get-context" } satisfies TabMessage)) as PageContext | undefined;
-      if (!page) throw new Error("no response");
+      if (!page || !/^https?:/.test(page.url)) throw new Error("no page");
       setActive({ status: "ready", tabId: tab.id, page });
     } catch {
-      setActive({ status: "unavailable", reason: "Reload this page so Hatch can read it." });
+      // No content script here: a browser page (chrome://, the web store) or a tab opened before install.
+      setActive({ status: "unavailable", reason: "Open a web page (or reload this one) so Hatch can read it." });
     }
   }, []);
 
   useEffect(() => {
     void load();
     const onActivated = () => void load();
-    const onUpdated = (_id: number, info: { status?: string; url?: string }) => {
-      if (info.status === "complete" || info.url) void load();
+    const onUpdated = (tabId: number, info: { status?: string }) => {
+      if (tabId === activeTabId.current && info.status === "complete") void load();
+    };
+    const onMessage = (msg: unknown, sender: { tab?: { id?: number } }) => {
+      if ((msg as { type?: string })?.type === "page-changed" && sender.tab?.id === activeTabId.current) void load();
     };
     browser.tabs.onActivated.addListener(onActivated);
     browser.tabs.onUpdated.addListener(onUpdated);
+    browser.runtime.onMessage.addListener(onMessage);
     return () => {
       browser.tabs.onActivated.removeListener(onActivated);
       browser.tabs.onUpdated.removeListener(onUpdated);
+      browser.runtime.onMessage.removeListener(onMessage);
     };
   }, [load]);
 
@@ -92,7 +104,7 @@ type Session = {
 const EMPTY: Session = { draft: null, reasoning: "", history: [], chat: [], edited: false };
 const toDraft = ({ name, symbol, description, preset, imageUrl, stockTicker }: BuddyDraft): Draft => ({ name, symbol, description, preset, imageUrl, stockTicker });
 
-/** Draft + chat for one page. Auto-drafts on first open; sessions are kept per URL while the panel is open. */
+/** Draft + chat for one page. Auto-drafts stock pages and tweets on first open; sessions are kept per URL while the panel is open. */
 export function useDraftSession(tabId: number | null, page: PageContext | null) {
   const sessions = useRef(new Map<string, Session>());
   const key = page?.url.split("#")[0] ?? "";
@@ -154,7 +166,9 @@ export function useDraftSession(tabId: number | null, page: PageContext | null) 
       return;
     }
     setSession(EMPTY);
-    void run(EMPTY);
+    // Auto-draft only stock pages and tweets. Anything else waits for "Draft from this page", so
+    // switching tabs never sends a page's text to the server on its own.
+    if (page.detected.kind === "stock" || page.detected.kind === "tweet") void run(EMPTY);
     // run only when the page changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);

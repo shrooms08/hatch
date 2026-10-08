@@ -83,21 +83,16 @@ export function App() {
           ) : (
             <EmptyState
               title="Nothing to hatch here yet"
-              body={
-                active.reason.startsWith("Reload")
-                  ? "Reload this page so Hatch can read it, then open the panel again."
-                  : "Open an article about a stock, a tweet, or anything that deserves a coin. Or describe one yourself."
-              }
+              body="Open an article about a stock, a tweet, or anything that deserves a coin (reload a tab opened before Hatch was installed). Or describe one yourself."
               action={
-                active.reason.startsWith("Reload") ? (
-                  <Button variant="secondary" onClick={reload}>
-                    Try again
-                  </Button>
-                ) : (
+                <div className="flex flex-wrap justify-center gap-2">
                   <Button variant="secondary" onClick={() => void browser.tabs.create({ url: webUrl("/launch") })}>
                     Start from scratch
                   </Button>
-                )
+                  <Button variant="ghost" onClick={reload}>
+                    Try again
+                  </Button>
+                </div>
               }
             />
           ))}

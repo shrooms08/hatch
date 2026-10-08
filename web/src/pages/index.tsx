@@ -1,13 +1,11 @@
 import Head from 'next/head';
 import Link from 'next/link';
-import Explore from '@/components/Explore';
 import Page from '@/components/ui/Page/Page';
 import { Button, DotField, EggGlyph, PuzzleIcon, StatTile, Tag } from '@/components/ds';
 import { ChickenOrb } from '@/components/ds/ChickenOrb';
 import { TokenArt } from '@/components/ds/TokenArt';
 import { HatchTable } from '@/components/Hatch/HatchTable';
 import { useHatchPools, useHatchStats } from '@/hooks/useHatch';
-import { ENABLE_JUPITER_DATA } from '@/lib/config/network';
 import { formatUsdCompact } from '@/lib/format/time';
 
 /** Hero illustration: a news page, the drafted token card, the buddy's hint and the orb. */
@@ -134,11 +132,11 @@ function HatchHome() {
 
 export default function Index() {
   return (
-    <Page bleed={!ENABLE_JUPITER_DATA}>
+    <Page bleed>
       <Head>
         <title>Hatch · Launch anything you see</title>
       </Head>
-      {ENABLE_JUPITER_DATA ? <Explore /> : <HatchHome />}
+      <HatchHome />
     </Page>
   );
 }

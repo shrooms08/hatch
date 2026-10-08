@@ -54,7 +54,8 @@ export const TIMING = {
   burstMs: 520,
   reformMs: 950,
   /** Idle breathing is capped at this frame rate (GLANCE's orb did the same). */
-  idleFps: 30,
+  /** Frame cap while resting (breathing only). Pecks, hover and every active state run at full rate. */
+  idleFps: 10,
 } as const;
 
 export type GlowState = "idle" | "noticed" | "thinking" | "ready" | "hatching";

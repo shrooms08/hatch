@@ -90,6 +90,9 @@ function HeroChips({ mint, pool, quote, domain, url }: { mint: string; pool: Hat
   return (
     <>
       {isTest && <TestBadge className="h-[30px]" />}
+      {pool && pool.presetId === null && (
+        <span className="inline-flex h-[30px] items-center rounded-pill border border-danger/45 bg-danger/[0.12] px-3 text-xs font-semibold text-danger">Not a Hatch launch</span>
+      )}
       {pool && <StatusPill status={pool.status} className="h-[30px]" />}
       {pool?.presetId && <PresetBadge preset={pool.presetId} quote={quote} className="h-[30px]" />}
       {domain && <InspiredChip domain={domain} href={url} />}

@@ -13,8 +13,12 @@ export const KEYS = {
   lastSound: "hatch:lastSound", // storage.session: { name, at, played, error? } for the debug page
 } as const;
 
-export type Settings = { hiddenSites: string[]; hiddenEverywhere: boolean; sounds: boolean };
-export const DEFAULT_SETTINGS: Settings = { hiddenSites: [], hiddenEverywhere: false, sounds: true };
+/**
+ * noticeAuto: ask the AI whether a page is worth a hint, automatically. Only ever for stock pages and
+ * tweets (never generic articles), once per page per session.
+ */
+export type Settings = { hiddenSites: string[]; hiddenEverywhere: boolean; sounds: boolean; noticeAuto: boolean };
+export const DEFAULT_SETTINGS: Settings = { hiddenSites: [], hiddenEverywhere: false, sounds: true, noticeAuto: true };
 
 export type EggPos = { right: number; bottom: number };
 export const DEFAULT_EGG_POS: EggPos = { right: 24, bottom: 24 };

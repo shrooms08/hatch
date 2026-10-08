@@ -92,6 +92,14 @@ export function DraftTab({ tabId, page, presets }: { tabId: number; page: PageCo
         <PageSummary page={page} />
 
         {!s.draft && s.busy && <DraftSkeleton />}
+        {!s.draft && !s.busy && !s.error && (
+          <div className="flex flex-col items-center gap-3 rounded-[18px] border border-dashed border-line-strong px-5 py-7 text-center">
+            <BuddyDots size={56} />
+            <span className="font-display text-base font-bold tracking-[-0.02em]">Draft a token from this page?</span>
+            <span className="text-[13px] leading-normal text-ink-2">Hatch reads this page and drafts a token with AI. Nothing is sent until you ask.</span>
+            <Button onClick={s.redraft}>Draft from this page</Button>
+          </div>
+        )}
         {s.error && !resting && <ErrorCard message={s.error} offline={offline} onRetry={s.redraft} />}
         {s.error && resting && (
           <Card className="px-3.5 py-3 text-[13px] text-ink-2">Hatch is resting, so it can&apos;t change the draft right now. Try again later.</Card>

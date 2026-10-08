@@ -3,7 +3,7 @@ import { defineContentScript } from "wxt/utils/define-content-script";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import { browser } from "wxt/browser";
 import { HATCH_WEB_ORIGIN } from "../../lib/config";
-import { detectFromDom } from "../../lib/detect";
+import { canAutoNotice, detectFromDom } from "../../lib/detect";
 import { clean, collectPageContext } from "../../lib/page";
 import { sendToBackground, type NoticeResponse, type TabMessage } from "../../lib/messages";
 import { DEFAULT_EGG_POS, KEYS, getLocal, getSettings, incubatingCount, isHiddenOn, setLocal, updateSettings, type EggPos, type HatchesCache, type Settings } from "../../lib/storage";
@@ -108,13 +108,16 @@ export default defineContentScript({
       if (posChange) egg?.setPos(posChange);
     });
 
-    // ---- noticing: local heuristics first; the AI only for flagged pages (background dedups per URL) ----
+    // ---- noticing: stock pages and tweets only; the AI only for flagged ones (background dedups per URL) ----
     let checkedUrl = "";
     async function checkPage(force = false) {
       const url = location.href.split("#")[0]!;
       if (!egg || (!force && url === checkedUrl)) return;
       checkedUrl = url;
       egg.setState("idle");
+      // Privacy: only stock pages and tweets are ever looked at automatically, and only with the
+      // "Notice pages automatically" setting on. Other pages are not read or sent.
+      if (!settings.noticeAuto || !canAutoNotice(url)) return;
       const d = detectFromDom();
       if (!d.flagged) return;
       const ctxPage = collectPageContext();
@@ -131,9 +134,16 @@ export default defineContentScript({
     await mount();
     // Let SPA content (X, TradingView) render before the first look.
     ctx.setTimeout(() => void checkPage(), 1500);
-    // SPA navigation: re-check when the URL changes.
+    // SPA navigation: re-check when the URL changes, and tell an open side panel (without the "tabs"
+    // permission it cannot see URL changes itself).
+    let lastUrl = location.href.split("#")[0];
     ctx.setInterval(() => {
-      if (location.href.split("#")[0] !== checkedUrl) void checkPage();
+      const now = location.href.split("#")[0];
+      if (now !== lastUrl) {
+        lastUrl = now;
+        void sendToBackground({ type: "page-changed" }).catch(() => undefined);
+      }
+      if (now !== checkedUrl) void checkPage();
     }, 2000);
   },
 });

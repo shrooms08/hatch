@@ -6,6 +6,16 @@
 import { HATCH_WEB_URL, withPreviewBypass } from "./config";
 import type { BuddyDraft, BuddyNotice, ChatMessage, Draft, HatchSummary, PageContext, PresetInfo, Result, StockMap } from "./types";
 
+/** Page URLs go to the server without query string or hash (they can carry personal data). */
+export function stripUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return url.split(/[?#]/)[0] ?? url;
+  }
+}
+
 const OFFLINE = `Can't reach Hatch at ${HATCH_WEB_URL}. Is the web app running?`;
 
 async function request<T>(method: "GET" | "POST", path: string, body?: unknown, timeoutMs = 45_000): Promise<Result<T>> {
@@ -35,9 +45,9 @@ async function request<T>(method: "GET" | "POST", path: string, body?: unknown, 
 
 export const api = {
   draft: (page: PageContext, messages: ChatMessage[], currentDraft?: Partial<Draft>) =>
-    request<BuddyDraft>("POST", "/api/buddy/draft", { page, messages, currentDraft }, 90_000),
+    request<BuddyDraft>("POST", "/api/buddy/draft", { page: { ...page, url: stripUrl(page.url) }, messages, currentDraft }, 90_000),
   notice: (input: Pick<PageContext, "url" | "title" | "text" | "detected">) =>
-    request<BuddyNotice>("POST", "/api/buddy/notice", input, 20_000),
+    request<BuddyNotice>("POST", "/api/buddy/notice", { ...input, url: stripUrl(input.url) }, 20_000),
   hatches: (wallet: string) =>
     request<{ wallet: string; network: string; hatches: HatchSummary[] }>("GET", `/api/hatches?wallet=${encodeURIComponent(wallet)}`),
   presets: () => request<{ network: string; presets: PresetInfo[] }>("GET", "/api/presets"),
@@ -51,7 +61,7 @@ export function launchUrl(draft: Draft, sourceUrl: string): string {
     symbol: draft.symbol,
     description: draft.description,
     preset: draft.preset,
-    source: sourceUrl,
+    source: stripUrl(sourceUrl),
   });
   if (draft.imageUrl) q.set("image", draft.imageUrl);
   if (draft.preset === "STOCK" && draft.stockTicker) q.set("stock", draft.stockTicker);

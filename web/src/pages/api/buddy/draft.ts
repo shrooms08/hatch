@@ -31,7 +31,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   const parsed = draftRequestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Invalid request', issues: parsed.error.flatten().fieldErrors });
   if (rateLimited(req, res, 'draft', DRAFTS_PER_HOUR)) return;
-  if (dailyCapReached(res)) return;
+  if (dailyCapReached(res, 'draft')) return;
 
   try {
     return res.status(200).json(await withFallbackImage(await draftToken(parsed.data)));

@@ -2,13 +2,14 @@
  * Background worker (shell ported from GLANCE's entrypoints/background.ts): the only extension
  * context that talks to the Hatch web app for content scripts. Opens the side panel, asks the AI
  * whether a flagged page is worth a hint (once per URL per session), stores the wallet address
- * the web app reports, polls the user's hatches every minute and announces milestones.
+ * the web app reports, polls the user's hatches (every minute while one is incubating, else every
+ * 10 minutes) and announces milestones.
  * It never holds keys, wallets or API keys.
  */
 import { defineBackground } from "wxt/utils/define-background";
 import { browser } from "wxt/browser";
 import { api } from "../lib/api";
-import { POLL_MINUTES, tokenPageUrl } from "../lib/config";
+import { HATCH_WEB_ORIGIN, POLL_MINUTES, tokenPageUrl } from "../lib/config";
 import { SIDEPANEL_PORT, type BgRequest, type NoticeResponse, type OffscreenMessage, type OffscreenResult, type TabMessage } from "../lib/messages";
 import { SOUNDS, type SoundName } from "../lib/buddy/config";
 import { diffMilestones } from "../lib/milestones";
@@ -125,6 +126,15 @@ async function poll() {
   }
 }
 
+/** Every minute while something is incubating; every 10 minutes when nothing is. */
+const IDLE_POLL_MS = 10 * 60_000;
+async function pollIfDue() {
+  const cache = await getLocal<HatchesCache | null>(KEYS.hatches, null);
+  const incubating = cache ? incubatingCount(cache.list) : 0;
+  if (cache && !cache.error && incubating === 0 && Date.now() - cache.at < IDLE_POLL_MS) return;
+  await poll();
+}
+
 async function ensurePolling() {
   const wallet = await getLocal<string | null>(KEYS.wallet, null);
   if (!wallet) {
@@ -142,7 +152,7 @@ export default defineBackground(() => {
   browser.runtime.onInstalled.addListener(() => void ensurePolling());
   browser.runtime.onStartup.addListener(() => void ensurePolling());
   browser.alarms.onAlarm.addListener((a) => {
-    if (a.name === POLL_ALARM) void poll();
+    if (a.name === POLL_ALARM) void pollIfDue();
   });
   browser.notifications.onClicked.addListener(async (id) => {
     const map = ((await browser.storage.session.get(NOTIFICATION_URLS))[NOTIFICATION_URLS] ?? {}) as Record<string, string>;
@@ -175,7 +185,13 @@ export default defineBackground(() => {
           return { ok: true };
         case "hatch-event": {
           // Only from our bridge script on the Hatch web app (it checks event.origin too).
-          if (!sender.tab || !SOLANA_ADDRESS.test(msg.wallet)) return { ok: false, error: "bad event" };
+          let fromHatch = false;
+          try {
+            fromHatch = !!sender.url && new URL(sender.url).origin === HATCH_WEB_ORIGIN;
+          } catch {
+            fromHatch = false;
+          }
+          if (!sender.tab || !fromHatch || !SOLANA_ADDRESS.test(msg.wallet)) return { ok: false, error: "bad event" };
           const prev = await getLocal<string | null>(KEYS.wallet, null);
           if (prev !== msg.wallet) {
             await setLocal(KEYS.wallet, msg.wallet);
@@ -189,6 +205,8 @@ export default defineBackground(() => {
           await poll();
           return { ok: true };
         }
+        case "page-changed":
+          return { ok: true }; // for the side panel (it listens to runtime messages too)
         case "play-sound":
           await playSound(msg.sound);
           return { ok: true };

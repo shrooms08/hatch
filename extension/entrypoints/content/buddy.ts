@@ -76,6 +76,8 @@ export class BuddyView {
 
     this.applyPos();
     this.bindDrag();
+    this.button.addEventListener("pointerenter", () => this.orb.setHover(true));
+    this.button.addEventListener("pointerleave", () => this.orb.setHover(false));
     this.root.querySelector<HTMLButtonElement>(".hatch-egg__more")!.addEventListener("click", (e) => {
       e.stopPropagation();
       this.menu.dataset.open = this.menu.dataset.open === "true" ? "false" : "true";

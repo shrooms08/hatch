@@ -77,6 +77,7 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
   });
 
   if (pool.isMigrated) return null; // the page shows "Trade on Meteora" instead
+  if (pool.presetId === null) return null; // not a Hatch launch: no trading here
 
   const maxAmount = () => {
     if (!inBalance) return null;

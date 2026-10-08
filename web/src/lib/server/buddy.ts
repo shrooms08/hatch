@@ -8,7 +8,7 @@ import { PRESET_IDS, PRESETS, type PresetId, type StockMap } from '@/lib/presets
 import { DESCRIPTION_MAX, NAME_MAX, SYMBOL_MAX } from '@/lib/validation/launch';
 import type { BuddyDraft, BuddyNotice, DraftRequest, NoticeRequest, PageContext } from '@/lib/buddy/schema';
 import { DRAFT_MODEL, FAST_MODEL, anthropic } from '@/lib/server/ai';
-import { loadHatchConfigs } from '@/lib/server/presets';
+import { enabledPresets, loadHatchConfigs } from '@/lib/server/presets';
 
 export class AiOutputError extends Error {}
 
@@ -111,9 +111,11 @@ function tickerIsSubject(ticker: string, page: PageContext): boolean {
   return new RegExp(`(^|[^A-Za-z0-9])\\$?${esc}([^A-Za-z0-9]|$)`).test(page.title);
 }
 
-export function clampDraft(raw: z4.infer<typeof DraftOutput>, page: PageContext, stocks: StockMap = {}): BuddyDraft {
+export function clampDraft(raw: z4.infer<typeof DraftOutput>, page: PageContext, stocks: StockMap = {}, enabled: readonly PresetId[] = PRESET_IDS): BuddyDraft {
   const name = clip(oneLine(raw.name), NAME_MAX) || 'Hatchling';
   let preset: PresetId = (PRESET_IDS as readonly string[]).includes(raw.preset) ? raw.preset : 'MEME';
+  // A preset that cannot launch on this network (e.g. AI agent without its own config) drafts as MEME.
+  if (preset !== 'STOCK' && !enabled.includes(preset)) preset = 'MEME';
   let stockTicker = raw.stockTicker ? raw.stockTicker.toUpperCase().replace(/^\$/, '').trim() : null;
   if (stockTicker && !/^[A-Z]{1,6}(\.[A-Z])?$/.test(stockTicker)) stockTicker = null;
   if (stockTicker && !tickerIsSubject(stockTicker, page)) stockTicker = null;
@@ -146,7 +148,8 @@ function checkStop(stop: Anthropic.Message['stop_reason']) {
 }
 
 export async function draftToken(req: DraftRequest): Promise<BuddyDraft> {
-  const { stocks } = loadHatchConfigs();
+  const hc = loadHatchConfigs();
+  const { stocks } = hc;
   const first = `Here is the page the user is looking at.\n\n${pageBlock(req.page)}\n\nDraft a token inspired by this page.`;
   const turns: { role: 'user' | 'assistant'; content: string }[] = [{ role: 'user', content: first }];
   for (const m of req.messages) {
@@ -170,7 +173,7 @@ export async function draftToken(req: DraftRequest): Promise<BuddyDraft> {
   });
   checkStop(response.stop_reason);
   if (!response.parsed_output) throw new AiOutputError('The AI returned an unreadable draft; try again');
-  return clampDraft(response.parsed_output, req.page, stocks);
+  return clampDraft(response.parsed_output, req.page, stocks, enabledPresets(hc));
 }
 
 export async function noticePage(req: NoticeRequest): Promise<BuddyNotice> {

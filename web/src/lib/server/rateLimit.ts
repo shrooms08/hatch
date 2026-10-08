@@ -10,25 +10,29 @@ export function clientIp(req: NextApiRequest): string {
   return first || req.socket.remoteAddress || 'unknown';
 }
 
-/** Returns true (and sends 429) when the caller is over `limit` requests per `windowMs`. */
+/**
+ * Returns true (and sends 429) when the caller would go over `limit` units per `windowMs`.
+ * `cost` charges several units at once (e.g. one per call in a JSON-RPC batch).
+ */
 export function rateLimited(
   req: NextApiRequest,
   res: NextApiResponse,
   bucket: string,
   limit: number,
-  windowMs = 60 * 60 * 1000
+  windowMs = 60 * 60 * 1000,
+  cost = 1
 ): boolean {
   const key = `${bucket}:${clientIp(req)}`;
   const now = Date.now();
   const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
-  if (recent.length >= limit) {
-    const retryAfter = Math.ceil((recent[0] + windowMs - now) / 1000);
+  if (recent.length + cost > limit) {
+    const retryAfter = Math.max(1, Math.ceil(((recent[0] ?? now) + windowMs - now) / 1000));
     res.setHeader('Retry-After', String(retryAfter));
-    res.status(429).json({ error: `Too many requests, try again in ${Math.ceil(retryAfter / 60)} min` });
+    res.status(429).json({ error: `Too many requests, try again in ${retryAfter < 120 ? `${retryAfter} s` : `${Math.ceil(retryAfter / 60)} min`}` });
     hits.set(key, recent);
     return true;
   }
-  recent.push(now);
+  for (let i = 0; i < cost; i++) recent.push(now);
   hits.set(key, recent);
   if (hits.size > 10_000) {
     for (const [k, v] of hits) if (!v.some((t) => now - t < windowMs)) hits.delete(k);
@@ -36,29 +40,33 @@ export function rateLimited(
   return false;
 }
 
-let capDay = '';
-let capCount = 0;
-
 /**
- * Global per-instance daily cap (AI_DAILY_CAP, default 300) on top of the per-IP limits. Returns true
- * (and sends 503) once today's (UTC) count is used up.
+ * Global per-instance daily caps on the AI routes, on top of the per-IP limits:
+ * drafts AI_DAILY_CAP (default 300), notices AI_DAILY_NOTICE_CAP (default 1500, a cheaper model).
+ * A cap of 0 rests that route. Returns true (and sends 503) once today's (UTC) count is used up.
  */
-const envCap = () => {
-  const v = Number(process.env.AI_DAILY_CAP);
-  return process.env.AI_DAILY_CAP !== undefined && process.env.AI_DAILY_CAP !== '' && Number.isFinite(v) && v >= 0 ? v : 300;
-};
+const CAPS = { draft: { env: 'AI_DAILY_CAP', fallback: 300 }, notice: { env: 'AI_DAILY_NOTICE_CAP', fallback: 1500 } } as const;
+type CapBucket = keyof typeof CAPS;
 
-/** AI_DAILY_CAP=0 rests the AI routes entirely. */
-export function dailyCapReached(res: NextApiResponse, cap = envCap()): boolean {
+function envCap(bucket: CapBucket) {
+  const raw = process.env[CAPS[bucket].env];
+  const v = Number(raw);
+  return raw !== undefined && raw !== '' && Number.isFinite(v) && v >= 0 ? v : CAPS[bucket].fallback;
+}
+
+const capState: Record<CapBucket, { day: string; count: number }> = { draft: { day: '', count: 0 }, notice: { day: '', count: 0 } };
+
+export function dailyCapReached(res: NextApiResponse, bucket: CapBucket = 'draft', cap = envCap(bucket)): boolean {
   const today = new Date().toISOString().slice(0, 10);
-  if (today !== capDay) {
-    capDay = today;
-    capCount = 0;
+  const s = capState[bucket];
+  if (today !== s.day) {
+    s.day = today;
+    s.count = 0;
   }
-  if (capCount >= cap) {
+  if (s.count >= cap) {
     res.status(503).json({ error: 'Hatch is resting, try again later' });
     return true;
   }
-  capCount++;
+  s.count++;
   return false;
 }

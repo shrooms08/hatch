@@ -18,7 +18,9 @@ export type BgRequest =
   | { type: "refresh-hatches" }
   | { type: "forget-wallet" }
   /** Debug page: play a sound through the offscreen document (respects the Sounds setting). */
-  | { type: "play-sound"; sound: SoundName };
+  | { type: "play-sound"; sound: SoundName }
+  /** Content script: this tab's URL changed (SPA navigation). The side panel re-reads the page. */
+  | { type: "page-changed" };
 
 export type NoticeResponse = { hint: string | null };
 

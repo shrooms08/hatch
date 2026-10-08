@@ -1,11 +1,15 @@
 // GET /api/holders?mint=<base mint>: number of wallets holding the token (non-zero balances),
 // excluding the bonding-curve pool's own vault. Read from chain, cached 60s per mint.
+// Only for tokens launched with Hatch (a pool under one of Hatch's configs); anything else is 404,
+// so this cannot be used to scan arbitrary mints.
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { deriveDbcPoolAuthority } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import { serverRpcUrl } from '@/lib/config/network';
 import { rateLimited } from '@/lib/server/rateLimit';
+import { fetchHatchPoolByMint } from '@/lib/dbc/pool';
+import { loadHatchConfigs } from '@/lib/server/presets';
 
 const TTL_MS = 60_000;
 const cache = new Map<string, { at: number; holders: number }>();
@@ -47,6 +51,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   if (hit && Date.now() - hit.at < TTL_MS) return res.status(200).json({ holders: hit.holders });
   if (rateLimited(req, res, 'holders', 60, 60_000)) return;
   try {
+    const pool = await fetchHatchPoolByMint(new Connection(serverRpcUrl(), 'confirmed'), key, loadHatchConfigs());
+    if (!pool || pool.presetId === null) return res.status(404).json({ error: 'Not a Hatch launch' });
     const holders = await countHolders(mint);
     cache.set(key, { at: Date.now(), holders });
     if (cache.size > 2000) cache.clear();
