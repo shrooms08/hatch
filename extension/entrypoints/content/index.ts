@@ -8,6 +8,8 @@ import { clean, collectPageContext } from "../../lib/page";
 import { sendToBackground, type NoticeResponse, type TabMessage } from "../../lib/messages";
 import { DEFAULT_EGG_POS, KEYS, getLocal, getSettings, incubatingCount, isHiddenOn, setLocal, updateSettings, type EggPos, type HatchesCache, type Settings } from "../../lib/storage";
 import { BuddyView } from "./buddy";
+import { collectHeadlines, localHint, matchHeadlines } from "../../lib/newsMatch";
+import type { StockMap } from "../../lib/types";
 
 /**
  * Content script on every page: the floating egg, local page detection, and answering the side
@@ -115,9 +117,11 @@ export default defineContentScript({
       if (!egg || (!force && url === checkedUrl)) return;
       checkedUrl = url;
       egg.setState("idle");
-      // Privacy: only stock pages and tweets are ever looked at automatically, and only with the
-      // "Notice pages automatically" setting on. Other pages are not read or sent.
-      if (!settings.noticeAuto || !canAutoNotice(url)) return;
+      // Privacy: only stock pages and tweets are ever sent automatically, and only with the "Notice pages
+      // automatically" setting on. Other pages get a LOCAL-only headline check (lib/newsMatch): nothing leaves
+      // the browser unless the user clicks the hint.
+      if (!settings.noticeAuto) return;
+      if (!canAutoNotice(url)) return localNewsCheck(url);
       const d = detectFromDom();
       if (!d.flagged) return;
       const ctxPage = collectPageContext();
@@ -128,7 +132,22 @@ export default defineContentScript({
       if (r?.hint && location.href.split("#")[0] === url) {
         egg?.setState("noticed");
         egg?.showBubble(r.hint, { timeoutMs: 15_000 });
+        void sendToBackground({ type: "heads-up", url }).catch(() => undefined);
       }
+    }
+
+    /** News pages: compare the title, og:title and main headline with the supported stocks, on this device. */
+    async function localNewsCheck(url: string) {
+      const stocks = await sendToBackground<StockMap>({ type: "get-stocks" }).catch((): StockMap => ({}));
+      const stock = matchHeadlines(collectHeadlines(document), stocks ?? {});
+      if (!stock || !egg || location.href.split("#")[0] !== url) return;
+      egg.setState("noticed");
+      egg.showBubble(localHint(stock), {
+        timeoutMs: 15_000,
+        // Clicking is the user's ask: open the panel and draft this page (only now is page text sent).
+        onPrimary: () => void sendToBackground({ type: "open-side-panel", draft: { url } }),
+      });
+      void sendToBackground({ type: "heads-up", url }).catch(() => undefined);
     }
 
     await mount();

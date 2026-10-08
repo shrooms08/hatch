@@ -1,10 +1,11 @@
 import Head from 'next/head';
+import Link from 'next/link';
 import type { GetStaticProps } from 'next';
 import Page from '@/components/ui/Page/Page';
 import { Button, DotField, DownloadIcon, EGG_RADIUS, Overline } from '@/components/ds';
 import { ChickenOrb } from '@/components/ds/ChickenOrb';
 
-const EXTENSION_VERSION = '0.5.0';
+const EXTENSION_VERSION = '0.6.0';
 const FILE = `hatch-extension-v${EXTENSION_VERSION}.zip`;
 
 type Props = { downloadUrl: string; size: string | null };
@@ -157,7 +158,13 @@ export default function ExtensionPage({ downloadUrl, size }: Props) {
           <h2 id="steps-h" className="font-display text-[26px] font-bold tracking-[-0.025em] text-ink md:text-4xl">
             Install in 4 steps
           </h2>
-          <span className="text-[15px] text-ink-muted">About a minute. Store listing coming soon.</span>
+          <span className="text-[15px] text-ink-muted">
+            About a minute. Store listing coming soon. What it reads and sends:{' '}
+            <Link href="/privacy" className="font-semibold text-ink-accent underline-offset-4 hover:underline">
+              Privacy
+            </Link>
+            .
+          </span>
         </div>
         <ol className="grid gap-3 md:grid-cols-2 md:gap-4 xl:grid-cols-4">
           {STEPS.map((s, i) => (

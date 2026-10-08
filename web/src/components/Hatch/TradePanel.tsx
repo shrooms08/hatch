@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter';
 import { Amount, Button, Card, ChipGroup, DefRow, Segmented, SubscriptNumber, Toggle, TokenBadge, inputShell, notify } from '@/components/ds';
@@ -16,7 +18,7 @@ import { LAMPORTS_PER_SOL, buyCostLamports, formatSol, formatSolNeed } from '@/l
 import { SolShortNote, TxErrorNote } from './TxErrorNote';
 import { useHasTokenAccount, useLiveBaseFee, useQuoteSymbol, useRentPerByte, useSolLamports, useTokenBalance, useTokenMetadata } from '@/hooks/useHatch';
 import { OpenInWallet } from './OpenInWallet';
-import { LEGACY_FEE_SENTENCE, SNIPER_SHIELD_LINE, formatFeePercent, shieldFeeSentence } from '@/lib/dbc/feeSchedule';
+import { SNIPER_SHIELD_LINE, feeSentence, formatFeePercent } from '@/lib/dbc/feeSchedule';
 
 const SLIPPAGE_OPTIONS = [50, 100, 200];
 const SOL_FEE_BUFFER = 0.01; // keep some SOL for fees (and new token-account rent) when paying with SOL
@@ -35,7 +37,13 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
   const fee = useLiveBaseFee(pool);
   const { data: baseMd } = useTokenMetadata(pool.baseMint);
 
+  const router = useRouter();
   const [side, setSide] = useState<TradeSide>('buy');
+  // /token/<mint>?tab=sell (links from My Hatches → Holdings) opens on Sell.
+  useEffect(() => {
+    if (router.isReady && router.query.tab === 'sell') setSide('sell');
+  }, [router.isReady, router.query.tab]);
+  const [boughtTip, setBoughtTip] = useState(false);
   const [amount, setAmount] = useState('');
   const [slippageBps, setSlippageBps] = useState(100);
   const [customSlippage, setCustomSlippage] = useState(false);
@@ -111,6 +119,7 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
 
   const done = async (sig: string, out: string | null) => {
     const view = { label: `View on ${EXPLORER_NAME}`, href: explorerTxUrl(sig) };
+    if (side === 'buy') setBoughtTip(true);
     if (side === 'buy')
       notify.success({
         title: `Bought ${out ? `≈${out} ` : ''}${baseSymbol}`,
@@ -286,7 +295,12 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
         </DefRow>
         {fee && (
           <p className="text-xs text-ink-muted">
-            {fee.shield ? shieldFeeSentence(formatFeePercent(fee.shield.start), formatFeePercent(fee.shield.end)) : LEGACY_FEE_SENTENCE}
+            {feeSentence({
+              shield: !!fee.shield,
+              start: fee.shield ? formatFeePercent(fee.shield.start) : undefined,
+              end: fee.shield ? formatFeePercent(fee.shield.end) : undefined,
+              creatorPct: pool.creatorFeePct,
+            })}
           </p>
         )}
         {preview.error ? <TxErrorNote error={friendlyTxError(preview.error, { symbol: inSymbol })} /> : null}
@@ -361,6 +375,20 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
         {!wallet.publicKey ? 'Connect wallet' : submitting ? 'Working…' : `${side === 'buy' ? 'Buy' : 'Sell'} ${baseSymbol}`}
       </Button>
       <TxErrorNote error={txError} onDismiss={() => setTxError(null)} />
+      {boughtTip && (
+        <div role="note" className="flex items-start gap-2.5 rounded-[14px] border border-success/35 bg-success/[0.07] px-3.5 py-3">
+          <span className="min-w-0 flex-1 text-[13px] leading-normal text-ink-2">
+            Find it anytime in{' '}
+            <Link href="/my-hatches?view=holdings" className="font-semibold text-ink-accent underline-offset-4 hover:underline">
+              My Hatches → Holdings
+            </Link>
+            . In Phantom, new tokens may sit under hidden tokens.
+          </span>
+          <button type="button" aria-label="Dismiss" onClick={() => setBoughtTip(false)} className="-mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-ink-muted hover:text-ink">
+            ×
+          </button>
+        </div>
+      )}
       <OpenInWallet />
     </Card>
   );

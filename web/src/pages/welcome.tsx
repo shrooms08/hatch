@@ -82,7 +82,11 @@ const PRIVACY: { when: string; what: string }[] = [
     what: 'The page title, its address (without anything after ? or #) and a short bit of text, once per page, so the chicken can offer an idea. You can turn this off in the side panel’s Settings.',
   },
   {
-    when: 'On every other page, only when you click “Draft from this page”',
+    when: 'News headlines: checked on your device only',
+    what: 'On other pages the chicken compares the title and main headline with the stocks Hatch supports, right in your browser. Nothing is sent for this check.',
+  },
+  {
+    when: 'On every other page, only when you click the hint or “Draft from this page”',
     what: 'Nothing leaves the page until you ask. Then the title, address, visible text and image links go to Hatch to draft your token. Opening the panel on a stock page or tweet drafts it right away.',
   },
   {
@@ -153,9 +157,15 @@ export default function WelcomePage() {
             <h2 id="privacy-h" className="font-display text-[22px] font-bold tracking-[-0.02em] text-ink md:text-[28px]">
               What Hatch sends, and when
             </h2>
-            <p className="text-sm text-ink-2">Everything the extension sends to Hatch, in plain words.</p>
+            <p className="text-sm text-ink-2">
+              Everything the extension sends to Hatch, in plain words. The full version:{' '}
+              <Link href="/privacy" className="font-semibold text-ink-accent underline-offset-4 hover:underline">
+                Privacy
+              </Link>
+              .
+            </p>
           </div>
-          <dl className="grid gap-3 md:grid-cols-3 md:gap-4">
+          <dl className="grid gap-3 md:grid-cols-2 md:gap-4">
             {PRIVACY.map((p) => (
               <div key={p.when} className="flex flex-col gap-2 rounded-[16px] border border-surface-3 bg-surface-1 p-4">
                 <dt className="text-[15px] font-semibold text-ink">{p.when}</dt>

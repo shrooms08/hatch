@@ -10,6 +10,7 @@ const PRODUCT = [
 ];
 const MORE = [
   { href: '/launch#how-it-works', label: 'How hatching works' },
+  { href: '/privacy', label: 'Privacy' },
   { href: 'https://docs.meteora.ag/overview/products/dbc/what-is-dbc', label: 'Meteora DBC', external: true },
   { href: 'https://x.com', label: 'X / Twitter', external: true },
 ];

@@ -10,7 +10,14 @@ import type { SoundName } from "./buddy/config";
 export type BgRequest =
   /** Content script flagged this page locally; ask the AI once per URL per session. */
   | { type: "notice"; page: Pick<PageContext, "url" | "title" | "text" | "detected"> }
-  | { type: "open-side-panel" }
+  /** draft: the user clicked a hint, so the panel drafts this page right away. */
+  | { type: "open-side-panel"; draft?: { url: string } }
+  /** A hint bubble just appeared on this page: double chirp (throttled, lib/chirp). */
+  | { type: "heads-up"; url: string }
+  /** Supported stocks (cached GET /api/stocks), for the local news heads-up. */
+  | { type: "get-stocks" }
+  /** Debug page: run the tracking-alert chirp path once. */
+  | { type: "debug-alert" }
   /** Side panel: show this state on the egg in the given tab. */
   | { type: "egg-state"; tabId: number; state: EggState }
   /** Bridge (web app page): a wallet connected or a token launched. */

@@ -29,6 +29,11 @@ export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 export type PresetInfo = { id: PresetId; label: string; description: string; quoteSymbol: string; explainer: string[] };
 
+/** Launch copy for one config (GET /api/presets `copy`): the launch form's exact text. Keys: MEME, AI_AGENT, STOCK:<TICKER>. */
+export type PresetCopy = { howItWorks: string; fee: string; honest: string | null; shield: boolean; creatorPct: number };
+export type PresetCopyMap = Record<string, PresetCopy>;
+export const copyKey = (preset: string, stockTicker?: string | null) => (preset === "STOCK" ? `STOCK:${(stockTicker ?? "").toUpperCase()}` : preset);
+
 export type HatchStatus = "Incubating" | "Almost hatched" | "Hatched";
 
 export type HatchSummary = {
@@ -49,3 +54,21 @@ export type StockInfo = { ticker: string; config: string; quoteMint: string; sym
 export type StockMap = Record<string, StockInfo>;
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string };
+
+/** A Hatch token the wallet holds (GET /api/holdings). */
+export type Holding = {
+  mint: string;
+  name: string;
+  symbol: string;
+  image: string | null;
+  preset: PresetId;
+  quoteSymbol: string;
+  balance: string;
+  valueQuote: string;
+  valueUsd: number | null;
+  progressPct: number;
+  status: HatchStatus;
+  hatched: boolean;
+  test: boolean;
+  tokenUrl: string;
+};

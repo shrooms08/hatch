@@ -96,7 +96,8 @@ async function tallyPool(connection: Connection, pool: HatchPool) {
   return t;
 }
 
-async function usdPrices(mints: string[]): Promise<Record<string, number>> {
+/** USD price per mint from Jupiter (lite-api price v3); missing mints are left out. */
+export async function usdPrices(mints: string[]): Promise<Record<string, number>> {
   if (!mints.length) return {};
   try {
     const res = await fetch(`${JUP_PRICE}?ids=${mints.join(',')}`, { signal: AbortSignal.timeout(10_000) });

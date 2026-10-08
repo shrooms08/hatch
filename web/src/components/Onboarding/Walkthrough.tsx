@@ -13,7 +13,7 @@ const OnboardingContext = createContext<Onboarding>({ open: () => {}, isOpen: fa
 export const useOnboarding = () => useContext(OnboardingContext);
 
 /** Pages that never open the walkthrough by themselves: shared token links (chip instead) and /welcome. */
-const NO_AUTO_OPEN = ['/token/[tokenId]', '/welcome'];
+const NO_AUTO_OPEN = ['/token/[tokenId]', '/welcome', '/privacy'];
 
 export function OnboardingProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();

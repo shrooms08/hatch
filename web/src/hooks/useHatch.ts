@@ -12,6 +12,7 @@ import { fetchTokenMetadata } from '@/lib/metadata/token';
 import { fetchMintInfo, fetchRawBalance, rawToUi, type MintInfo } from '@/lib/solana/mint';
 import type { HatchConfigs } from '@/lib/presets';
 import type { PresetsResponse } from '@/pages/api/presets';
+import type { HoldingsResponse } from '@/pages/api/holdings';
 
 const POLL_MS = 10_000;
 
@@ -26,11 +27,19 @@ export function useRouteMint(): string | undefined {
 export function usePresetConfigs() {
   return useQuery({
     queryKey: ['hatch', 'presets'],
-    queryFn: async (): Promise<HatchConfigs> => {
+    queryFn: async (): Promise<HatchConfigs & { copy: PresetsResponse['copy'] }> => {
       const res = await fetch('/api/presets');
       if (!res.ok) throw new Error('Could not load presets');
       const body = (await res.json()) as PresetsResponse;
-      return { network: body.network, configs: body.configs, stocks: body.stocks, hiddenMints: body.hiddenMints, testMints: body.testMints ?? [], legacy: body.legacy ?? [] };
+      return {
+        network: body.network,
+        configs: body.configs,
+        stocks: body.stocks,
+        hiddenMints: body.hiddenMints,
+        testMints: body.testMints ?? [],
+        legacy: body.legacy ?? [],
+        copy: body.copy ?? {},
+      };
     },
     staleTime: 60_000,
   });
@@ -220,6 +229,21 @@ export function useHasTokenAccount(owner: PublicKey | null | undefined, mint: Mi
     },
     enabled: !!owner && !!mint,
     refetchInterval: POLL_MS,
+  });
+}
+
+/** Hatch tokens the wallet holds (GET /api/holdings: chain read + Jupiter USD estimates). */
+export function useHoldings(wallet: string | undefined) {
+  return useQuery({
+    queryKey: ['hatch', 'holdings', wallet],
+    queryFn: async () => {
+      const res = await fetch(`/api/holdings?wallet=${wallet}`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? 'Could not read holdings');
+      return (body as HoldingsResponse).holdings;
+    },
+    enabled: !!wallet,
+    refetchInterval: 30_000,
   });
 }
 

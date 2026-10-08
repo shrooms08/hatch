@@ -4,7 +4,7 @@
  * through the background.
  */
 import { HATCH_WEB_URL, withPreviewBypass } from "./config";
-import type { BuddyDraft, BuddyNotice, ChatMessage, Draft, HatchSummary, PageContext, PresetInfo, Result, StockMap } from "./types";
+import type { BuddyDraft, BuddyNotice, ChatMessage, Draft, HatchSummary, Holding, PageContext, PresetCopyMap, PresetInfo, Result, StockMap } from "./types";
 
 /** Page URLs go to the server without query string or hash (they can carry personal data). */
 export function stripUrl(url: string): string {
@@ -50,8 +50,9 @@ export const api = {
     request<BuddyNotice>("POST", "/api/buddy/notice", { ...input, url: stripUrl(input.url) }, 20_000),
   hatches: (wallet: string) =>
     request<{ wallet: string; network: string; hatches: HatchSummary[] }>("GET", `/api/hatches?wallet=${encodeURIComponent(wallet)}`),
-  presets: () => request<{ network: string; presets: PresetInfo[] }>("GET", "/api/presets"),
+  presets: () => request<{ network: string; presets: PresetInfo[]; copy?: PresetCopyMap }>("GET", "/api/presets"),
   stocks: () => request<{ network: string; stocks: StockMap }>("GET", "/api/stocks"),
+  holdings: (wallet: string) => request<{ wallet: string; network: string; holdings: Holding[] }>("GET", `/api/holdings?wallet=${encodeURIComponent(wallet)}`),
 };
 
 /** The web app's /launch URL, prefilled (the user reviews, then Phantom signs on the web app). */

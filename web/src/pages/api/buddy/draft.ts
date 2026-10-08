@@ -10,9 +10,12 @@ import { uploadFallbackImage } from '@/lib/server/fallbackImage';
 import { isR2Configured } from '@/lib/server/r2';
 import { loadHatchConfigs } from '@/lib/server/presets';
 
-/** No usable image on the page: give the draft the generated Hatch egg (best effort). */
+/**
+ * The generated Hatch card (egg, ticker, "paired with <xStock>") when the page has no usable image, and
+ * always for STOCK drafts: stock quote pages only have generic site images.
+ */
 async function withFallbackImage(draft: BuddyDraft): Promise<BuddyDraft> {
-  if (draft.imageUrl || !isR2Configured()) return draft;
+  if ((draft.imageUrl && draft.preset !== 'STOCK') || !isR2Configured()) return draft;
   try {
     const paired = draft.preset === 'STOCK' && draft.stockTicker ? loadHatchConfigs().stocks[draft.stockTicker]?.symbol : null;
     return { ...draft, imageUrl: await uploadFallbackImage(draft.symbol, paired) };

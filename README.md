@@ -96,10 +96,13 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Privacy
 
+Full details, in plain words: [hatchfun.vercel.app/privacy](https://hatchfun.vercel.app/privacy).
+
 - The extension holds **no keys, wallets or API keys**. All AI calls go through the Hatch server.
 - **Automatic hints** happen only on stock pages and tweets (a setting turns them off), once per page. They send the page title, URL without query string or hash, and a short text excerpt.
+- **News headlines are checked on your device only**: on other pages the title and main headline are compared with the supported stocks locally, and nothing is sent unless you click the hint.
 - **Drafts** happen when you ask, except that stock pages and tweets are drafted when you open the panel. They send the page title, URL without query or hash, visible text and image links.
-- The only identifier stored is your public wallet address, reported by the web app after you connect.
+- The only identifier stored is your public wallet address, reported by the web app after you connect. **Clear my data** in Settings removes everything the extension stored.
 - No `tabs` permission: the page and its URL come from Hatch's own content script.
 
 ## Security notes

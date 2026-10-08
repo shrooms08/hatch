@@ -13,6 +13,8 @@ import { HATCH_WEB_ORIGIN, POLL_MINUTES, tokenPageUrl, webUrl } from "../lib/con
 import { SIDEPANEL_PORT, type BgRequest, type NoticeResponse, type OffscreenMessage, type OffscreenResult, type TabMessage } from "../lib/messages";
 import { SOUNDS, type SoundName } from "../lib/buddy/config";
 import { diffMilestones } from "../lib/milestones";
+import { EMPTY_HEADS_UP, alertChirp, alertKey, headsUpChirp, type HeadsUpState } from "../lib/chirp";
+import { loadStocks } from "../lib/stocks";
 import { KEYS, getLocal, getSettings, incubatingCount, setLocal, type HatchesCache, type Milestones } from "../lib/storage";
 
 const POLL_ALARM = "hatch-poll";
@@ -38,8 +40,11 @@ async function ensureOffscreen(): Promise<boolean> {
 /** URL of a bundled file. The sfx are copied by a build hook, so WXT's typed paths don't list them. */
 const assetUrl = (path: string) => (browser.runtime.getURL as (p: string) => string)(path);
 
-async function playSound(name: SoundName) {
-  if (!(await getSettings()).sounds) return;
+/** kind "alert": heads-ups and tracking alerts, which also need "Chirp on heads-ups and alerts". */
+async function playSound(name: SoundName, kind: "ui" | "alert" = "ui") {
+  const settings = await getSettings();
+  if (!settings.sounds) return;
+  if (kind === "alert" && settings.chirpAlerts === false) return;
   if (name === "chirp") {
     const now = Date.now();
     if (now - lastChirpAt < SOUNDS.chirpThrottleMs) return;
@@ -81,6 +86,23 @@ async function notice(page: Extract<BgRequest, { type: "notice" }>["page"]): Pro
   return { hint };
 }
 
+/** A hint bubble appeared on `url`: double chirp, at most once per page per session and once every 2 min. */
+async function headsUp(url: string) {
+  const state = ((await browser.storage.session.get(KEYS.headsUp))[KEYS.headsUp] as HeadsUpState | undefined) ?? EMPTY_HEADS_UP;
+  const { play, next } = headsUpChirp(state, url, Date.now());
+  await browser.storage.session.set({ [KEYS.headsUp]: next });
+  if (play) await playSound("chirpDouble", "alert");
+  return { ok: true, played: play };
+}
+
+/** Tracking alerts: one double chirp per poll, only for milestones that never chirped before. */
+async function alertChirpFor(keys: string[]) {
+  const { play, next } = alertChirp(await getLocal<string[]>(KEYS.chirpedAlerts, []), keys);
+  await setLocal(KEYS.chirpedAlerts, next);
+  if (play) await playSound("chirpDouble", "alert");
+  return play;
+}
+
 // ---- tracking ----
 async function setBadge(count: number) {
   await browser.action.setBadgeText({ text: count > 0 ? String(count) : "" });
@@ -120,10 +142,8 @@ async function poll() {
     if (tabId) await sendToTab(tabId, { type: "bubble", text: e.text, url });
     if (e.notify) await notifyChrome(e.text, url);
   }
-  if (events.some((e) => e.kind === "hatched")) {
-    await broadcastHatch();
-    await playSound("chirpDouble");
-  }
+  if (events.some((e) => e.kind === "hatched")) await broadcastHatch();
+  if (events.length) await alertChirpFor(events.map((e) => alertKey(e.mint, e.kind)));
 }
 
 /** Every minute while something is incubating; every 10 minutes when nothing is. */
@@ -188,6 +208,8 @@ export default defineBackground(() => {
           return notice(msg.page);
         case "open-side-panel": {
           const tab = sender.tab;
+          // A clicked hint: the panel drafts this page as soon as it shows it (the user asked).
+          if (tab?.id && msg.draft) await browser.storage.session.set({ [KEYS.draftRequest]: { tabId: tab.id, url: msg.draft.url, at: Date.now() } });
           if (tab?.id) await browser.sidePanel.open({ tabId: tab.id }).catch(() => browser.sidePanel.open({ windowId: tab.windowId! }));
           return { ok: true };
         }
@@ -218,6 +240,12 @@ export default defineBackground(() => {
         }
         case "page-changed":
           return { ok: true }; // for the side panel (it listens to runtime messages too)
+        case "heads-up":
+          return headsUp(msg.url);
+        case "get-stocks":
+          return loadStocks();
+        case "debug-alert":
+          return { ok: true, played: await alertChirpFor([alertKey(`debug-${Date.now()}`, "almost")]) };
         case "play-sound":
           await playSound(msg.sound);
           return { ok: true };

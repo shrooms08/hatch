@@ -12,14 +12,25 @@ export const KEYS = {
   noticed: "hatch:noticed", // storage.session: url -> hint | null
   stocks: "hatch:stocks", // { at, stocks } from GET /api/stocks
   lastSound: "hatch:lastSound", // storage.session: { name, at, played, error? } for the debug page
+  headsUp: "hatch:headsUp", // storage.session: heads-up chirp throttle (lib/chirp)
+  chirpedAlerts: "hatch:chirpedAlerts", // milestone keys that already chirped (lib/chirp)
+  draftRequest: "hatch:draftRequest", // storage.session: { tabId, url, at } the panel drafts on open (hint clicked)
 } as const;
 
 /**
  * noticeAuto: ask the AI whether a page is worth a hint, automatically. Only ever for stock pages and
  * tweets (never generic articles), once per page per session.
  */
-export type Settings = { hiddenSites: string[]; hiddenEverywhere: boolean; sounds: boolean; noticeAuto: boolean };
-export const DEFAULT_SETTINGS: Settings = { hiddenSites: [], hiddenEverywhere: false, sounds: true, noticeAuto: true };
+export type Settings = {
+  hiddenSites: string[];
+  hiddenEverywhere: boolean;
+  /** Master switch: off mutes every sound. */
+  sounds: boolean;
+  /** Double chirp on heads-ups (hint bubbles) and tracking alerts (80%, hatched, fees). */
+  chirpAlerts: boolean;
+  noticeAuto: boolean;
+};
+export const DEFAULT_SETTINGS: Settings = { hiddenSites: [], hiddenEverywhere: false, sounds: true, chirpAlerts: true, noticeAuto: true };
 
 export type EggPos = { right: number; bottom: number };
 export const DEFAULT_EGG_POS: EggPos = { right: 24, bottom: 24 };

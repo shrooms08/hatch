@@ -11,7 +11,8 @@ import { Tip } from '@/components/Onboarding/Tip';
 import { useConfigThreshold, usePresetConfigs, useRentPerByte, useShieldedConfigs, useSolLamports } from '@/hooks/useHatch';
 import { reportTxError, type FriendlyError } from '@/lib/txErrors';
 import { formatSol, formatSolNeed, launchCostLamports } from '@/lib/costs';
-import { LEGACY_FEE_SENTENCE, shieldFeeSentence } from '@/lib/dbc/feeSchedule';
+import { feeSentence } from '@/lib/dbc/feeSchedule';
+import { copyKey, howItWorksText } from '@/lib/presets/copy';
 import { SolShortNote, TxErrorNote } from '@/components/Hatch/TxErrorNote';
 import { PRESET_IDS, PRESETS, parsePresetId, stockPreset, type PresetId } from '@/lib/presets';
 import { DESCRIPTION_MAX, NAME_MAX, SYMBOL_MAX, launchFieldsSchema, type LaunchFields } from '@/lib/validation/launch';
@@ -80,7 +81,15 @@ export default function CreatePool() {
     }
   }, [router.isReady, router.query]);
 
-  const previewSrc = useMemo(() => (imageFile ? URL.createObjectURL(imageFile) : imageUrl), [imageFile, imageUrl]);
+  // Page images load through Hatch (/api/image-proxy) so hotlink blocking can't break them; if one still
+  // fails, the generated Hatch card takes over (no broken image icon, and the launch uses the card too).
+  const previewSrc = useMemo(() => (imageFile ? URL.createObjectURL(imageFile) : imageUrl ? `/api/image-proxy?url=${encodeURIComponent(imageUrl)}` : ''), [imageFile, imageUrl]);
+  const [usingCard, setUsingCard] = useState(false);
+  const onImageError = () => {
+    if (imageFile) setImageFile(null);
+    else setImageUrl('');
+    setUsingCard(true);
+  };
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
     setErrors((e) => ({ ...e, [key]: undefined }));
@@ -181,15 +190,20 @@ export default function CreatePool() {
     </div>
   );
 
+  // Same text as the extension's side panel: /api/presets builds it from the config on chain.
+  const copy = enabledPresets?.copy?.[copyKey(form.preset, selectedStock?.ticker)];
   const howItWorks = (
     <Note title="How it works">
-      Buyers pay with {quoteSymbol}
-      {form.preset === 'STOCK' ? ' or SOL' : ''}. Every buy nudges the price up.{' '}
-      {threshold.data ? `At ${formatAmount(threshold.data)} ${quoteSymbol} it hatches into a Meteora pool.` : 'When the goal is reached it hatches into a Meteora pool.'}{' '}
-      {shieldOn ? shieldFeeSentence() : LEGACY_FEE_SENTENCE}
+      {copy?.howItWorks ??
+        howItWorksText({
+          quoteSymbol,
+          stockPaired: form.preset === 'STOCK',
+          threshold: threshold.data ? formatAmount(threshold.data) : null,
+          fee: feeSentence({ shield: shieldOn }),
+        })}
     </Note>
   );
-  const honest = form.preset === 'STOCK' ? <HonestNote>{preset.explainer[2]?.replace("The stock token's issuer", 'The issuer')}</HonestNote> : null;
+  const honest = form.preset === 'STOCK' ? <HonestNote>{copy?.honest ?? preset.explainer[2]?.replace("The stock token's issuer", 'The issuer')}</HonestNote> : null;
   const submit = (
     <Button type="submit" size="lg" block glow loading={isLoading} disabled={solShort} className="h-[62px]">
       {!wallet.publicKey ? (
@@ -254,13 +268,24 @@ export default function CreatePool() {
             >
               {previewSrc ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={previewSrc} alt="" className="h-16 w-16 shrink-0 rounded-[10px] object-cover" />
+                <img src={previewSrc} alt="" onError={onImageError} className="h-16 w-16 shrink-0 rounded-[10px] object-cover" />
               ) : (
                 <TokenArt ticker={form.symbol || 'HATCH'} seed={form.symbol || 'HATCH'} paired={paired} size={64} />
               )}
               <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                 <span className="text-xs leading-snug text-ink-muted">
-                  {imageFile ? imageFile.name : imageUrl ? 'Using the image from the page.' : 'Generated for you. Or upload PNG, JPG, WEBP, GIF (2MB).'}
+                  {imageFile ? (
+                    imageFile.name
+                  ) : imageUrl ? (
+                    'Using the image from the page.'
+                  ) : usingCard ? (
+                    <>
+                      <span className="mr-1.5 inline-flex rounded-pill border border-yolk/35 bg-yolk/10 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-accent">Using Hatch card</span>
+                      The page image couldn&apos;t load. Upload your own if you like.
+                    </>
+                  ) : (
+                    'Generated for you. Or upload PNG, JPG, WEBP, GIF (2MB).'
+                  )}
                 </span>
                 <div className="flex gap-4">
                   <label htmlFor="tokenLogo" className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-semibold text-ink-accent hover:underline">
@@ -354,7 +379,7 @@ export default function CreatePool() {
             <div className="relative">
               {previewSrc ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={previewSrc} alt="" className="h-[220px] w-[220px] rounded-[35px] object-cover" />
+                <img src={previewSrc} alt="" onError={onImageError} className="h-[220px] w-[220px] rounded-[35px] object-cover" />
               ) : (
                 <TokenArt ticker={form.symbol || 'HATCH'} seed={form.symbol || 'HATCH'} paired={paired} size={220} />
               )}

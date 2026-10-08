@@ -1,7 +1,9 @@
 /** Side panel building blocks in the Hatch design system v1 (same tokens and shapes as the web app). */
+import { useState } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
 import type { HatchStatus, PresetId } from "../../../lib/types";
 import { CELL_COLOR, CHICKEN, EGG } from "../../../lib/buddy/art";
+import { panelImageSrc } from "../../../lib/image";
 
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
@@ -54,15 +56,20 @@ export function Skeleton({ className }: { className?: string }) {
   );
 }
 
-export function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (v: boolean) => void; label: string }) {
+export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
       aria-label={label}
+      disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={cx("relative h-[26px] w-11 shrink-0 rounded-full border transition-colors duration-200", focus, checked ? "border-yolk bg-yolk" : "border-line-strong bg-surface-3")}
+      className={cx(
+        "relative h-[26px] w-11 shrink-0 rounded-full border transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-40",
+        focus,
+        checked ? "border-yolk bg-yolk" : "border-line-strong bg-surface-3",
+      )}
     >
       <span
         className={cx(
@@ -169,8 +176,20 @@ export function TokenArt({ ticker, size = 42, paired }: { ticker: string; size?:
 }
 
 /** Token image with the generated egg as fallback. */
+/** A token image (through the image proxy); the generated Hatch card if there is none or it fails to load. */
 export function TokenImage({ src, ticker, size, paired }: { src?: string | null; ticker: string; size: number; paired?: boolean }) {
-  if (src) return <img src={src} alt="" className="shrink-0 bg-surface-2 object-cover" style={{ width: size, height: size, borderRadius: Math.round(size * 0.16) }} />;
+  const proxied = panelImageSrc(src);
+  const [failed, setFailed] = useState<string | null>(null);
+  if (proxied && failed !== proxied)
+    return (
+      <img
+        src={proxied}
+        alt=""
+        onError={() => setFailed(proxied)}
+        className="shrink-0 bg-surface-2 object-cover"
+        style={{ width: size, height: size, borderRadius: Math.round(size * 0.16) }}
+      />
+    );
   return <TokenArt ticker={ticker} size={size} paired={paired} />;
 }
 

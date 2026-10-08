@@ -3,8 +3,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
 import { api } from "../../lib/api";
 import { sendToBackground, type TabMessage } from "../../lib/messages";
-import type { BuddyDraft, ChatMessage, Draft, EggState, PageContext, PresetInfo, StockMap } from "../../lib/types";
+import type { BuddyDraft, ChatMessage, Draft, EggState, PageContext, PresetInfo, StockMap, PresetCopyMap } from "../../lib/types";
 import { loadStocks } from "../../lib/stocks";
+import { KEYS } from "../../lib/storage";
 
 /** A chrome.storage.local value that stays in sync. */
 export function useStorageValue<T>(key: string, fallback: T): T {
@@ -74,12 +75,13 @@ export function useActivePage(): { active: ActivePage; reload: () => void } {
   return { active, reload: () => void load() };
 }
 
-export function usePresets(): PresetInfo[] {
-  const [presets, setPresets] = useState<PresetInfo[]>([]);
+/** Presets and their launch copy from the web app (the same text as the launch form; never hardcoded here). */
+export function usePresets(): { presets: PresetInfo[]; copy: PresetCopyMap } {
+  const [data, setData] = useState<{ presets: PresetInfo[]; copy: PresetCopyMap }>({ presets: [], copy: {} });
   useEffect(() => {
-    void api.presets().then((r) => r.ok && setPresets(r.data.presets));
+    void api.presets().then((r) => r.ok && setData({ presets: r.data.presets, copy: r.data.copy ?? {} }));
   }, []);
-  return presets;
+  return data;
 }
 
 /** Pairable stocks on the web app's network (GET /api/stocks, cached). */
@@ -109,6 +111,8 @@ export function useDraftSession(tabId: number | null, page: PageContext | null) 
   const sessions = useRef(new Map<string, Session>());
   const key = page?.url.split("#")[0] ?? "";
   const [session, setSession] = useState<Session>(EMPTY);
+  const sessionRef = useRef<Session>(EMPTY);
+  sessionRef.current = session;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -166,12 +170,33 @@ export function useDraftSession(tabId: number | null, page: PageContext | null) 
       return;
     }
     setSession(EMPTY);
-    // Auto-draft only stock pages and tweets. Anything else waits for "Draft from this page", so
-    // switching tabs never sends a page's text to the server on its own.
+    // Auto-draft only stock pages and tweets. Anything else waits for "Draft from this page" or a click on
+    // the buddy's hint, so switching tabs never sends a page's text to the server on its own.
     if (page.detected.kind === "stock" || page.detected.kind === "tweet") void run(EMPTY);
+    else void takeDraftRequest().then((asked) => asked && void run(EMPTY));
     // run only when the page changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
+
+  // The hint was clicked while the panel was already open on this page.
+  useEffect(() => {
+    if (!page) return;
+    const onChange = (changes: Record<string, { newValue?: unknown }>, area: string) => {
+      if (area !== "session" || !changes[KEYS.draftRequest]?.newValue) return;
+      void takeDraftRequest().then((asked) => asked && !busy && void run(sessionRef.current));
+    };
+    browser.storage.onChanged.addListener(onChange);
+    return () => browser.storage.onChanged.removeListener(onChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, busy]);
+
+  /** A "draft this page" request from a clicked hint for this tab and page (consumed once, 2 min max). */
+  async function takeDraftRequest(): Promise<boolean> {
+    const req = (await browser.storage.session.get(KEYS.draftRequest))[KEYS.draftRequest] as { tabId: number; url: string; at: number } | undefined;
+    if (!req || req.tabId !== tabId || !page || req.url.split("#")[0] !== page.url.split("#")[0] || Date.now() - req.at > 120_000) return false;
+    await browser.storage.session.remove(KEYS.draftRequest);
+    return true;
+  }
 
   return {
     ...session,

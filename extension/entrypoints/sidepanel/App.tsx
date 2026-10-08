@@ -17,7 +17,7 @@ const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
 export function App() {
   const [tab, setTab] = useState<Tab>("draft");
   const { active, reload } = useActivePage();
-  const presets = usePresets();
+  const { presets, copy } = usePresets();
   const cache = useStorageValue<HatchesCache | null>(KEYS.hatches, null);
   const wallet = useStorageValue<string | null>(KEYS.wallet, null);
   const incubating = cache ? incubatingCount(cache.list) : 0;
@@ -75,7 +75,7 @@ export function App() {
       <main className="flex min-h-0 flex-1 flex-col">
         {tab === "draft" &&
           (active.status === "ready" ? (
-            <DraftTab key={active.page.url} tabId={active.tabId} page={active.page} presets={presets} />
+            <DraftTab key={active.page.url} tabId={active.tabId} page={active.page} presets={presets} copy={copy} />
           ) : active.status === "loading" ? (
             <div className="p-3.5">
               <DraftSkeleton withPage />

@@ -116,6 +116,18 @@ document.getElementById("controls")!.addEventListener("click", (e) => {
       badge = Math.max(0, badge - 1);
       renderBadge();
       break;
+    case "heads-up":
+      // Same path as a hint bubble: once per page per session, once every 2 minutes overall.
+      void browser.runtime.sendMessage({ type: "heads-up", url: `https://debug.hatch/heads-up/${Date.now()}` }).then((r: { played?: boolean }) => {
+        soundEl.textContent = r?.played ? "heads-up: chirped" : "heads-up: throttled (2 min gap) or sounds off";
+      });
+      break;
+    case "alert":
+      // Same path as an 80% / hatched / fees alert for a new milestone.
+      void browser.runtime.sendMessage({ type: "debug-alert" }).then((r: { played?: boolean }) => {
+        soundEl.textContent = r?.played ? "alert: chirped" : "alert: not played (sounds or alerts off)";
+      });
+      break;
     case "reduced":
       reduced = !reduced;
       btn.setAttribute("aria-pressed", String(reduced));

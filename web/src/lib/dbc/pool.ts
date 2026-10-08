@@ -47,6 +47,11 @@ export type HatchPool = {
   activationPoint: string;
   /** True when the config is a legacy (pre-v2) config that is no longer used for launches. */
   legacyConfig: boolean;
+  /** Creator's share of trading fees, in % (the rest goes to Hatch as partner). */
+  creatorFeePct: number;
+  /** The curve's own token accounts (never counted as holders). */
+  baseVault: string;
+  quoteVault: string;
   fees: {
     creatorQuote: Decimal;
     creatorBase: Decimal;
@@ -111,6 +116,9 @@ export async function describePool(
     feeSchedule: feeScheduleOf(config),
     activationPoint: s.activationPoint.toString(),
     legacyConfig: isLegacyConfig(hc, s.config.toBase58()),
+    creatorFeePct: config.creatorTradingFeePercentage,
+    baseVault: s.baseVault.toBase58(),
+    quoteVault: s.quoteVault.toBase58(),
     fees: {
       creatorQuote: rawToUi(s.creatorQuoteFee, quote),
       creatorBase: rawToUi(s.creatorBaseFee, baseUnit),

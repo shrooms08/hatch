@@ -1,6 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
-import { NETWORK } from "../../../lib/config";
+import { NETWORK, webUrl } from "../../../lib/config";
 import { sendToBackground } from "../../../lib/messages";
 import { GridBuddy } from "../../../lib/buddy/grid";
 import { GRID } from "../../../lib/buddy/art";
@@ -25,6 +25,37 @@ function LiveBuddy({ size = 72 }: { size?: number }) {
     return () => buddy.destroy();
   }, [size]);
   return <div ref={holder} aria-hidden className="relative" style={{ width: size, height: size }} />;
+}
+
+/** Removes everything Hatch stored in chrome.storage (wallet address, settings, position, notice history). */
+function ClearData() {
+  const [step, setStep] = useState<"idle" | "confirm" | "done">("idle");
+  const clear = async () => {
+    await sendToBackground({ type: "forget-wallet" }).catch(() => undefined); // also clears the toolbar badge
+    await browser.storage.local.clear();
+    await browser.storage.session.clear();
+    setStep("done");
+  };
+  if (step === "done") return <span className="text-xs font-semibold text-success">Cleared</span>;
+  if (step === "confirm")
+    return (
+      <div className="flex flex-col gap-2 rounded-[12px] border border-danger/40 bg-danger/[0.06] p-3">
+        <span className="text-xs leading-normal text-ink">Remove everything Hatch stored in this browser? Your wallet address, settings, buddy position and notice history are deleted. Tokens on chain are not affected.</span>
+        <div className="flex gap-2">
+          <button type="button" onClick={() => void clear()} className="rounded-full bg-danger px-3 py-1.5 text-xs font-semibold text-night">
+            Clear my data
+          </button>
+          <button type="button" onClick={() => setStep("idle")} className="rounded-full px-3 py-1.5 text-xs font-medium text-ink-2 hover:bg-surface-2">
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  return (
+    <button type="button" className="self-start text-xs font-medium text-ink-muted hover:text-danger" onClick={() => setStep("confirm")}>
+      Clear my data
+    </button>
+  );
 }
 
 function Row({ title, sub, mono, children, last }: { title: string; sub: string; mono?: boolean; children: React.ReactNode; last?: boolean }) {
@@ -53,6 +84,14 @@ export function SettingsTab({ activeUrl }: { activeUrl: string | null }) {
       <Card className="rounded-[16px]">
         <Row title="Sounds" sub="A soft chirp when the panel opens, a double chirp on hatch">
           <Toggle label="Sounds" checked={settings.sounds !== false} onChange={(v) => void updateSettings((s) => ({ ...s, sounds: v }))} />
+        </Row>
+        <Row title="Chirp on heads-ups and alerts" sub={settings.sounds === false ? "Off while Sounds is off" : "Double chirp for hints and for 80%, hatched and fee alerts"}>
+          <Toggle
+            label="Chirp on heads-ups and alerts"
+            checked={settings.sounds !== false && settings.chirpAlerts !== false}
+            disabled={settings.sounds === false}
+            onChange={(v) => void updateSettings((s) => ({ ...s, chirpAlerts: v }))}
+          />
         </Row>
         <Row title="Notice pages automatically" sub="Stock pages and tweets only, once per page">
           <Toggle label="Notice pages automatically" checked={settings.noticeAuto !== false} onChange={(v) => void updateSettings((s) => ({ ...s, noticeAuto: v }))} />
@@ -107,8 +146,12 @@ export function SettingsTab({ activeUrl }: { activeUrl: string | null }) {
         <span className="text-[11px] leading-normal text-ink-muted">Hatch only stores your public address. Keys never leave your wallet.</span>
         <span className="text-[11px] leading-normal text-ink-muted">
           Privacy: when you draft, the page&apos;s title, address (without query string) and text go to Hatch to write the draft. Automatic hints send the
-          same for stock pages and tweets only, once per page. Nothing else leaves your browser.
+          same for stock pages and tweets only, once per page. News headlines are checked on your device only. Nothing else leaves your browser.{" "}
+          <a href={webUrl("/privacy")} target="_blank" rel="noreferrer" className="font-semibold text-yolk hover:underline">
+            Privacy
+          </a>
         </span>
+        <ClearData />
       </Card>
 
       <div className="flex flex-col items-center gap-2.5 py-7">

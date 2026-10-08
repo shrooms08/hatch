@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
 import { launchUrl } from "../../../lib/api";
 import { stockFor, unavailableTickers } from "../../../lib/stocks";
-import type { PageContext, PresetId, PresetInfo } from "../../../lib/types";
+import { copyKey, type PageContext, type PresetCopyMap, type PresetId, type PresetInfo } from "../../../lib/types";
 import { useDraftSession, useStocks } from "../hooks";
 import { DraftSkeleton, EmptyState, ErrorCard } from "./states";
 import { BuddyDots, Button, Card, EggGlyph, Field, SendIcon, SmileIcon, SparkIcon, TextArea, TextInput, TokenImage, TrendIcon, cx, presetLabel } from "./ui";
@@ -37,7 +37,7 @@ function PageSummary({ page }: { page: PageContext }) {
 
 const PRESET_ICON: Record<PresetId, React.ReactNode> = { STOCK: <TrendIcon />, MEME: <SmileIcon />, AI_AGENT: <SparkIcon size={13} /> };
 
-export function DraftTab({ tabId, page, presets }: { tabId: number; page: PageContext; presets: PresetInfo[] }) {
+export function DraftTab({ tabId, page, presets, copy }: { tabId: number; page: PageContext; presets: PresetInfo[]; copy: PresetCopyMap }) {
   const s = useDraftSession(tabId, page);
   const [message, setMessage] = useState("");
   const [editing, setEditing] = useState(false);
@@ -68,9 +68,11 @@ export function DraftTab({ tabId, page, presets }: { tabId: number; page: PageCo
 
   const offline = !!s.error?.startsWith("Can't reach Hatch");
   const resting = !!s.error?.includes("resting");
+  // The launch form's own text for this config (from /api/presets); the generic explainer only if it's missing.
+  const configCopy = s.draft ? copy[copyKey(s.draft.preset, s.draft.stockTicker)] : undefined;
   const explainer = preset?.explainer ?? [];
-  const honest = s.draft?.preset === "STOCK" ? explainer.find((l) => l.startsWith("This token is not the stock")) : undefined;
-  const body = explainer.filter((l) => l !== honest);
+  const honest = s.draft?.preset === "STOCK" ? configCopy?.honest ?? explainer.find((l) => l.startsWith("This token is not the stock")) : undefined;
+  const body = configCopy ? [configCopy.howItWorks] : explainer.filter((l) => !l.startsWith("This token is not the stock"));
 
   if (resting && !s.draft)
     return (
@@ -178,7 +180,7 @@ export function DraftTab({ tabId, page, presets }: { tabId: number; page: PageCo
                           onClick={() => s.edit({ imageUrl: src })}
                           className={cx("shrink-0 rounded-[8px] p-0.5", src === s.draft!.imageUrl ? "ring-2 ring-yolk" : "ring-1 ring-line")}
                         >
-                          <img src={src} alt="" className="h-10 w-10 rounded-[6px] object-cover" />
+                          <TokenImage src={src} ticker={s.draft!.symbol} size={40} />
                         </button>
                       ))}
                     </div>

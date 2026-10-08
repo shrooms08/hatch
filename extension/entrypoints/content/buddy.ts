@@ -113,7 +113,7 @@ export class BuddyView {
    * A hint ("This is about NVIDIA…"): Show me opens the side panel, Not now dismisses.
    * A milestone with a link: the link is the primary action.
    */
-  showBubble(text: string, opts: { url?: string; linkText?: string; timeoutMs?: number } = {}) {
+  showBubble(text: string, opts: { url?: string; linkText?: string; timeoutMs?: number; onPrimary?: () => void } = {}) {
     this.bubbleText.textContent = text;
     this.bubbleActions.replaceChildren();
     let primary: HTMLElement;
@@ -131,7 +131,7 @@ export class BuddyView {
       b.textContent = "Show me";
       b.addEventListener("click", () => {
         this.hideBubble();
-        this.cb.onOpen();
+        (opts.onPrimary ?? this.cb.onOpen)();
       });
       primary = b;
     }
