@@ -12,6 +12,7 @@ import { getConnection } from '@/lib/solana/connection';
 import { NETWORK, explorerTxUrl, EXPLORER_NAME } from '@/lib/config/network';
 import { JupiterBusyError, WSOL } from '@/lib/jupiter';
 import { useLiveBaseFee, useQuoteSymbol, useTokenBalance, useTokenMetadata } from '@/hooks/useHatch';
+import { OpenInWallet } from './OpenInWallet';
 import { SNIPER_SHIELD_LINE, formatFeePercent } from '@/lib/dbc/feeSchedule';
 
 const SLIPPAGE_OPTIONS = [50, 100, 200];
@@ -335,6 +336,7 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
       <Button size="lg" block glow onClick={submit} loading={submitting} className="h-[60px] text-lg">
         {!wallet.publicKey ? 'Connect wallet' : submitting ? 'Working…' : `${side === 'buy' ? 'Buy' : 'Sell'} ${baseSymbol}`}
       </Button>
+      <OpenInWallet />
     </Card>
   );
 }

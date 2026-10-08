@@ -11,7 +11,11 @@ function r2RemotePattern() {
   }
 }
 
+// Absolute origin for social previews (og:image must be absolute): production domain on Vercel, else this deployment.
+const SITE_HOST = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
+
 const nextConfig: NextConfig = {
+  env: { HATCH_SITE_ORIGIN: SITE_HOST ? `https://${SITE_HOST}` : '' },
   /* config options here */
   reactStrictMode: true,
   devIndicators: false,

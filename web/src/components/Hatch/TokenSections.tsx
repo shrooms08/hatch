@@ -28,16 +28,13 @@ import { explorerAddressUrl, meteoraPoolUrl } from '@/lib/config/network';
 import { sourceDomain } from '@/lib/metadata/token';
 import { stockForConfig, stockPreset } from '@/lib/presets';
 import { useHolders, useIsTestLaunch, useLiveBaseFee, usePresetConfigs, useQuoteSymbol, useTokenMetadata } from '@/hooks/useHatch';
-import { SNIPER_SHIELD_LINE, formatFeePercent } from '@/lib/dbc/feeSchedule';
+import { SNIPER_SHIELD_LINE, formatFeePercent, hasSniperShield } from '@/lib/dbc/feeSchedule';
+import { useWallet } from '@jup-ag/wallet-adapter';
+import type { ShareInfo } from '@/lib/share';
+import { ShareActions } from './ShareActions';
 import { shortAddr } from '@/components/ds/Pill';
 import { cn } from '@/lib/utils';
 import { TokenAvatar } from './TokenAvatar';
-
-export function shareOnXUrl(name: string, symbol: string, mint: string) {
-  const url = typeof window === 'undefined' ? '' : `${window.location.origin}/token/${mint}`;
-  const text = `${name} ($${symbol}) is incubating on Hatch. Help fill the egg 🥚`;
-  return `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
-}
 
 export function TokenHero({ mint, pool }: { mint: string; pool: HatchPool | null | undefined }) {
   const { data: md, isLoading } = useTokenMetadata(mint);
@@ -75,16 +72,27 @@ export function TokenHero({ mint, pool }: { mint: string; pool: HatchPool | null
         <div className="flex flex-wrap items-center gap-2 md:hidden">
           <HeroChips mint={mint} pool={pool} quote={quote} domain={domain} url={md?.json?.external_url} />
         </div>
-        {md?.name && (
-          <Button asChild variant="outline" size="header" className="self-start md:self-center">
-            <a href={shareOnXUrl(md.name, symbol, mint)} target="_blank" rel="noreferrer">
-              Share on X
-            </a>
-          </Button>
-        )}
+        {md?.name && pool !== undefined && <TokenShare mint={mint} pool={pool} symbol={symbol} />}
       </div>
     </div>
   );
+}
+
+/** Share + Copy link on every token page; the creator's wallet gets the "I just hatched" wording. */
+function TokenShare({ mint, pool, symbol }: { mint: string; pool: HatchPool | null; symbol: string }) {
+  const { publicKey } = useWallet();
+  const { data: hc } = usePresetConfigs();
+  const stock = pool?.presetId === 'STOCK' && hc ? stockForConfig(hc, pool.configKey) : null;
+  const info: ShareInfo = {
+    symbol,
+    preset: pool?.presetId ?? null,
+    stockTicker: stock?.ticker ?? null,
+    shield: !!pool && hasSniperShield(pool.feeSchedule),
+    creator: !!pool && !!publicKey && publicKey.toBase58() === pool.creator,
+    progressPct: pool ? pool.progress * 100 : null,
+    hatched: !!pool?.isMigrated,
+  };
+  return <ShareActions mint={mint} info={info} className="self-start md:self-center" />;
 }
 
 function HeroChips({ mint, pool, quote, domain, url }: { mint: string; pool: HatchPool | null | undefined; quote: string; domain: string | null; url?: string }) {

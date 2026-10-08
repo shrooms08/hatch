@@ -3,7 +3,8 @@ import { useMemo } from 'react';
 import { Button, EGG_RADIUS, IconButton, Modal, XIcon } from '@/components/ds';
 import { shortAddr } from '@/components/ds/Pill';
 import { TokenArt } from '@/components/ds/TokenArt';
-import { shareOnXUrl } from './TokenSections';
+import type { PresetId } from '@/lib/presets';
+import { ShareActions } from './ShareActions';
 
 const COLORS = ['#E8572A', '#F2A93B', '#FFBD57', '#F6EEDC'];
 
@@ -33,6 +34,9 @@ export function HatchedMoment({
   symbol,
   mint,
   paired,
+  preset,
+  stockTicker,
+  shield,
   onView,
   onClose,
 }: {
@@ -41,6 +45,9 @@ export function HatchedMoment({
   symbol: string;
   mint: string;
   paired?: string | null;
+  preset: PresetId;
+  stockTicker?: string | null;
+  shield?: boolean;
   onView: () => void;
   onClose: () => void;
 }) {
@@ -93,15 +100,18 @@ export function HatchedMoment({
           <span className="inline-flex h-8 items-center gap-2 rounded-pill border border-line bg-surface-2 px-3 font-mono text-[13px] font-medium text-ink-2">
             ${symbol} · {shortAddr(mint)}
           </span>
-          <div className="mt-2.5 flex flex-col gap-3 sm:flex-row">
+          <div className="mt-2.5 flex flex-col items-center gap-3 sm:flex-row">
             <Button variant="ember" data-autofocus onClick={onView} className="h-[58px] px-[30px] text-base shadow-[0_0_48px_rgba(232,87,42,0.45)]">
               View my token
             </Button>
-            <Button asChild variant="secondary" className="h-[58px] bg-surface-1 px-7 text-base">
-              <a href={shareOnXUrl(name, symbol, mint)} target="_blank" rel="noreferrer">
-                Share on X
-              </a>
-            </Button>
+            <ShareActions
+              mint={mint}
+              info={{ symbol, preset, stockTicker, shield, creator: true }}
+              label="Share your hatch"
+              className="justify-center"
+              size="md"
+              buttonClassName="h-[58px] px-6 text-base bg-surface-1/80"
+            />
           </div>
         </div>
       </div>

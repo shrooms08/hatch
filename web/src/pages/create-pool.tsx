@@ -6,6 +6,7 @@ import Page from '@/components/ui/Page/Page';
 import { Button, Card, EggGlyph, Field, HonestNote, InspiredChip, Input, Note, PresetBadge, PresetCard, TextArea, UploadIcon, notify } from '@/components/ds';
 import { TokenArt } from '@/components/ds/TokenArt';
 import { HatchedMoment } from '@/components/Hatch/HatchedMoment';
+import { OpenInWallet } from '@/components/Hatch/OpenInWallet';
 import { useConfigThreshold, usePresetConfigs, useShieldedConfigs } from '@/hooks/useHatch';
 import { PRESET_IDS, PRESETS, parsePresetId, stockPreset, type PresetId } from '@/lib/presets';
 import { DESCRIPTION_MAX, NAME_MAX, SYMBOL_MAX, launchFieldsSchema, type LaunchFields } from '@/lib/validation/launch';
@@ -323,6 +324,7 @@ export default function CreatePool() {
             {honest}
             {formError && <p className="text-sm text-danger" role="alert">{formError}</p>}
             {submit}
+            <OpenInWallet />
           </div>
         </div>
 
@@ -358,6 +360,9 @@ export default function CreatePool() {
           symbol={form.symbol}
           mint={created.mint}
           paired={paired}
+          preset={form.preset}
+          stockTicker={form.preset === 'STOCK' ? selectedStock?.ticker ?? null : null}
+          shield={!!configKey && !!shielded.data?.has(configKey)}
           onView={() => void router.push(`/token/${created.mint}`)}
           onClose={() => void router.push(`/token/${created.mint}`)}
         />

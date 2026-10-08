@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import Page from '@/components/ui/Page/Page';
@@ -7,6 +8,30 @@ import { TokenArt } from '@/components/ds/TokenArt';
 import { HatchTable } from '@/components/Hatch/HatchTable';
 import { useHatchPools, useHatchStats } from '@/hooks/useHatch';
 import { formatUsdCompact } from '@/lib/format/time';
+
+/** Hatch Week campaign banner. Set to null to remove it; it also hides itself after `until`. */
+const HATCH_WEEK: { text: string; cta: string; until: string } | null = {
+  text: 'Hatch Week: the 3 tokens closest to hatching by Oct 11 get featured.',
+  cta: 'Hatch one today',
+  until: '2026-10-12T00:00:00Z',
+};
+
+function HatchWeekBanner() {
+  const [over, setOver] = useState(false);
+  useEffect(() => setOver(!!HATCH_WEEK && Date.now() >= Date.parse(HATCH_WEEK.until)), []);
+  if (!HATCH_WEEK || over) return null;
+  return (
+    <div className="relative border-b border-yolk/25 bg-yolk/[0.08]">
+      <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-center gap-x-3 gap-y-1.5 px-4 py-2.5 text-center text-[13px] md:px-10 lg:px-20">
+        <EggGlyph size={12} className="hidden text-yolk sm:inline" />
+        <span className="text-ink-2">{HATCH_WEEK.text}</span>
+        <Link href="/launch" className="font-semibold text-ink-accent underline-offset-4 hover:underline">
+          {HATCH_WEEK.cta} →
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 /** Hero illustration: a news page, the drafted token card, the buddy's hint and the orb. */
 function HeroIllustration() {
@@ -86,6 +111,7 @@ function HatchHome() {
   const stats = useHatchStats();
   return (
     <>
+      <HatchWeekBanner />
       <section className="relative">
         <DotField />
         <div className="relative mx-auto flex max-w-[1440px] items-center gap-14 px-4 pb-10 pt-10 md:px-10 md:pb-[72px] md:pt-[88px] lg:px-20">

@@ -5,7 +5,13 @@ import { AboutCard, HatchedCard, ProgressCard, StageTimeline, TokenHero, TradeOn
 import { Button, Card, Skeleton } from '@/components/ds';
 import { ClaimCreatorFees } from '@/components/Hatch/ClaimCreatorFees';
 import Head from 'next/head';
+import type { GetStaticPaths, GetStaticProps } from 'next';
+import { PublicKey } from '@solana/web3.js';
+import { SITE_ORIGIN, SocialMeta } from '@/components/SocialMeta';
+import { getTokenCard, tokenCardMeta } from '@/lib/server/tokenCard';
 
+type Social = { title: string; description: string; image: string; url: string } | null;
+type Props = { mint: string; social: Social };
 
 /**
  * A DBC pool exists for this mint, but not under one of Hatch's configs: Hatch did not launch it and
@@ -78,8 +84,10 @@ const HatchOnChain = ({ mint }: { mint: string }) => {
 };
 
 /** Page used when Jupiter data is off (default, and always on devnet). */
-const HatchTokenPage = () => {
-  const mint = useRouteMint();
+const HatchTokenPage = ({ mint: propMint, social }: Props) => {
+  // From getStaticProps, so the server HTML and the first client render agree.
+  const routeMint = useRouteMint();
+  const mint = propMint || routeMint;
   const { data: pool } = useHatchPool(mint);
   const { data: md } = useTokenMetadata(mint);
   return (
@@ -87,12 +95,30 @@ const HatchTokenPage = () => {
       <Head>
         <title>{md?.symbol ? `$${md.symbol} · ${md.name} - Hatch` : 'Token - Hatch'}</title>
       </Head>
+      {social && <SocialMeta {...social} />}
       {mint && <TokenHero mint={mint} pool={pool} />}
       {mint && <HatchOnChain mint={mint} />}
     </Page>
   );
 };
 
-export default function TokenPage() {
-  return <HatchTokenPage />;
+export default function TokenPage(props: Props) {
+  return <HatchTokenPage {...props} />;
 }
+
+// Share cards: the page HTML carries per-token og/twitter tags (crawlers don't run JS). Rendered on first
+// request and refreshed every 5 minutes (ISR); the chain read is capped so a slow RPC never blocks the page.
+export const getStaticPaths: GetStaticPaths = async () => ({ paths: [], fallback: 'blocking' });
+
+export const getStaticProps: GetStaticProps<Props> = async ({ params }) => {
+  const mint = String(params?.tokenId ?? '');
+  try {
+    new PublicKey(mint);
+  } catch {
+    return { props: { mint, social: null }, revalidate: 3600 };
+  }
+  const card = await Promise.race([getTokenCard(mint).catch((): null => null), new Promise<null>((r) => setTimeout(() => r(null), 3000))]);
+  if (!card) return { props: { mint, social: null }, revalidate: 60 };
+  const url = `${SITE_ORIGIN}/token/${mint}`;
+  return { props: { mint, social: { ...tokenCardMeta(card), image: `${SITE_ORIGIN}/api/og/${mint}`, url } }, revalidate: 300 };
+};
