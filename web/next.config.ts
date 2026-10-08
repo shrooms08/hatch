@@ -14,6 +14,7 @@ function r2RemotePattern() {
 const nextConfig: NextConfig = {
   /* config options here */
   reactStrictMode: true,
+  devIndicators: false,
   // `pnpm dev:mainnet` builds into .next-mainnet so it can run beside the devnet dev server.
   distDir: process.env.NEXT_DIST_DIR || '.next',
   // web/ is its own app; pin the root so the scripts/ lockfile isn't picked up.

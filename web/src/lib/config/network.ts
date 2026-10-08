@@ -37,5 +37,3 @@ export const PRIORITY_FEE_MICROLAMPORTS = Number(
   process.env.NEXT_PUBLIC_PRIORITY_FEE_MICROLAMPORTS ?? 100_000
 );
 
-/** Jupiter-indexer features (explore lists, search, charts, tables, Jupiter swap plugin). */
-export const ENABLE_JUPITER_DATA = process.env.NEXT_PUBLIC_ENABLE_JUPITER_DATA === 'true';

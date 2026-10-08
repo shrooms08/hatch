@@ -1,18 +1,25 @@
 node_modules/
-.env
-.env.*
-scripts/keys/*.json
-.next/
-dist/
-scripts/state/
-!.env.example
-*.tsbuildinfo
 .DS_Store
-!.env.mainnet.example
+*.tsbuildinfo
 
-# Private signing keys
-*.pem
+# Build output
+.next/
 .next-*/
+dist/
 web/next-env.d.ts
 .vercel
+
+# Env files hold secrets. Only the examples are tracked (negations must come after the .env rules).
+.env
+.env.*
 .env*
+!.env.example
+!.env.mainnet.example
+
+# Keys and local chain state
+scripts/keys/*.json
+scripts/state/
+*.pem
+
+# Design exports live in the design-v1.zip GitHub release asset (key screenshots are in docs/media/)
+design/v1/

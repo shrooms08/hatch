@@ -1,5 +1,4 @@
 import { Html, Head, Main, NextScript } from 'next/document';
-import { ENABLE_JUPITER_DATA } from '@/lib/config/network';
 
 // Social previews need an absolute URL: the production domain on Vercel, else this deployment.
 const SITE = process.env.VERCEL_PROJECT_PRODUCTION_URL || process.env.VERCEL_URL;
@@ -23,8 +22,6 @@ export default function Document() {
         <meta property="og:image:height" content="630" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:image" content={OG_IMAGE} />
-        {/* Jupiter Plugin (feature-flagged), see https://dev.jup.ag/docs/tool-kits/plugin */}
-        {ENABLE_JUPITER_DATA && <script src="https://plugin.jup.ag/plugin-v1.js" data-preload defer />}
       </Head>
       <body className="bg-hatch-bg antialiased">
         <Main />

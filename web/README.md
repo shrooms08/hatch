@@ -13,4 +13,4 @@ pnpm build                   # type-checked production build
 Pages: `/` (hatches from chain), `/launch` (prefill: `?name=&symbol=&description=&image=&preset=&source=`),
 `/token/<mint>`, `/my-hatches`. API: `POST /api/upload`, `GET /api/presets`.
 
-See `../docs/phase1.md` for architecture, env vars and known limits.
+See `../docs/ARCHITECTURE.md` for how the pieces fit, and `../docs/dev-notes/` for build notes.

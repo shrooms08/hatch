@@ -3,7 +3,7 @@ import { diffMilestones } from "../lib/milestones";
 import type { HatchSummary } from "../lib/types";
 
 const hatch = (over: Partial<HatchSummary> = {}): HatchSummary => ({
-  name: "minos test",
+  name: "Test token",
   symbol: "MINOS",
   mint: "GVSetikTDtVAviwTq1MbNY5n6dGa6T1eb2v2c5ybG6Gq",
   pool: "6N7JK5XZ2yUxF9L4pbXqXsDbYJ8pRfT6229Zxtsk8ME8",

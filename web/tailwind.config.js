@@ -1,6 +1,5 @@
 import plugin from 'tailwindcss/plugin';
 import tailwindcssAnimate from 'tailwindcss-animate';
-import { addIconSelectors } from '@iconify/tailwind';
 
 /**
  * Resolve a color from a CSS variable (RGB triplet) with alpha support.
@@ -233,14 +232,6 @@ export default {
   },
   plugins: [
     tailwindcssAnimate,
-    // Iconify plugin for clean selectors, requires writing a list of icon sets to load
-    // Icons usage in HTML:
-    //  <span class="iconify [icon-set]--[icon]"></span>
-    //  <span class="iconify ph--airplane-tilt-fill"></span>
-    addIconSelectors({
-      // List of icon sets
-      prefixes: ['ph'],
-    }),
     plugin(({ addUtilities, addVariant }) => {
       // Only apply hover styles on devices that actually support hover
       addVariant('has-hover', '@media (hover: hover) and (pointer: fine)');
