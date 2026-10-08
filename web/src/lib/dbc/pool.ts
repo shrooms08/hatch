@@ -11,8 +11,9 @@ import {
 } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import Decimal from 'decimal.js';
 import { memoAsync } from '@/lib/cache/memoAsync';
+import { feeScheduleOf, type FeeSchedule } from '@/lib/dbc/feeSchedule';
 import { fetchMintInfo, rawToUi, type MintInfo } from '@/lib/solana/mint';
-import { allConfigKeys, presetForConfig, EMPTY_HATCH_CONFIGS, type HatchConfigs, type PresetId } from '@/lib/presets';
+import { allConfigKeys, isLegacyConfig, presetForConfig, EMPTY_HATCH_CONFIGS, type HatchConfigs, type PresetId } from '@/lib/presets';
 
 export type HatchStatus = 'INCUBATING' | 'ALMOST_HATCHED' | 'HATCHED';
 export const ALMOST_HATCHED_AT = 0.8;
@@ -40,6 +41,12 @@ export type HatchPool = {
   status: HatchStatus;
   isMigrated: boolean;
   dammV2Pool: string | null;
+  /** Base-fee schedule from the pool's config (a decaying one is the "Sniper shield"). */
+  feeSchedule: FeeSchedule;
+  /** When trading opened (unix seconds for timestamp-activated configs). */
+  activationPoint: string;
+  /** True when the config is a legacy (pre-v2) config that is no longer used for launches. */
+  legacyConfig: boolean;
   fees: {
     creatorQuote: Decimal;
     creatorBase: Decimal;
@@ -101,6 +108,9 @@ export async function describePool(
       isMigrated && config.migrationOption === 1 && dammConfig
         ? deriveDammV2PoolAddress(dammConfig, s.baseMint, config.quoteMint).toBase58()
         : null,
+    feeSchedule: feeScheduleOf(config),
+    activationPoint: s.activationPoint.toString(),
+    legacyConfig: isLegacyConfig(hc, s.config.toBase58()),
     fees: {
       creatorQuote: rawToUi(s.creatorQuoteFee, quote),
       creatorBase: rawToUi(s.creatorBaseFee, baseUnit),

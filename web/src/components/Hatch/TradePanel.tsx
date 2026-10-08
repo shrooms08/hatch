@@ -11,7 +11,8 @@ import { formatAmount } from '@/lib/format/amount';
 import { getConnection } from '@/lib/solana/connection';
 import { NETWORK, explorerTxUrl, EXPLORER_NAME } from '@/lib/config/network';
 import { JupiterBusyError, WSOL } from '@/lib/jupiter';
-import { useQuoteSymbol, useTokenBalance, useTokenMetadata } from '@/hooks/useHatch';
+import { useLiveBaseFee, useQuoteSymbol, useTokenBalance, useTokenMetadata } from '@/hooks/useHatch';
+import { SNIPER_SHIELD_LINE, formatFeePercent } from '@/lib/dbc/feeSchedule';
 
 const SLIPPAGE_OPTIONS = [50, 100, 200];
 const SOL_FEE_BUFFER = 0.01; // keep some SOL for fees (and new token-account rent) when paying with SOL
@@ -30,6 +31,7 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
   const { setShowModal } = useUnifiedWalletContext();
   const queryClient = useQueryClient();
   const quoteSymbol = useQuoteSymbol(pool.quote);
+  const fee = useLiveBaseFee(pool);
   const { data: baseMd } = useTokenMetadata(pool.baseMint);
 
   const [side, setSide] = useState<TradeSide>('buy');
@@ -250,8 +252,15 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
           <span title={preview.data?.via ? `Jupiter: ${preview.data.via}` : undefined}>{route.join(' → ')}</span>
         </DefRow>
         <DefRow label="Fee" className="text-[13px]">
-          1%
+          {fee?.decaying ? (
+            <span className="text-success" title={SNIPER_SHIELD_LINE}>
+              {formatFeePercent(fee.percent)} now · {formatFeePercent(fee.shield!.end)} in {fee.secondsLeft}s
+            </span>
+          ) : (
+            formatFeePercent(fee?.percent ?? 1)
+          )}
         </DefRow>
+        {fee?.shield && <p className="text-xs text-ink-muted">Sniper shield: {SNIPER_SHIELD_LINE}</p>}
         {preview.error ? (
           <p className="text-[13px] text-danger" role="alert">
             {errorText(preview.error, 'Could not get a quote')}

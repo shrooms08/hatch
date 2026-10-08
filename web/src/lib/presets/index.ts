@@ -88,25 +88,41 @@ export type HatchConfigs = {
   hiddenMints: string[];
   /** Test launches: listed, but badged "Test launch". */
   testMints: string[];
+  /**
+   * Older configs (e.g. v1, before the sniper shield). Their pools keep working: they are listed, labelled,
+   * counted in stats and tradable, but new launches always use `configs` / `stocks`.
+   */
+  legacy: LegacyConfig[];
 };
 
-export const EMPTY_HATCH_CONFIGS: HatchConfigs = { network: '', configs: {}, stocks: {}, hiddenMints: [], testMints: [] };
+export type LegacyConfig = { config: string; preset: PresetId; stock?: string };
 
-/** Every config key Hatch launches under (deduped: on mainnet AI_AGENT reuses the MEME config). */
+export const EMPTY_HATCH_CONFIGS: HatchConfigs = { network: '', configs: {}, stocks: {}, hiddenMints: [], testMints: [], legacy: [] };
+
+/** Every config key whose pools are Hatch pools: current ones (launches) and legacy ones (still listed). */
 export function allConfigKeys(hc: HatchConfigs): string[] {
-  const keys = [...Object.values(hc.configs), ...Object.values(hc.stocks).map((s) => s.config)].filter(Boolean) as string[];
+  const keys = [...Object.values(hc.configs), ...Object.values(hc.stocks).map((s) => s.config), ...(hc.legacy ?? []).map((l) => l.config)].filter(Boolean) as string[];
   return [...new Set(keys)];
 }
 
 export function presetForConfig(hc: HatchConfigs, configKey: string): PresetId | null {
   if (Object.values(hc.stocks).some((s) => s.config === configKey)) return 'STOCK';
   const hit = (Object.entries(hc.configs) as [PresetId, string][]).find(([, k]) => k === configKey);
-  return hit ? hit[0] : null;
+  if (hit) return hit[0];
+  return (hc.legacy ?? []).find((l) => l.config === configKey)?.preset ?? null;
 }
 
 export function stockForConfig(hc: HatchConfigs, configKey: string): StockInfo | null {
-  return Object.values(hc.stocks).find((s) => s.config === configKey) ?? null;
+  const current = Object.values(hc.stocks).find((s) => s.config === configKey);
+  if (current) return current;
+  // A legacy stock config shares the quote token of its ticker's current config.
+  const legacy = (hc.legacy ?? []).find((l) => l.config === configKey && l.preset === 'STOCK' && l.stock);
+  const stock = legacy?.stock ? hc.stocks[legacy.stock] : undefined;
+  return stock ? { ...stock, config: configKey } : null;
 }
+
+/** True for configs that are still recognized but no longer used for new launches. */
+export const isLegacyConfig = (hc: HatchConfigs, configKey: string) => (hc.legacy ?? []).some((l) => l.config === configKey);
 
 /** The STOCK preset's copy for a specific stock. */
 export function stockPreset(stock: Pick<StockInfo, 'symbol' | 'name' | 'quoteMint'> | null | undefined): Preset {

@@ -1,9 +1,11 @@
 // React Query hooks for Hatch chain data. All reads go straight to RPC via the DBC SDK.
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/router';
 import { PublicKey } from '@solana/web3.js';
 import { getConnection } from '@/lib/solana/connection';
-import { dbcClient, fetchHatchPoolByMint, fetchHatchPools } from '@/lib/dbc/pool';
+import { dbcClient, fetchHatchPoolByMint, fetchHatchPools, type HatchPool } from '@/lib/dbc/pool';
+import { baseFeePercentAt, feeScheduleOf, hasSniperShield, shieldDuration, shieldRange } from '@/lib/dbc/feeSchedule';
 import { fetchTokenMetadata } from '@/lib/metadata/token';
 import { fetchMintInfo, fetchRawBalance, rawToUi, type MintInfo } from '@/lib/solana/mint';
 import type { HatchConfigs } from '@/lib/presets';
@@ -26,7 +28,7 @@ export function usePresetConfigs() {
       const res = await fetch('/api/presets');
       if (!res.ok) throw new Error('Could not load presets');
       const body = (await res.json()) as PresetsResponse;
-      return { network: body.network, configs: body.configs, stocks: body.stocks, hiddenMints: body.hiddenMints, testMints: body.testMints ?? [] };
+      return { network: body.network, configs: body.configs, stocks: body.stocks, hiddenMints: body.hiddenMints, testMints: body.testMints ?? [], legacy: body.legacy ?? [] };
     },
     staleTime: 60_000,
   });
@@ -143,6 +145,46 @@ export function useConfigThreshold(configKey: string | undefined) {
     enabled: !!configKey,
     staleTime: 10 * 60_000,
   });
+}
+
+/** Configs (by key) whose base fee decays: the Sniper shield. Used on the launch form's preset cards. */
+export function useShieldedConfigs(configKeys: string[]) {
+  const keys = [...new Set(configKeys.filter(Boolean))].sort();
+  return useQuery({
+    queryKey: ['hatch', 'config-shield', keys],
+    queryFn: async () => {
+      const dbc = dbcClient(getConnection());
+      const shielded = await Promise.all(
+        keys.map(async (k): Promise<string | null> => {
+          const config = await dbc.state.getPoolConfig(k).catch((): null => null);
+          return config && hasSniperShield(feeScheduleOf(config)) ? k : null;
+        })
+      );
+      return new Set(shielded.filter((k): k is string => !!k));
+    },
+    enabled: keys.length > 0,
+    staleTime: 30 * 60_000,
+  });
+}
+
+/**
+ * The pool's base fee now (%), ticking every second while the Sniper shield decays.
+ * `shield` is null for flat-fee pools; `decaying` is true until the final fee is reached.
+ */
+export function useLiveBaseFee(pool: HatchPool | null | undefined) {
+  const f = pool?.feeSchedule;
+  const shield = hasSniperShield(f) && f.activationType === 1 ? f : null; // Hatch configs activate by timestamp
+  const end = shield ? Number(pool!.activationPoint) + shieldDuration(shield) : 0;
+  const [now, setNow] = useState(() => Date.now() / 1000);
+  const decaying = !!shield && now < end;
+  useEffect(() => {
+    if (!decaying) return;
+    const id = setInterval(() => setNow(Date.now() / 1000), 1000);
+    return () => clearInterval(id);
+  }, [decaying]);
+  if (!pool || !f) return null;
+  if (!shield) return { percent: hasSniperShield(f) ? shieldRange(f).end : baseFeePercentAt(f, '0', 0), shield: null, decaying: false, secondsLeft: 0 };
+  return { percent: baseFeePercentAt(shield, pool.activationPoint, now), shield: shieldRange(shield), decaying, secondsLeft: Math.max(0, Math.ceil(end - now)) };
 }
 
 /** True when `mint` is a test launch (TEST_MINTS). */

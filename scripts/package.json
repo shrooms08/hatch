@@ -21,7 +21,9 @@
     "swap-sol-to-nvdax": "node --env-file-if-exists=.env --import tsx src/swap-sol-to-nvdax.ts",
     "buy-mainnet": "node --env-file-if-exists=.env --import tsx src/buy-mainnet.ts",
     "status-mainnet": "node --env-file-if-exists=.env --import tsx src/status-mainnet.ts",
-    "claim-partner-fees-mainnet": "node --env-file-if-exists=.env --import tsx src/claim-partner-fees-mainnet.ts"
+    "claim-partner-fees-mainnet": "node --env-file-if-exists=.env --import tsx src/claim-partner-fees-mainnet.ts",
+    "swap-nvdax-to-sol-mainnet": "node --env-file-if-exists=.env --import tsx src/swap-nvdax-to-sol-mainnet.ts",
+    "create-config-v2-mainnet": "node --env-file-if-exists=.env --import tsx src/create-config-v2-mainnet.ts"
   },
   "dependencies": {
     "@meteora-ag/cp-amm-sdk": "1.5.1",

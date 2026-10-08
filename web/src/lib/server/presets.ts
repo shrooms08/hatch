@@ -4,9 +4,10 @@
 //   STOCK_CONFIGS = {"NVDA":{"config":"<config>","quoteMint":"<xStock mint>","symbol":"NVDAx","name":"NVIDIA"}}
 //   HIDDEN_MINTS  = comma-separated mints hidden from public lists
 //   TEST_MINTS    = comma-separated mints shown with a "Test launch" badge
+//   LEGACY_CONFIGS = older configs whose pools stay recognized (never used for new launches)
 import { PublicKey } from '@solana/web3.js';
 import { NETWORK } from '@/lib/config/network';
-import { PRESET_IDS, type HatchConfigs, type PresetConfigMap, type PresetId, type StockInfo, type StockMap } from '@/lib/presets';
+import { PRESET_IDS, type HatchConfigs, type LegacyConfig, type PresetConfigMap, type PresetId, type StockInfo, type StockMap } from '@/lib/presets';
 
 export class PresetError extends Error {}
 
@@ -85,11 +86,38 @@ function loadMintList(name: 'HIDDEN_MINTS' | 'TEST_MINTS'): string[] {
     .map((m) => pubkey(m, `${name} entry ${m.slice(0, 6)}…`));
 }
 
+/** LEGACY_CONFIGS = [{"config":"<old config>","preset":"MEME"}, {"config":"<old>","preset":"STOCK","stock":"NVDA"}] */
+function loadLegacyConfigs(): LegacyConfig[] {
+  const raw = process.env.LEGACY_CONFIGS;
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new PresetError('LEGACY_CONFIGS is not valid JSON');
+  }
+  if (!Array.isArray(parsed)) throw new PresetError('LEGACY_CONFIGS must be a JSON array');
+  return parsed.map((e, i) => {
+    const v = (e ?? {}) as Record<string, unknown>;
+    const preset = String(v.preset ?? '') as PresetId;
+    if (!(PRESET_IDS as readonly string[]).includes(preset)) throw new PresetError(`LEGACY_CONFIGS[${i}].preset must be one of ${PRESET_IDS.join(', ')}`);
+    const stock = typeof v.stock === 'string' && v.stock ? v.stock.toUpperCase() : undefined;
+    return { config: pubkey(v.config, `LEGACY_CONFIGS[${i}].config`), preset, ...(stock ? { stock } : {}) };
+  });
+}
+
 export function loadHatchConfigs(): HatchConfigs {
   const configs = loadPoolConfigs();
   const stocks = loadStockConfigs(configs);
   delete configs.STOCK; // STOCK launches go through STOCK_CONFIGS (per ticker)
-  return { network: NETWORK, configs, stocks, hiddenMints: loadMintList('HIDDEN_MINTS'), testMints: loadMintList('TEST_MINTS') };
+  return {
+    network: NETWORK,
+    configs,
+    stocks,
+    hiddenMints: loadMintList('HIDDEN_MINTS'),
+    testMints: loadMintList('TEST_MINTS'),
+    legacy: loadLegacyConfigs(),
+  };
 }
 
 /** Config for a launch. STOCK needs a ticker that exists in STOCK_CONFIGS on this network. */

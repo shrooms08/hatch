@@ -6,7 +6,7 @@ import Page from '@/components/ui/Page/Page';
 import { Button, Card, EggGlyph, Field, HonestNote, InspiredChip, Input, Note, PresetBadge, PresetCard, TextArea, UploadIcon, notify } from '@/components/ds';
 import { TokenArt } from '@/components/ds/TokenArt';
 import { HatchedMoment } from '@/components/Hatch/HatchedMoment';
-import { useConfigThreshold, usePresetConfigs } from '@/hooks/useHatch';
+import { useConfigThreshold, usePresetConfigs, useShieldedConfigs } from '@/hooks/useHatch';
 import { PRESET_IDS, PRESETS, parsePresetId, stockPreset, type PresetId } from '@/lib/presets';
 import { DESCRIPTION_MAX, NAME_MAX, SYMBOL_MAX, launchFieldsSchema, type LaunchFields } from '@/lib/validation/launch';
 import { checkImageFile, launchToken } from '@/lib/launch/client';
@@ -91,6 +91,9 @@ export default function CreatePool() {
   const quoteSymbol = form.preset === 'STOCK' ? selectedStock?.symbol ?? 'stock' : 'SOL';
   const configKey = form.preset === 'STOCK' ? selectedStock?.config : enabledPresets?.configs[form.preset];
   const threshold = useConfigThreshold(configKey);
+  // Sniper shield per card: STOCK shows it when the selected (or first) stock's config has one.
+  const shieldKeys = { STOCK: (selectedStock ?? stocks[0])?.config, MEME: enabledPresets?.configs.MEME, AI_AGENT: enabledPresets?.configs.AI_AGENT };
+  const shielded = useShieldedConfigs(Object.values(shieldKeys).filter((k): k is string => !!k));
   const domain = sourceDomain(form.source || undefined);
   const paired = form.preset === 'STOCK' ? selectedStock?.symbol ?? null : null;
 
@@ -152,6 +155,7 @@ export default function CreatePool() {
             selected={form.preset === id}
             disabled={!isEnabled}
             disabledNote={id === 'STOCK' ? 'Coming soon on this network.' : 'Not enabled on this server.'}
+            shield={!!shieldKeys[id] && !!shielded.data?.has(shieldKeys[id]!)}
             onSelect={() => set('preset', id)}
           />
         );

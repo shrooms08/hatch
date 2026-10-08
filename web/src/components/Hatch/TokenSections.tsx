@@ -18,6 +18,7 @@ import {
   Skeleton,
   StageEgg,
   StatusPill,
+  ShieldBadge,
   TestBadge,
 } from '@/components/ds';
 import { ChickenOrb } from '@/components/ds/ChickenOrb';
@@ -26,7 +27,8 @@ import { formatAmount, formatPercent } from '@/lib/format/amount';
 import { explorerAddressUrl, meteoraPoolUrl } from '@/lib/config/network';
 import { sourceDomain } from '@/lib/metadata/token';
 import { stockForConfig, stockPreset } from '@/lib/presets';
-import { useHolders, useIsTestLaunch, usePresetConfigs, useQuoteSymbol, useTokenMetadata } from '@/hooks/useHatch';
+import { useHolders, useIsTestLaunch, useLiveBaseFee, usePresetConfigs, useQuoteSymbol, useTokenMetadata } from '@/hooks/useHatch';
+import { SNIPER_SHIELD_LINE, formatFeePercent } from '@/lib/dbc/feeSchedule';
 import { shortAddr } from '@/components/ds/Pill';
 import { cn } from '@/lib/utils';
 import { TokenAvatar } from './TokenAvatar';
@@ -87,9 +89,17 @@ export function TokenHero({ mint, pool }: { mint: string; pool: HatchPool | null
 
 function HeroChips({ mint, pool, quote, domain, url }: { mint: string; pool: HatchPool | null | undefined; quote: string; domain: string | null; url?: string }) {
   const isTest = useIsTestLaunch(mint);
+  const fee = useLiveBaseFee(pool);
   return (
     <>
       {isTest && <TestBadge className="h-[30px]" />}
+      {fee?.shield && (
+        <ShieldBadge
+          className="h-[30px]"
+          fee={fee.decaying ? formatFeePercent(fee.percent) : undefined}
+          title={fee.decaying ? `${SNIPER_SHIELD_LINE} ${fee.secondsLeft}s left.` : SNIPER_SHIELD_LINE}
+        />
+      )}
       {pool && pool.presetId === null && (
         <span className="inline-flex h-[30px] items-center rounded-pill border border-danger/45 bg-danger/[0.12] px-3 text-xs font-semibold text-danger">Not a Hatch launch</span>
       )}

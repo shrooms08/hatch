@@ -128,3 +128,23 @@ export function TestBadge({ className, size = 'md' }: { className?: string; size
     </span>
   );
 }
+
+/** "Sniper shield": the launch's fee starts high and decays to 1% (v2 presets). Success tint. `fee` shows the live fee while it decays. */
+export function ShieldBadge({ className, size = 'md', fee, title }: { className?: string; size?: 'md' | 'sm'; fee?: string; title?: string }) {
+  return (
+    <span
+      title={title}
+      className={cn(
+        'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-pill border border-success/40 bg-success/10 font-mono font-medium uppercase tracking-[0.08em] text-success',
+        size === 'sm' ? 'h-5 px-2 text-[10px]' : 'h-7 px-2.5 text-[11px]',
+        className
+      )}
+    >
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M12 3 5 6v5.5c0 4.2 2.9 7.9 7 9.5 4.1-1.6 7-5.3 7-9.5V6l-7-3Z" />
+      </svg>
+      Sniper shield
+      {fee && <span className="normal-case tracking-normal text-ink">· fee {fee}</span>}
+    </span>
+  );
+}

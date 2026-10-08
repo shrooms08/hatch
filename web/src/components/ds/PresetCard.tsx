@@ -1,6 +1,8 @@
 import type { PresetId } from '@/lib/presets';
 import { cn } from '@/lib/utils';
+import { SNIPER_SHIELD_LINE } from '@/lib/dbc/feeSchedule';
 import { SmileIcon, SparkIcon, TrendIcon } from './icons';
+import { ShieldBadge } from './Pill';
 
 const ICON: Record<PresetId, React.ReactNode> = {
   STOCK: <TrendIcon size={18} />,
@@ -17,6 +19,7 @@ export function PresetCard({
   selected,
   disabled,
   disabledNote,
+  shield,
   onSelect,
 }: {
   preset: PresetId;
@@ -26,6 +29,8 @@ export function PresetCard({
   selected: boolean;
   disabled?: boolean;
   disabledNote?: string;
+  /** The config has a Sniper shield (decaying launch fee). */
+  shield?: boolean;
   onSelect: () => void;
 }) {
   return (
@@ -51,12 +56,14 @@ export function PresetCard({
       >
         {ICON[preset]}
       </span>
-      <span className="flex min-w-0 flex-col gap-0.5">
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex items-baseline gap-1.5 text-[15px] font-semibold text-ink">
           {title}
           <span className={cn('font-mono text-[11px] font-medium', preset === 'STOCK' ? 'text-ink-accent' : 'text-ink-muted')}>{quote}</span>
+          {shield && !disabled && <ShieldBadge size="sm" className="ml-auto self-center" />}
         </span>
         <span className="text-[13px] text-ink-2">{disabled && disabledNote ? disabledNote : description}</span>
+        {shield && !disabled && <span className="text-xs text-ink-muted">{SNIPER_SHIELD_LINE}</span>}
       </span>
     </button>
   );

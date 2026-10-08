@@ -1,5 +1,5 @@
 // Jupiter Swap API (lite-api, no key) for the one SOL -> NVDAx test swap.
-import { PublicKey, VersionedTransaction } from '@solana/web3.js'
+import { PublicKey, TransactionInstruction, VersionedTransaction } from '@solana/web3.js'
 
 const JUP = process.env.JUPITER_API_URL || 'https://lite-api.jup.ag'
 
@@ -43,4 +43,35 @@ export async function jupSwapTx(quote: JupQuote, user: PublicKey, computeUnitPri
   const j = (await r.json()) as { swapTransaction?: string; error?: string }
   if (!r.ok || !j.swapTransaction) throw new Error(`Jupiter swap build failed: ${j.error ?? r.status}`)
   return VersionedTransaction.deserialize(Buffer.from(j.swapTransaction, 'base64'))
+}
+
+type RawIx = { programId: string; accounts: { pubkey: string; isSigner: boolean; isWritable: boolean }[]; data: string }
+const toIx = (ix: RawIx) =>
+  new TransactionInstruction({
+    programId: new PublicKey(ix.programId),
+    keys: ix.accounts.map((a) => ({ pubkey: new PublicKey(a.pubkey), isSigner: a.isSigner, isWritable: a.isWritable })),
+    data: Buffer.from(ix.data, 'base64'),
+  })
+
+/** The swap as instructions (to add our own, e.g. closing the emptied input account, in the same tx). */
+export async function jupSwapInstructions(quote: JupQuote, user: PublicKey) {
+  const r = await fetch(`${JUP}/swap/v1/swap-instructions`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ quoteResponse: quote, userPublicKey: user.toBase58(), wrapAndUnwrapSol: true, dynamicComputeUnitLimit: true }),
+    signal: AbortSignal.timeout(20_000),
+  })
+  const d = (await r.json()) as {
+    setupInstructions?: RawIx[]; swapInstruction?: RawIx; cleanupInstruction?: RawIx; otherInstructions?: RawIx[]
+    addressLookupTableAddresses?: string[]; computeUnitLimit?: number; error?: string
+  }
+  if (!r.ok || !d.swapInstruction) throw new Error(`Jupiter swap-instructions failed: ${d.error ?? r.status}`)
+  return {
+    setup: (d.setupInstructions ?? []).map(toIx),
+    swap: toIx(d.swapInstruction),
+    cleanup: d.cleanupInstruction ? [toIx(d.cleanupInstruction)] : [],
+    other: (d.otherInstructions ?? []).map(toIx),
+    lookupTables: (d.addressLookupTableAddresses ?? []).map((a) => new PublicKey(a)),
+    computeUnitLimit: Number(d.computeUnitLimit ?? 200_000),
+  }
 }

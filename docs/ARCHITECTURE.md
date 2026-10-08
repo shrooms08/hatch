@@ -52,11 +52,12 @@ flowchart LR
 - **RPC**: the browser talks only to `/api/rpc`, which forwards an allowlist of methods to Helius with the key kept server-side.
 - **Data**: pools are read straight from chain under Hatch's configs (`lib/dbc/pool.ts`). Home stats (`lib/server/stats.ts`) sum each pool's quote-vault changes per transaction and convert them with Jupiter prices. They are cached for 60s.
 - **AI**: `/api/buddy/draft` (structured output, clamped server-side: allowed presets and stocks only) and `/api/buddy/notice` (fast model). Both have per-IP rate limits and daily caps.
-- **Config**: `POOL_CONFIGS` (MEME, optional AI_AGENT with its own config), `STOCK_CONFIGS` (ticker → config + xStock mint), `TEST_MINTS` (badged test launches), `HIDDEN_MINTS`. See `web/.env.mainnet.example`.
+- **Config**: `POOL_CONFIGS` (MEME, AI_AGENT), `STOCK_CONFIGS` (ticker → config + xStock mint), `LEGACY_CONFIGS` (v1 configs: no new launches, but their pools keep their preset, stats and trading), `TEST_MINTS` (badged test launches), `HIDDEN_MINTS`. See `web/.env.mainnet.example`.
+- **Sniper shield**: a config's base-fee schedule is read from chain (`lib/dbc/feeSchedule.ts`); the fee in force is computed with the SDK's `getBaseFeeNumerator`, so the token page's live fee matches the program.
 
 ## Scripts (`scripts/`)
 
-TypeScript scripts that create the DBC configs (STOCK-NVDAx with the NVDAx token badge, MEME), launch and buy test tokens, report status, and claim partner fees. Devnet by default. Every mainnet send is simulated first and needs both `--mainnet --live` and a typed `YES MAINNET`.
+TypeScript scripts that create the DBC configs (v2: STOCK-NVDA, STOCK-TSLA, MEME, AI_AGENT, each with the Sniper shield; xStock configs use the token badge), launch and buy test tokens, report status, and claim partner fees. Devnet by default. Every mainnet send is simulated first and needs both `--mainnet --live` and a typed `YES MAINNET`.
 
 ## Design
 
