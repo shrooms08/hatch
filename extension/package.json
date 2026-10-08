@@ -1,6 +1,6 @@
 {
   "name": "hatch-extension",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Hatch browser buddy (MV3)",
   "scripts": {
     "dev": "wxt",

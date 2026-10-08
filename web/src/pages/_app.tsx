@@ -12,6 +12,7 @@ import { useWindowWidthListener } from '@/lib/device';
 import { NETWORK } from '@/lib/config/network';
 import { useWalletHatchEvents } from '@/lib/extensionBridge';
 import { DEFAULT_SOCIAL, SocialMeta } from '@/components/SocialMeta';
+import { OnboardingProvider } from '@/components/Onboarding/Walkthrough';
 
 /** Lives inside the wallet provider so it can see the connected wallet. */
 function HatchEvents(): null {
@@ -56,7 +57,9 @@ function AppProviders({ Component, pageProps }: AppProps) {
         <SocialMeta {...DEFAULT_SOCIAL} />
         {/* Toasts are rendered by components/ds/Toast (sonner custom), placed under the header. */}
         <Toaster theme={walletTheme} position="top-right" offset={{ top: 88, right: 24 }} mobileOffset={{ top: 72 }} gap={12} />
-        <Component {...pageProps} />
+        <OnboardingProvider>
+          <Component {...pageProps} />
+        </OnboardingProvider>
       </UnifiedWalletProvider>
     </QueryClientProvider>
   );

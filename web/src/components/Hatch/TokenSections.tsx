@@ -32,6 +32,8 @@ import { SNIPER_SHIELD_LINE, formatFeePercent, hasSniperShield } from '@/lib/dbc
 import { useWallet } from '@jup-ag/wallet-adapter';
 import type { ShareInfo } from '@/lib/share';
 import { ShareActions } from './ShareActions';
+import { Tip } from '@/components/Onboarding/Tip';
+import { HowItWorksChip } from '@/components/Onboarding/Walkthrough';
 import { shortAddr } from '@/components/ds/Pill';
 import { cn } from '@/lib/utils';
 import { TokenAvatar } from './TokenAvatar';
@@ -43,13 +45,16 @@ export function TokenHero({ mint, pool }: { mint: string; pool: HatchPool | null
   const symbol = md?.symbol ?? '';
   return (
     <div className="flex flex-col gap-5 md:gap-7">
-      <nav aria-label="Breadcrumb" className="text-[13px] font-medium text-ink-muted">
-        <Link href="/" className="hover:text-ink">
-          Hatches
-        </Link>
-        <span className="mx-1.5">/</span>
-        <span className="text-ink">{symbol || shortAddr(mint, 4)}</span>
-      </nav>
+      <div className="flex min-h-9 flex-wrap items-center justify-between gap-3">
+        <nav aria-label="Breadcrumb" className="text-[13px] font-medium text-ink-muted">
+          <Link href="/" className="hover:text-ink">
+            Hatches
+          </Link>
+          <span className="mx-1.5">/</span>
+          <span className="text-ink">{symbol || shortAddr(mint, 4)}</span>
+        </nav>
+        <HowItWorksChip />
+      </div>
       <div className="flex flex-col gap-5 md:flex-row md:items-center md:gap-7">
         <div className="flex min-w-0 flex-1 items-center gap-4 md:gap-7">
           <TokenAvatar mint={mint} size={112} paired={pool?.presetId === 'STOCK' ? quote : null} className="max-md:!h-[72px] max-md:!w-[72px]" />
@@ -74,6 +79,11 @@ export function TokenHero({ mint, pool }: { mint: string; pool: HatchPool | null
         </div>
         {md?.name && pool !== undefined && <TokenShare mint={mint} pool={pool} symbol={symbol} />}
       </div>
+      {pool && pool.presetId !== null && hasSniperShield(pool.feeSchedule) && (
+        <Tip id="token-shield" title="Sniper shield." className="max-w-[640px]">
+          {SNIPER_SHIELD_LINE}
+        </Tip>
+      )}
     </div>
   );
 }
@@ -135,6 +145,7 @@ export function ProgressCard({ pool }: { pool: HatchPool }) {
       <EggVessel progress={pool.progress} className="relative max-lg:hidden" />
       <div className="relative flex min-w-0 flex-col gap-[22px]">
         <Overline>Hatching progress</Overline>
+        <Tip id="token-progress">This fills as people buy. At 100% it hatches.</Tip>
         <div className="flex items-center gap-4">
           {/* Mobile: the egg sits beside the number (design M3) */}
           <div className="relative h-[96px] w-[76px] shrink-0 lg:hidden" aria-hidden>

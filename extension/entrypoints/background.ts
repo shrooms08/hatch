@@ -9,7 +9,7 @@
 import { defineBackground } from "wxt/utils/define-background";
 import { browser } from "wxt/browser";
 import { api } from "../lib/api";
-import { HATCH_WEB_ORIGIN, POLL_MINUTES, tokenPageUrl } from "../lib/config";
+import { HATCH_WEB_ORIGIN, POLL_MINUTES, tokenPageUrl, webUrl } from "../lib/config";
 import { SIDEPANEL_PORT, type BgRequest, type NoticeResponse, type OffscreenMessage, type OffscreenResult, type TabMessage } from "../lib/messages";
 import { SOUNDS, type SoundName } from "../lib/buddy/config";
 import { diffMilestones } from "../lib/milestones";
@@ -145,11 +145,22 @@ async function ensurePolling() {
   if (!(await browser.alarms.get(POLL_ALARM))) await browser.alarms.create(POLL_ALARM, { periodInMinutes: POLL_MINUTES });
 }
 
+/** The welcome page, once per install (storage is cleared when the extension is removed). */
+async function openWelcomeOnce() {
+  if (await getLocal<boolean>(KEYS.welcomed, false)) return;
+  await setLocal(KEYS.welcomed, true);
+  await browser.tabs.create({ url: webUrl("/welcome?from=extension") }).catch(() => undefined);
+}
+
 export default defineBackground(() => {
   // Toolbar click opens the side panel (Chrome).
   browser.sidePanel?.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => undefined);
 
-  browser.runtime.onInstalled.addListener(() => void ensurePolling());
+  browser.runtime.onInstalled.addListener((details) => {
+    void ensurePolling();
+    // First install only (not updates or Chrome updates): open the welcome page on the configured web app.
+    if (details.reason === "install") void openWelcomeOnce();
+  });
   browser.runtime.onStartup.addListener(() => void ensurePolling());
   browser.alarms.onAlarm.addListener((a) => {
     if (a.name === POLL_ALARM) void pollIfDue();

@@ -6,6 +6,7 @@ export const KEYS = {
   settings: "hatch:settings",
   eggPos: "hatch:eggPos",
   wallet: "hatch:wallet", // public address only
+  welcomed: "hatch:welcomed", // the /welcome tab was opened once for this install
   hatches: "hatch:hatches",
   milestones: "hatch:milestones",
   noticed: "hatch:noticed", // storage.session: url -> hint | null

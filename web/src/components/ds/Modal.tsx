@@ -27,6 +27,23 @@ export function Modal({
     document.body.style.overflow = 'hidden';
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      // Keep Tab focus inside the dialog.
+      if (e.key === 'Tab' && panel.current) {
+        const items = [...panel.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input, select, textarea, [tabindex]:not([tabindex="-1"])')].filter(
+          (el) => el.offsetParent !== null
+        );
+        if (!items.length) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        const inside = panel.current.contains(document.activeElement);
+        if (e.shiftKey && (document.activeElement === first || !inside)) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && (document.activeElement === last || !inside)) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     };
     window.addEventListener('keydown', onKey);
     // Focus the first focusable element (the primary action), else the panel.

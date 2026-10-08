@@ -7,6 +7,7 @@ import { Button, Card, EggGlyph, Field, HonestNote, InspiredChip, Input, Note, P
 import { TokenArt } from '@/components/ds/TokenArt';
 import { HatchedMoment } from '@/components/Hatch/HatchedMoment';
 import { OpenInWallet } from '@/components/Hatch/OpenInWallet';
+import { Tip } from '@/components/Onboarding/Tip';
 import { useConfigThreshold, usePresetConfigs, useShieldedConfigs } from '@/hooks/useHatch';
 import { PRESET_IDS, PRESETS, parsePresetId, stockPreset, type PresetId } from '@/lib/presets';
 import { DESCRIPTION_MAX, NAME_MAX, SYMBOL_MAX, launchFieldsSchema, type LaunchFields } from '@/lib/validation/launch';
@@ -139,6 +140,10 @@ export default function CreatePool() {
   };
 
   const presetCards = (
+    <div className="flex flex-col gap-2.5">
+    <Tip id="launch-presets" title="Three ways to launch.">
+      Stock-paired: the pool holds tokenized NVIDIA or Tesla, and your token is not the stock. Meme: classic, priced in SOL. AI agent: a gentler curve, and creators earn more.
+    </Tip>
     <div role="radiogroup" aria-label="Launch preset" className="flex flex-col gap-2.5">
       {(['STOCK', 'MEME', 'AI_AGENT'] as const)
         // Presets without a config on this network are hidden (STOCK stays, shown as "coming soon").
@@ -161,6 +166,7 @@ export default function CreatePool() {
           />
         );
       })}
+    </div>
     </div>
   );
 
@@ -323,6 +329,7 @@ export default function CreatePool() {
             {howItWorks}
             {honest}
             {formError && <p className="text-sm text-danger" role="alert">{formError}</p>}
+            <Tip id="launch-sign" media="(max-width: 1023px)">You&apos;ll sign once in your wallet. Launch costs about 0.01 SOL.</Tip>
             {submit}
             <OpenInWallet />
           </div>
@@ -348,6 +355,7 @@ export default function CreatePool() {
           {howItWorks}
           {honest}
           {formError && <p className="text-sm text-danger" role="alert">{formError}</p>}
+          <Tip id="launch-sign" media="(min-width: 1024px)">You&apos;ll sign once in your wallet. Launch costs about 0.01 SOL.</Tip>
           {submit}
           <p className="text-center text-xs text-ink-muted">You sign and pay the network fee with your wallet. Hatch never holds your keys.</p>
         </aside>

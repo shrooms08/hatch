@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useTheme } from 'next-themes';
 import { useEffect, useRef, useState } from 'react';
+import { useOnboarding } from '@/components/Onboarding/Walkthrough';
 import { Amount, Button, EggGlyph, HatchLogo, IconButton, MenuIcon, MoonIcon, Spinner, SunIcon, XIcon, notify } from '@/components/ds';
 import { NETWORK } from '@/lib/config/network';
 import { WSOL } from '@/lib/jupiter';
@@ -143,6 +144,7 @@ function WalletButton({ compact = false }: { compact?: boolean }) {
 
 function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { pathname } = useRouter();
+  const { open: openHowItWorks } = useOnboarding();
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-[90] md:hidden" role="dialog" aria-modal="true" aria-label="Menu">
@@ -164,6 +166,16 @@ function MobileMenu({ open, onClose }: { open: boolean; onClose: () => void }) {
             {n.label}
           </Link>
         ))}
+        <button
+          type="button"
+          onClick={() => {
+            onClose();
+            openHowItWorks();
+          }}
+          className="block w-full rounded-md px-3 py-3 text-left text-[17px] font-medium text-ink-2 hover:bg-surface-3"
+        >
+          How it works
+        </button>
         <Button asChild block className="mt-2">
           <Link href="/launch" onClick={onClose}>
             <EggGlyph size={15} />
@@ -191,6 +203,7 @@ function NetworkPillInline() {
 
 export const Header = () => {
   const { pathname } = useRouter();
+  const { open: openHowItWorks } = useOnboarding();
   const [menu, setMenu] = useState(false);
   const active = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
 
@@ -219,6 +232,13 @@ export const Header = () => {
               {n.label}
             </Link>
           ))}
+          <button
+            type="button"
+            onClick={openHowItWorks}
+            className="whitespace-nowrap rounded-pill px-4 py-2.5 text-[15px] font-medium text-ink-nav transition-colors duration-150 hover:text-ink focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-yolk/30"
+          >
+            How it works
+          </button>
         </nav>
         <div className="flex items-center gap-2.5">
           <Button asChild variant="outline" size="header" className="hidden lg:inline-flex">

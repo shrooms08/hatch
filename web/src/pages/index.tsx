@@ -149,7 +149,7 @@ function HatchHome() {
         <StatsStrip />
       </div>
 
-      <div className="mx-auto w-full max-w-[1440px] px-4 pb-24 pt-14 md:px-10 md:pt-[88px] lg:px-20">
+      <div id="hatches" className="mx-auto w-full max-w-[1440px] scroll-mt-20 px-4 pb-24 pt-14 md:px-10 md:pt-[88px] lg:px-20">
         <HatchTable pools={data} isLoading={isLoading} error={error} onRetry={() => void refetch()} createdAt={stats.data?.createdAt} />
       </div>
     </>
