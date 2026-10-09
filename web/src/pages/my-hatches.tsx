@@ -62,8 +62,14 @@ function MyHatchCard({ pool }: { pool: HatchPool }) {
       </Link>
       <ShellBar progress={pool.progress} hatched={pool.isMigrated} height={8} />
       <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate font-mono text-[13px] font-medium text-ink">
-          <Amount value={pool.fees.creatorQuote} /> <span className="text-ink-muted">{quote} claimable</span>
+        <span className="flex min-w-0 flex-col gap-0.5 font-mono text-[13px] font-medium text-ink">
+          <span className="truncate">
+            <Amount value={pool.fees.creatorQuote} /> <span className="text-ink-muted">{quote} claimable</span>
+          </span>
+          {/* Earnings line: your share of all trading fees so far, paid in the quote token. */}
+          <span className="truncate text-[11px] text-ink-muted">
+            Earned {formatAmount(pool.fees.creatorEarnedQuote)} {quote} · claimed {formatAmount(pool.fees.creatorClaimedQuote)}
+          </span>
         </span>
         <Button
           variant="ghost"

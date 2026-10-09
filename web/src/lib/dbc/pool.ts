@@ -10,6 +10,7 @@ import {
   type VirtualPool,
 } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import Decimal from 'decimal.js';
+import BN from 'bn.js';
 import { memoAsync } from '@/lib/cache/memoAsync';
 import { feeScheduleOf, type FeeSchedule } from '@/lib/dbc/feeSchedule';
 import { fetchMintInfo, rawToUi, type MintInfo } from '@/lib/solana/mint';
@@ -59,6 +60,10 @@ export type HatchPool = {
     partnerBase: Decimal;
     creatorQuoteRaw: string;
     creatorBaseRaw: string;
+    /** Creator's all-time trading fees in the quote token (pool metrics x creator share, as the SDK's getPoolFeeBreakdown). */
+    creatorEarnedQuote: Decimal;
+    /** Earned minus unclaimed. Per-trade rounding makes the split approximate by a few raw units, so tiny values read as 0. */
+    creatorClaimedQuote: Decimal;
   };
 };
 
@@ -81,6 +86,18 @@ const configCache = new Map<string, Promise<PoolConfig | null>>();
 /** A DBC config, read once per session (configs are immutable once created). */
 export function cachedPoolConfig(connection: Connection, configKey: string): Promise<PoolConfig | null> {
   return memoAsync(configCache, configKey, () => dbcClient(connection).state.getPoolConfig(configKey));
+}
+
+/** Rounding slack, in raw quote units, below which "claimed" reads as 0 (the split rounds per trade). */
+const CLAIM_ROUNDING_SLACK = 16;
+
+/** Creator's earned (all time) and claimed trading fees, in quote UI units, from the pool's own counters. */
+export function creatorEarnings(totalTradingQuoteFee: BN, creatorPct: number, unclaimedQuote: BN, quote: MintInfo) {
+  const earned = creatorPct > 0 ? totalTradingQuoteFee.mul(new BN(creatorPct)).div(new BN(100)) : new BN(0);
+  let claimed = earned.sub(unclaimedQuote);
+  if (claimed.lten(CLAIM_ROUNDING_SLACK)) claimed = new BN(0);
+  const shownEarned = BN.max(earned, unclaimedQuote);
+  return { creatorEarnedQuote: rawToUi(shownEarned, quote), creatorClaimedQuote: rawToUi(claimed, quote) };
 }
 
 export async function describePool(
@@ -133,6 +150,7 @@ export async function describePool(
       partnerBase: rawToUi(s.partnerBaseFee, baseUnit),
       creatorQuoteRaw: s.creatorQuoteFee.toString(),
       creatorBaseRaw: s.creatorBaseFee.toString(),
+      ...creatorEarnings(s.metrics.totalTradingQuoteFee, config.creatorTradingFeePercentage, s.creatorQuoteFee, quote),
     },
   };
 }

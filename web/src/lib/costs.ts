@@ -72,3 +72,16 @@ export function formatSolNeed(lamports: number): string {
   const up = Math.ceil(sol / step - 1e-9) * step;
   return Number(up.toFixed(Math.max(0, -exp))).toString();
 }
+
+/**
+ * Claiming creator fees: one signature, priority fee (CU_LIMIT.swap), plus rent for any token account the
+ * claim creates (the SDK adds them idempotently): the base token's account, and the quote token's account
+ * (an xStock account for stock pools, or a temporary wSOL account for SOL pools, closed again).
+ */
+export function claimCostLamports(p: { perByte: number; needsBaseAccount: boolean; needsQuoteAccount: boolean; quoteIsSol: boolean }): number {
+  let rent = 0;
+  if (p.needsBaseAccount) rent += rentFor(p.perByte, ACCOUNT_SIZE.token2022Ata);
+  if (p.quoteIsSol) rent += rentFor(p.perByte, ACCOUNT_SIZE.tokenAccount);
+  else if (p.needsQuoteAccount) rent += rentFor(p.perByte, ACCOUNT_SIZE.xstockAccount);
+  return SIGNATURE_FEE + priorityFee(CU_LIMIT.swap) + rent;
+}

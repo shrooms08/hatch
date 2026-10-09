@@ -4,7 +4,7 @@ import type { HatchPool } from './pool';
 
 type Dec = keyof Pick<HatchPool, 'price' | 'quoteReserveUi' | 'thresholdUi'>;
 const DEC: Dec[] = ['price', 'quoteReserveUi', 'thresholdUi'];
-const FEE_DEC = ['creatorQuote', 'creatorBase', 'partnerQuote', 'partnerBase'] as const;
+const FEE_DEC = ['creatorQuote', 'creatorBase', 'partnerQuote', 'partnerBase', 'creatorEarnedQuote', 'creatorClaimedQuote'] as const;
 
 export type PoolJson = Omit<HatchPool, Dec | 'fees'> & Record<Dec, string> & { fees: Omit<HatchPool['fees'], (typeof FEE_DEC)[number]> & Record<(typeof FEE_DEC)[number], string> };
 

@@ -444,6 +444,7 @@ export default function CreatePool() {
           paired={paired}
           preset={form.preset}
           stockTicker={form.preset === 'STOCK' ? selectedStock?.ticker ?? null : null}
+          stockName={form.preset === 'STOCK' ? selectedStock?.name ?? null : null}
           shield={!!configKey && !!shielded.data?.has(configKey)}
           onView={() => void router.push(`/token/${created.mint}`)}
           onClose={() => void router.push(`/token/${created.mint}`)}

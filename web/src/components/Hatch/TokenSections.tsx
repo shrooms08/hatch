@@ -98,6 +98,7 @@ function TokenShare({ mint, pool, symbol }: { mint: string; pool: HatchPool | nu
     symbol,
     preset: pool?.presetId ?? null,
     stockTicker: stock?.ticker ?? null,
+    stockName: stock?.name ?? null,
     shield: !!pool && hasSniperShield(pool.feeSchedule),
     creator: !!pool && !!publicKey && publicKey.toBase58() === pool.creator,
     progressPct: pool ? pool.progress * 100 : null,

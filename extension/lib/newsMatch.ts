@@ -46,4 +46,5 @@ export function matchHeadlines(h: Headlines, stocks: StockMap): StockInfo | null
 }
 
 /** The buddy's local hint for a match. */
-export const localHint = (s: StockInfo) => `This is about ${s.name}. Hatch a coin backed by tokenized ${s.ticker}?`;
+/** Never "backed by": the coin is priced in the xStock, not backed by or redeemable for stock. */
+export const localHint = (s: StockInfo) => `This is about ${s.name}. Hatch a coin priced in tokenized ${s.name}?`;

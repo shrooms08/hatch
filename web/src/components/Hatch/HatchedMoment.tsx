@@ -37,6 +37,7 @@ export function HatchedMoment({
   paired,
   preset,
   stockTicker,
+  stockName,
   shield,
   onView,
   onClose,
@@ -48,6 +49,7 @@ export function HatchedMoment({
   paired?: string | null;
   preset: PresetId;
   stockTicker?: string | null;
+  stockName?: string | null;
   shield?: boolean;
   onView: () => void;
   onClose: () => void;
@@ -111,7 +113,7 @@ export function HatchedMoment({
             </Button>
             <ShareActions
               mint={mint}
-              info={{ symbol, preset, stockTicker, shield, creator: true }}
+              info={{ symbol, preset, stockTicker, stockName, shield, creator: true }}
               label="Share your hatch"
               className="justify-center"
               size="md"

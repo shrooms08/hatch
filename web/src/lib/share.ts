@@ -7,6 +7,8 @@ export type ShareInfo = {
   preset: PresetId | null;
   /** e.g. "NVDA" for stock-paired launches. */
   stockTicker?: string | null;
+  /** e.g. "NVIDIA" (preferred in the text when known). */
+  stockName?: string | null;
   shield?: boolean;
   /** The sharer launched it (Hatched moment, or the creator's wallet on the token page). */
   creator?: boolean;
@@ -16,7 +18,8 @@ export type ShareInfo = {
 };
 
 const PRESET_LINE: Record<PresetId, (s: ShareInfo) => string> = {
-  STOCK: (s) => `backed by tokenized ${s.stockTicker || 'stock'}`,
+  // Never "backed by": the coin is priced in the xStock, it is not backed by or redeemable for stock.
+  STOCK: (s) => `priced in tokenized ${s.stockName || s.stockTicker || 'stock'}`,
   MEME: () => 'a meme coin bought with SOL',
   AI_AGENT: () => 'an AI agent token with creator-first fees',
 };

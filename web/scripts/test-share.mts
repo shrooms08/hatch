@@ -6,8 +6,8 @@ import { tokenCardMeta, tokenCardSvg, type TokenCard } from '../src/lib/server/t
 
 test('share: creator wording per preset', () => {
   assert.equal(
-    shareText({ symbol: 'VOLT', preset: 'STOCK', stockTicker: 'NVDA', shield: true, creator: true }),
-    'I just hatched $VOLT on @MeteoraAG DBC, backed by tokenized NVDA. Sniper shield on. Hatch yours:'
+    shareText({ symbol: 'VOLT', preset: 'STOCK', stockTicker: 'NVDA', stockName: 'NVIDIA', shield: true, creator: true }),
+    'I just hatched $VOLT on @MeteoraAG DBC, priced in tokenized NVIDIA. Sniper shield on. Hatch yours:'
   );
   assert.equal(shareText({ symbol: 'DOGE', preset: 'MEME', shield: true, creator: true }), 'I just hatched $DOGE on @MeteoraAG DBC, a meme coin bought with SOL. Sniper shield on. Hatch yours:');
   assert.equal(
@@ -17,7 +17,7 @@ test('share: creator wording per preset', () => {
 });
 
 test('share: viewer wording shows progress; hatched drops the shield', () => {
-  assert.equal(shareText({ symbol: 'T', preset: 'STOCK', stockTicker: 'TSLA', shield: true, progressPct: 37.9 }), '$T is hatching on @MeteoraAG DBC, backed by tokenized TSLA. 37% to hatch. Sniper shield on. Help fill the egg:');
+  assert.equal(shareText({ symbol: 'T', preset: 'STOCK', stockTicker: 'TSLA', shield: true, progressPct: 37.9 }), '$T is hatching on @MeteoraAG DBC, priced in tokenized TSLA. 37% to hatch. Sniper shield on. Help fill the egg:');
   assert.match(shareText({ symbol: 'T', preset: 'MEME', shield: true, hatched: true }), /^\$T hatched on @MeteoraAG DBC.*Meteora pool:$/);
 });
 

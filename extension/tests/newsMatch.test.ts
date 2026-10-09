@@ -51,6 +51,6 @@ describe("news heads-up matcher (local only)", () => {
   });
 
   it("builds the local hint", () => {
-    expect(localHint(STOCKS.NVDA!)).toBe("This is about NVIDIA. Hatch a coin backed by tokenized NVDA?");
+    expect(localHint(STOCKS.NVDA!)).toBe("This is about NVIDIA. Hatch a coin priced in tokenized NVIDIA?");
   });
 });
