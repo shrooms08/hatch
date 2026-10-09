@@ -1,6 +1,6 @@
 // Token page sections (design/v1 "Token Page" + "Hatched States"). Display only: all data comes
 // from chain via the existing hooks.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AddressChip,
@@ -24,10 +24,11 @@ import {
 import { ChickenOrb } from '@/components/ds/ChickenOrb';
 import type { HatchPool } from '@/lib/dbc/pool';
 import { formatAmount, formatPercent } from '@/lib/format/amount';
-import { explorerAddressUrl, meteoraPoolUrl } from '@/lib/config/network';
+import { explorerAddressUrl, explorerTxUrl, EXPLORER_NAME, meteoraPoolUrl } from '@/lib/config/network';
 import { sourceDomain } from '@/lib/metadata/token';
 import { stockForConfig, stockPreset } from '@/lib/presets';
-import { useHolders, useIsTestLaunch, useLiveBaseFee, useMintSupply, usePresetConfigs, useQuoteSymbol, useTokenMetadata, useUsdPrice } from '@/hooks/useHatch';
+import { useHolders, useIsTestLaunch, useLiveBaseFee, useMintSupply, usePresetConfigs, useQuoteSymbol, useShieldReceipt, useTokenMetadata, useUsdPrice } from '@/hooks/useHatch';
+import { rawToUi } from '@/lib/solana/mint';
 import { SNIPER_SHIELD_LINE, baseFeePercentAt, formatFeePercent, hasSniperShield } from '@/lib/dbc/feeSchedule';
 import { EggFill, HatchBurst, ShieldLive } from '@/components/motion';
 import { useWallet } from '@jup-ag/wallet-adapter';
@@ -151,6 +152,90 @@ export function LiveShieldCard({ pool }: { pool: HatchPool }) {
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-success">Live</span>
       </div>
     </Card>
+  );
+}
+
+/**
+ * After the shield window of a v2 pool: what buys in that window actually paid (the "sniper receipt"), from
+ * the pool's on-chain swap events via /api/shield. Amounts only, never wallets.
+ */
+export function SniperReceiptCard({ pool }: { pool: HatchPool }) {
+  const fee = useLiveBaseFee(pool);
+  const quote = useQuoteSymbol(pool.quote);
+  const ended = pool.presetId !== null && Number(pool.activationPoint) > 0 && !!fee?.shield && !fee.decaying;
+  const { data: r } = useShieldReceipt(pool.address, ended);
+  if (!ended || !r) return null;
+  const seconds = r.windowEnd - r.windowStart;
+  const amt = (raw: string) => `${formatAmount(rawToUi(raw, pool.quote))} ${quote}`;
+  const base = formatFeePercent(r.baseFeePct);
+  return (
+    <Card className="flex flex-col gap-2 rounded-[24px] p-5 md:p-6">
+      <div className="flex items-center justify-between gap-3">
+        <Overline className="text-success">Sniper receipt</Overline>
+        <ShieldHowItWorks start={formatFeePercent(r.startFeePct)} end={base} seconds={seconds} step={Number(pool.feeSchedule.periodFrequency)} />
+      </div>
+      {r.buys === 0 ? (
+        <>
+          <span className="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink md:text-[26px]">No one sniped this launch.</span>
+          <span className="text-[13px] leading-normal text-ink-2">
+            No buys landed in the first {seconds}s, while the fee was falling from {formatFeePercent(r.startFeePct)} to {base}.
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink md:text-[26px]">Snipers paid {amt(r.feesRaw)}</span>
+          <span className="text-[13px] leading-normal text-ink-2">
+            {r.buys} {r.buys === 1 ? 'buy' : 'buys'} in the first {seconds}s paid {amt(r.feesRaw)} in anti-sniper fees, {amt(r.taxRaw)} above the {base} base.
+          </span>
+          {r.signatures[0] && (
+            <a
+              href={explorerTxUrl(r.signatures[0])}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 self-start font-mono text-[11px] font-medium text-ink-muted underline-offset-4 hover:text-ink hover:underline"
+            >
+              {r.buys === 1 ? 'See the buy' : 'See the first buy'} on {EXPLORER_NAME} <ArrowUpRight className="h-3 w-3" />
+            </a>
+          )}
+        </>
+      )}
+      {!r.final && <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-muted">Settling on chain</span>}
+    </Card>
+  );
+}
+
+/** Small "How it works" popover for the receipt (click/tap to open; Escape or a click outside closes it). */
+function ShieldHowItWorks({ start, end, seconds, step }: { start: string; end: string; seconds: number; step: number }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', away);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="rounded-pill border border-line px-2.5 py-1 text-[11px] font-medium text-ink-2 transition-colors hover:text-ink"
+      >
+        How it works
+      </button>
+      {open && (
+        <div role="note" className="absolute right-0 top-full z-20 mt-2 w-[min(300px,calc(100vw-48px))] rounded-[14px] border border-line bg-surface-2 p-3.5 text-[12px] leading-normal text-ink-2 shadow-lg">
+          For the first {seconds} seconds after launch, the trading fee starts at {start} and steps down every {step} seconds until it reaches {end}. A
+          buy in that window pays the fee in force at that moment. These are the pool&apos;s real trading fees, read from each swap on chain; nothing extra is charged.
+        </div>
+      )}
+    </div>
   );
 }
 

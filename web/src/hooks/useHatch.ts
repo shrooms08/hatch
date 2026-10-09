@@ -16,6 +16,7 @@ import type { PresetsResponse } from '@/pages/api/presets';
 import type { PoolsResponse } from '@/pages/api/pools';
 import { poolFromJson } from '@/lib/dbc/poolJson';
 import type { HoldingsResponse } from '@/pages/api/holdings';
+import type { ShieldReceipt } from '@/lib/server/shield';
 
 const POLL_MS = 10_000;
 
@@ -166,6 +167,25 @@ export function useHolders(mint: string | undefined) {
     enabled: !!mint,
     staleTime: 60_000,
     refetchInterval: 60_000,
+  });
+}
+
+/**
+ * The sniper receipt (what buys in the anti-sniper window paid), from /api/shield. Fetched only once the
+ * window has ended (`enabled`); polled every 10 s until the server marks it final, then never again.
+ */
+export function useShieldReceipt(pool: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ['hatch', 'shield', pool],
+    queryFn: async () => {
+      const res = await fetch(`/api/shield/${pool}`);
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error('shield receipt unavailable');
+      return (await res.json()) as ShieldReceipt;
+    },
+    enabled: !!pool && enabled,
+    staleTime: 10_000,
+    refetchInterval: (data) => (data === null || data?.final ? false : 10_000),
   });
 }
 
