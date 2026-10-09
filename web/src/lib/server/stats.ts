@@ -12,7 +12,9 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import Decimal from 'decimal.js';
 import BN from 'bn.js';
 import { serverRpcUrl } from '@/lib/config/network';
-import { dbcClient, fetchHatchPools, type HatchPool } from '@/lib/dbc/pool';
+import { dbcClient, type HatchPool } from '@/lib/dbc/pool';
+import { allHatchPools } from '@/lib/server/pools';
+import { swr, type Cached } from '@/lib/server/swrCache';
 import { feePayer, quoteVaultDelta, type RawTx } from '@/lib/stats/volume';
 import { rawToUi } from '@/lib/solana/mint';
 import { loadHatchConfigs } from '@/lib/server/presets';
@@ -35,8 +37,6 @@ const JUP_PRICE = `${process.env.NEXT_PUBLIC_JUPITER_API_URL || 'https://lite-ap
 
 type PoolTally = { newest?: string; createdAt?: number; vault?: string; volumeRaw: BN; wallets: Set<string> };
 const tallies = new Map<string, PoolTally>();
-let cached: { at: number; value: HatchStats } | null = null;
-let inflight: Promise<HatchStats> | null = null;
 
 /**
  * getTransaction as a raw JSON-RPC batch: web3.js v1 cannot decode newer transaction versions, and
@@ -112,7 +112,8 @@ export async function usdPrices(mints: string[]): Promise<Record<string, number>
 async function compute(): Promise<HatchStats> {
   const hc = loadHatchConfigs();
   const connection = new Connection(serverRpcUrl(), 'confirmed');
-  const pools = await fetchHatchPools(connection, hc, { publicList: true });
+  // The shared pool list (30 s cache), public entries only.
+  const pools = (await allHatchPools()).value.filter((p) => !hc.hiddenMints.includes(p.baseMint));
 
   const wallets = new Set<string>();
   const byQuote = new Map<string, { pool: HatchPool; raw: BN }>();
@@ -149,15 +150,7 @@ async function compute(): Promise<HatchStats> {
   };
 }
 
-export async function getHatchStats(): Promise<HatchStats> {
-  if (cached && Date.now() - cached.at < TTL_MS) return cached.value;
-  inflight ??= compute()
-    .then((value) => {
-      cached = { at: Date.now(), value };
-      return value;
-    })
-    .finally(() => {
-      inflight = null;
-    });
-  return inflight;
+/** Stats, cached 60 s; one computation at a time; the last good value if a refresh fails. */
+export function getHatchStats(): Promise<Cached<HatchStats>> {
+  return swr('stats', TTL_MS, compute);
 }

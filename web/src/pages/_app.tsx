@@ -29,7 +29,9 @@ function AppProviders({ Component, pageProps }: AppProps) {
     ) as Adapter[];
   }, []);
 
-  const queryClient = useMemo(() => new QueryClient(), []);
+  // Polling (refetchInterval: token pages every 10 s, lists every 30 s) pauses while the tab is hidden and
+  // resumes when it is shown again. This is React Query's default; spelled out because it matters for RPC load.
+  const queryClient = useMemo(() => new QueryClient({ defaultOptions: { queries: { refetchIntervalInBackground: false } } }), []);
 
   useWindowWidthListener();
 

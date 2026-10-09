@@ -12,6 +12,8 @@ import { fetchTokenMetadata } from '@/lib/metadata/token';
 import { fetchMintInfo, fetchRawBalance, rawToUi, type MintInfo } from '@/lib/solana/mint';
 import type { HatchConfigs } from '@/lib/presets';
 import type { PresetsResponse } from '@/pages/api/presets';
+import type { PoolsResponse } from '@/pages/api/pools';
+import { poolFromJson } from '@/lib/dbc/poolJson';
 import type { HoldingsResponse } from '@/pages/api/holdings';
 
 const POLL_MS = 10_000;
@@ -58,9 +60,15 @@ export function useHatchPool(baseMint: string | undefined) {
 export function useHatchPools(opts: { creator?: string; enabled?: boolean } = {}) {
   const { data: configs } = usePresetConfigs();
   return useQuery({
-    queryKey: ['hatch', 'pools', opts.creator ?? 'all', configs],
-    queryFn: () => fetchHatchPools(getConnection(), configs!, { creator: opts.creator, publicList: !opts.creator }),
-    enabled: !!configs && opts.enabled !== false,
+    queryKey: opts.creator ? ['hatch', 'pools', opts.creator, configs] : ['hatch', 'pools', 'all'],
+    queryFn: async () => {
+      if (opts.creator) return fetchHatchPools(getConnection(), configs!, { creator: opts.creator });
+      // Public list: from the cached server route (no getProgramAccounts from the browser).
+      const res = await fetch('/api/pools');
+      if (!res.ok) throw new Error('Could not load hatches right now');
+      return ((await res.json()) as PoolsResponse).pools.map(poolFromJson);
+    },
+    enabled: (!!configs || !opts.creator) && opts.enabled !== false,
     refetchInterval: 30_000,
   });
 }

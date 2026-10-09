@@ -2,7 +2,8 @@
 // up to 5) to the server-side RPC (HATCH_SERVER_RPC_URL), so the provider key never reaches the browser.
 // Policy (lib/server/rpcPolicy.ts): method allowlist, getProgramAccounts only on the DBC program and
 // only with filters, per-IP budget charged per call, bodies over 200 KB rejected. HTTP only (no
-// websocket): the app confirms transactions by polling getSignatureStatuses.
+// websocket): the app confirms transactions by polling getSignatureStatuses. An upstream 429 is retried once
+// after 200-500 ms (jittered) before it reaches the browser.
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { serverRpcUrl } from '@/lib/config/network';
 import { ownOrigin } from '@/lib/server/cors';
@@ -36,12 +37,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (rateLimited(req, res, 'rpc', CALLS_PER_MINUTE, 60_000, checked.calls.length)) return;
 
   try {
-    const upstream = await fetch(serverRpcUrl(), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(30_000),
-    });
+    const send = () =>
+      fetch(serverRpcUrl(), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30_000),
+      });
+    let upstream = await send();
+    // The provider rate-limited us: retry once after a short jittered pause before passing the 429 on.
+    if (upstream.status === 429) {
+      await upstream.body?.cancel().catch((): undefined => undefined);
+      await new Promise((r) => setTimeout(r, 200 + Math.floor(Math.random() * 300)));
+      upstream = await send();
+    }
     res.status(upstream.status).setHeader('content-type', 'application/json');
     return res.send(await upstream.text());
   } catch (e) {

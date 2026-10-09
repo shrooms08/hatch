@@ -17,7 +17,7 @@
     "brand-assets": "node --import tsx scripts/brand-assets.mts",
     "test:stats": "node --import tsx --test scripts/test-stats.mts",
     "test:security": "node --import tsx --test scripts/test-security.mts",
-    "test": "node --import tsx --test scripts/test-stats.mts scripts/test-security.mts scripts/test-presets-v2.mts scripts/test-share.mts scripts/test-errors.mts scripts/test-polish.mts"
+    "test": "node --import tsx --test scripts/test-stats.mts scripts/test-security.mts scripts/test-presets-v2.mts scripts/test-share.mts scripts/test-errors.mts scripts/test-polish.mts scripts/test-cache.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
