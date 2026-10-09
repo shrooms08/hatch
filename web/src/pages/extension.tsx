@@ -6,7 +6,7 @@ import { Button, DotField, DownloadIcon, EGG_RADIUS, Overline } from '@/componen
 import { ChickenOrb } from '@/components/ds/ChickenOrb';
 
 // The public release (R2 releases/, write-once; older zips stay there but are no longer linked).
-const EXTENSION_VERSION = '0.6.2';
+const EXTENSION_VERSION = '0.6.3';
 const FILE = `hatch-extension-v${EXTENSION_VERSION}.zip`;
 /** The folder unzipping creates (named after the zip). */
 const FOLDER = FILE.replace(/\.zip$/, '');
