@@ -167,13 +167,17 @@ export function ProgressCard({ pool }: { pool: HatchPool }) {
         style={{ backgroundImage: 'radial-gradient(rgb(var(--dot-field) / 0.05) 1px, transparent 1px)', backgroundSize: '20px 20px' }}
       />
       {/* The egg fills to the pool's real progress; each buy the poll picks up pours in (+amount). */}
-      <EggFill
-        progress={pool.progress}
-        raised={pool.quoteReserveUi.toNumber()}
-        quoteSymbol={quote}
-        ready={pool.isMigrated || pool.progress >= 1}
-        className="relative mx-auto h-[340px] w-full max-w-[300px] max-lg:hidden"
-      />
+      {/* Desktop: the egg fills the left column (canvas absolutely placed, so it never grows the card). */}
+      <div className="relative min-h-[340px] self-stretch max-lg:hidden">
+        <EggFill
+          progress={pool.progress}
+          raised={pool.quoteReserveUi.toNumber()}
+          quoteSymbol={quote}
+          ready={pool.isMigrated || pool.progress >= 1}
+          variant="full"
+          className="absolute inset-0 h-full w-full"
+        />
+      </div>
       <div className="relative flex min-w-0 flex-col gap-[22px]">
         <Overline>Hatching progress</Overline>
         <Tip id="token-progress">This fills as people buy. At 100% it hatches.</Tip>
@@ -184,6 +188,7 @@ export function ProgressCard({ pool }: { pool: HatchPool }) {
             raised={pool.quoteReserveUi.toNumber()}
             quoteSymbol={quote}
             ready={pool.isMigrated || pool.progress >= 1}
+            variant="compact"
             showLabel={false}
             className="relative h-[96px] w-[96px] shrink-0 lg:hidden"
           />
