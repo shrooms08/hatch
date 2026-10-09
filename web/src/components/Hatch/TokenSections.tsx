@@ -27,7 +27,7 @@ import { formatAmount, formatPercent } from '@/lib/format/amount';
 import { explorerAddressUrl, meteoraPoolUrl } from '@/lib/config/network';
 import { sourceDomain } from '@/lib/metadata/token';
 import { stockForConfig, stockPreset } from '@/lib/presets';
-import { useHolders, useIsTestLaunch, useLiveBaseFee, usePresetConfigs, useQuoteSymbol, useTokenMetadata } from '@/hooks/useHatch';
+import { useHolders, useIsTestLaunch, useLiveBaseFee, useMintSupply, usePresetConfigs, useQuoteSymbol, useTokenMetadata, useUsdPrice } from '@/hooks/useHatch';
 import { SNIPER_SHIELD_LINE, baseFeePercentAt, formatFeePercent, hasSniperShield } from '@/lib/dbc/feeSchedule';
 import { EggFill, HatchBurst, ShieldLive } from '@/components/motion';
 import { useWallet } from '@jup-ag/wallet-adapter';
@@ -159,7 +159,13 @@ export function ProgressCard({ pool }: { pool: HatchPool }) {
   const holders = useHolders(pool.baseMint);
   const toGo = pool.thresholdUi.minus(pool.quoteReserveUi);
   const stock = useStockName(pool);
+  const stockInfo = useStockInfo(pool);
+  const supply = useMintSupply(stockInfo ? pool.baseMint : undefined, pool.baseDecimals);
+  const usd = useUsdPrice(stockInfo ? pool.quote.address : undefined);
+  // Market cap in quote-token units: current curve price x total supply (NVDAx ~ NVDA shares).
+  const marketCap = stockInfo && supply.data ? pool.price.mul(supply.data) : null;
   return (
+    <div className="flex flex-col gap-2.5">
     <Card className="relative grid grid-cols-[minmax(0,1fr)] items-center gap-8 overflow-hidden rounded-[24px] p-5 md:p-9 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-11">
       <div
         aria-hidden
@@ -210,6 +216,24 @@ export function ProgressCard({ pool }: { pool: HatchPool }) {
           <DefRow label="Price">
             <Amount value={pool.price} unit={quote} className="text-[15px]" />
           </DefRow>
+          {stockInfo && (
+            <>
+              {/* Stock-paired: what the token is worth and what the pool holds, in the stock itself. */}
+              <DefRow label="Market cap">
+                {marketCap ? (
+                  <span className="whitespace-nowrap">
+                    {formatAmount(marketCap)} {stockInfo.ticker}
+                    {usd.data && <span className="text-ink-muted"> · ≈ ${formatUsd(marketCap.mul(usd.data).toNumber())}</span>}
+                  </span>
+                ) : (
+                  '…'
+                )}
+              </DefRow>
+              <DefRow label="Pool holds">
+                {formatAmount(pool.quoteReserveUi)} {stockInfo.symbol}
+              </DefRow>
+            </>
+          )}
           <DefRow label="Quote token">
             {quote}
             {stock ? ` · tokenized ${stock}` : pool.quote.isNativeSol ? ' · Solana' : ''}
@@ -223,8 +247,22 @@ export function ProgressCard({ pool }: { pool: HatchPool }) {
         </div>
       </div>
     </Card>
+    {stockInfo && (
+      <p className="px-1 text-[13px] leading-normal text-ink-muted">
+        Priced in tokenized {stockInfo.name}. Graduates into a Meteora DAMM v2 pool paired with {stockInfo.symbol}.
+      </p>
+    )}
+    </div>
   );
 }
+
+/** The xStock a stock-paired pool is quoted in (NVDAx / TSLAx; legacy configs included), else null. */
+function useStockInfo(pool: HatchPool) {
+  const { data: hc } = usePresetConfigs();
+  return pool.presetId === 'STOCK' && hc ? stockForConfig(hc, pool.configKey) : null;
+}
+
+const formatUsd = (v: number) => (v >= 1000 ? v.toLocaleString('en-US', { maximumFractionDigits: 0 }) : v >= 1 ? v.toFixed(2) : v.toPrecision(2));
 
 function useStockName(pool: HatchPool) {
   const { data: hc } = usePresetConfigs();

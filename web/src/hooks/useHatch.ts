@@ -1,12 +1,13 @@
 // React Query hooks for Hatch chain data. All reads go straight to RPC via the DBC SDK.
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import Decimal from 'decimal.js';
 import { useRouter } from 'next/router';
 import { PublicKey } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { perByteFromRent0 } from '@/lib/costs';
 import { getConnection } from '@/lib/solana/connection';
-import { dbcClient, fetchHatchPoolByMint, fetchHatchPools, type HatchPool } from '@/lib/dbc/pool';
+import { cachedMintInfo, cachedPoolConfig, dbcClient, describePool, fetchHatchPoolByMint, fetchHatchPools, type HatchPool } from '@/lib/dbc/pool';
 import { baseFeePercentAt, feeScheduleOf, hasSniperShield, shieldDuration, shieldRange } from '@/lib/dbc/feeSchedule';
 import { fetchTokenMetadata } from '@/lib/metadata/token';
 import { fetchMintInfo, fetchRawBalance, rawToUi, type MintInfo } from '@/lib/solana/mint';
@@ -47,11 +48,48 @@ export function usePresetConfigs() {
   });
 }
 
+/** Where a pool lives (address + config), found once per mint per session. */
+const poolRefs = new Map<string, { address: string; configKey: string }>();
+
+/** The public pool list from the cached server route (shared with the home page's query). */
+export async function fetchPublicPools(): Promise<HatchPool[]> {
+  const res = await fetch('/api/pools');
+  if (!res.ok) throw new Error('Could not load hatches right now');
+  return ((await res.json()) as PoolsResponse).pools.map(poolFromJson);
+}
+
+/**
+ * A token page's pool, refreshed every 10 s with ONE RPC call (the pool account). Its address and config
+ * come from the cached /api/pools list (no RPC) and a once-per-session config read; a pool missing from
+ * the list (brand new, or hidden) falls back to the per-config lookup once.
+ */
 export function useHatchPool(baseMint: string | undefined) {
   const { data: configs } = usePresetConfigs();
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: ['hatch', 'pool', baseMint, configs],
-    queryFn: () => fetchHatchPoolByMint(getConnection(), baseMint!, configs!),
+    queryFn: async (): Promise<HatchPool | null> => {
+      const connection = getConnection();
+      const mint = baseMint!;
+      let ref = poolRefs.get(mint);
+      if (!ref) {
+        const list = await queryClient.fetchQuery(['hatch', 'pools', 'all'], fetchPublicPools, { staleTime: 30_000 }).catch((): HatchPool[] => []);
+        const listed = list.find((p) => p.baseMint === mint);
+        if (!listed) {
+          const pool = await fetchHatchPoolByMint(connection, mint, configs!);
+          if (pool) poolRefs.set(mint, { address: pool.address, configKey: pool.configKey });
+          return pool;
+        }
+        ref = { address: listed.address, configKey: listed.configKey };
+        poolRefs.set(mint, ref);
+      }
+      const [config, state] = await Promise.all([cachedPoolConfig(connection, ref.configKey), dbcClient(connection).state.getPool(ref.address)]);
+      if (!config || !state) {
+        poolRefs.delete(mint);
+        return fetchHatchPoolByMint(connection, mint, configs!);
+      }
+      return describePool(connection, new PublicKey(ref.address), state, config, configs!);
+    },
     enabled: !!baseMint && !!configs,
     refetchInterval: POLL_MS,
   });
@@ -64,9 +102,7 @@ export function useHatchPools(opts: { creator?: string; enabled?: boolean } = {}
     queryFn: async () => {
       if (opts.creator) return fetchHatchPools(getConnection(), configs!, { creator: opts.creator });
       // Public list: from the cached server route (no getProgramAccounts from the browser).
-      const res = await fetch('/api/pools');
-      if (!res.ok) throw new Error('Could not load hatches right now');
-      return ((await res.json()) as PoolsResponse).pools.map(poolFromJson);
+      return fetchPublicPools();
     },
     enabled: (!!configs || !opts.creator) && opts.enabled !== false,
     refetchInterval: 30_000,
@@ -96,7 +132,7 @@ export function useTokenBalance(owner: PublicKey | null | undefined, mint: strin
     queryKey: ['hatch', 'balance', owner?.toBase58(), mint],
     queryFn: async () => {
       const connection = getConnection();
-      const info = await fetchMintInfo(connection, mint!);
+      const info = await cachedMintInfo(connection, mint!); // static: read once, not every 10 s
       return rawToUi(await fetchRawBalance(connection, owner!, info), info);
     },
     enabled: !!owner && !!mint,
@@ -231,12 +267,12 @@ export function useHasTokenAccount(owner: PublicKey | null | undefined, mint: Mi
     queryKey: ['hatch', 'has-ata', owner?.toBase58(), typeof mint === 'string' ? mint : mint?.address],
     queryFn: async () => {
       const connection = getConnection();
-      const info = typeof mint === 'string' ? await fetchMintInfo(connection, mint) : mint!;
+      const info = typeof mint === 'string' ? await cachedMintInfo(connection, mint) : mint!;
       const ata = getAssociatedTokenAddressSync(new PublicKey(info.address), owner!, true, new PublicKey(info.programId));
       return !!(await connection.getAccountInfo(ata, 'confirmed'));
     },
     enabled: !!owner && !!mint,
-    refetchInterval: POLL_MS,
+    refetchInterval: 60_000, // trades invalidate it right away; otherwise it rarely changes
   });
 }
 
@@ -252,6 +288,22 @@ export function useHoldings(wallet: string | undefined) {
     },
     enabled: !!wallet,
     refetchInterval: 30_000,
+  });
+}
+
+/** Total supply of a mint in UI units: one read per page (supply of a launched token doesn't move). */
+export function useMintSupply(mint: string | undefined, decimals: number | undefined) {
+  return useQuery({
+    queryKey: ['hatch', 'supply', mint],
+    queryFn: async () => {
+      const info = await getConnection().getAccountInfo(new PublicKey(mint!), 'confirmed');
+      if (!info || info.data.length < 44) return null;
+      // SPL and Token-2022 mints share the base layout: supply is the u64 at offset 36.
+      const raw = new DataView(info.data.buffer, info.data.byteOffset + 36, 8).getBigUint64(0, true);
+      return new Decimal(raw.toString()).div(new Decimal(10).pow(decimals!));
+    },
+    enabled: !!mint && decimals !== undefined,
+    staleTime: 10 * 60_000,
   });
 }
 

@@ -67,13 +67,20 @@ export function dbcClient(connection: Connection) {
 }
 
 const quoteInfoCache = new Map<string, Promise<MintInfo>>();
-function cachedMintInfo(connection: Connection, mint: string) {
+/** Mint info (decimals, program, scaled multiplier) once per mint per session: it never changes. */
+export function cachedMintInfo(connection: Connection, mint: string) {
   return memoAsync(quoteInfoCache, mint, () => fetchMintInfo(connection, mint));
 }
 
 export function statusFor(progress: number, isMigrated: boolean): HatchStatus {
   if (isMigrated) return 'HATCHED';
   return progress >= ALMOST_HATCHED_AT ? 'ALMOST_HATCHED' : 'INCUBATING';
+}
+
+const configCache = new Map<string, Promise<PoolConfig | null>>();
+/** A DBC config, read once per session (configs are immutable once created). */
+export function cachedPoolConfig(connection: Connection, configKey: string): Promise<PoolConfig | null> {
+  return memoAsync(configCache, configKey, () => dbcClient(connection).state.getPoolConfig(configKey));
 }
 
 export async function describePool(

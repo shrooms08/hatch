@@ -70,7 +70,7 @@ function HeroIllustration() {
         <span className="flex h-11 items-center justify-center rounded-pill bg-yolk font-display text-sm font-bold text-ink-on-yolk">Hatch it</span>
       </div>
       <div className="absolute left-[150px] top-[350px] max-w-[220px] animate-rise-in rounded-[16px_16px_4px_16px] bg-shell px-3.5 py-3 text-[13px] font-medium leading-[1.4] text-night shadow-[0_12px_32px_rgba(0,0,0,0.5)] [animation-delay:500ms]">
-        This is about NVIDIA. Hatch a coin backed by tokenized NVDA?
+        This is about NVIDIA. Hatch a coin priced in tokenized NVDA?
       </div>
       <div className="absolute left-[300px] top-[448px]">
         <ChickenOrb size={64} mood="egg" />
@@ -119,11 +119,11 @@ function HatchHome() {
               <Tag>New</Tag>
               <span className="truncate">Stock-paired launches<span className="hidden sm:inline"> with tokenized NVIDIA</span></span>
             </span>
-            <h1 className="font-display text-[46px] font-bold leading-[0.95] tracking-[-0.045em] text-ink sm:text-[64px] xl:text-[96px]">
-              Launch anything <span className="text-yolk">you see.</span>
+            <h1 className="text-balance font-display text-[38px] font-bold leading-[0.98] tracking-[-0.045em] text-ink sm:text-[56px] xl:text-[76px]">
+              Turn stock news into coins <span className="text-yolk">priced in real stocks.</span>
             </h1>
             <p className="max-w-[560px] text-pretty text-[15px] leading-[1.55] text-ink-2 md:text-[19px]">
-              Reading about NVIDIA? Hatch a coin whose pool is priced in tokenized NVIDIA stock (NVDAx) instead of SOL. Pay with plain SOL and we swap it for you.
+              A browser buddy that spots the news, launches on Meteora DBC, and taxes snipers with the curve itself.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button asChild glow className="h-[52px] px-7 text-base md:h-[58px]">

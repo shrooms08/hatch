@@ -28,7 +28,8 @@ import { cn } from '@/lib/utils';
 type FormState = Omit<LaunchFields, 'preset'> & { preset: PresetId };
 type FieldErrors = Partial<Record<keyof FormState | 'image', string>>;
 
-const EMPTY: FormState = { name: '', symbol: '', description: '', preset: 'MEME', stock: '', source: '', website: '', twitter: '' };
+// Stock-paired is the default (and first) preset; networks without stocks fall back to Meme.
+const EMPTY: FormState = { name: '', symbol: '', description: '', preset: 'STOCK', stock: '', source: '', website: '', twitter: '' };
 
 const PRESET_COPY: Record<PresetId, string> = {
   STOCK: 'Pool priced in tokenized {stock}.',
@@ -104,6 +105,11 @@ export default function CreatePool() {
     if (form.preset === 'STOCK' && !form.stock && stocks[0]) set('stock', stocks[0].ticker);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.preset, form.stock, stocks.length]);
+  // No stocks on this network (and no ?preset= asked for one): fall back from the Stock default to Meme.
+  useEffect(() => {
+    if (enabledPresets && stocks.length === 0 && form.preset === 'STOCK' && !router.query.preset) set('preset', 'MEME');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabledPresets, stocks.length]);
 
   const preset = form.preset === 'STOCK' ? stockPreset(selectedStock) : PRESETS[form.preset];
   const quoteSymbol = form.preset === 'STOCK' ? selectedStock?.symbol ?? 'stock' : 'SOL';
