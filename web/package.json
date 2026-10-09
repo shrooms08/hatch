@@ -17,7 +17,7 @@
     "brand-assets": "node --import tsx scripts/brand-assets.mts",
     "test:stats": "node --import tsx --test scripts/test-stats.mts",
     "test:security": "node --import tsx --test scripts/test-security.mts",
-    "test": "node --import tsx --test scripts/test-stats.mts scripts/test-security.mts scripts/test-presets-v2.mts scripts/test-share.mts scripts/test-errors.mts scripts/test-polish.mts scripts/test-cache.mts scripts/test-shield.mts"
+    "test": "node --import tsx --test scripts/test-stats.mts scripts/test-security.mts scripts/test-presets-v2.mts scripts/test-share.mts scripts/test-errors.mts scripts/test-polish.mts scripts/test-cache.mts scripts/test-shield.mts scripts/test-actions.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
@@ -27,6 +27,7 @@
     "@meteora-ag/cp-amm-sdk": "1.5.1",
     "@meteora-ag/dynamic-bonding-curve-sdk": "1.5.13",
     "@resvg/resvg-js": "^2.6.2",
+    "@solana/actions": "^1.6.6",
     "@solana/spl-token": "^0.4.15",
     "@solana/wallet-adapter-phantom": "^0.9.30",
     "@solana/wallet-adapter-solflare": "^0.6.34",

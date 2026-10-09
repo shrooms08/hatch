@@ -155,7 +155,7 @@ const shieldSpec = (feeAt: (t: number) => number): Spec<S> => ({
       glyph(ctx, ch, ox, y, cell, fee > 4 ? HEX.ember : HEX.yolk);
       ox += 4 * cell;
     }
-    text(ctx, fee > 4 ? 'bots pay' : 'buyers in', G.cx + G.cell * 2.6, y, Math.max(10, G.cell * 0.62), HEX.ash);
+    text(ctx, fee > 4 ? 'early buys' : 'buyers in', G.cx + G.cell * 2.6, y, Math.max(10, G.cell * 0.62), HEX.ash);
   },
 });
 

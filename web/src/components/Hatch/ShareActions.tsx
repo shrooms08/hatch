@@ -1,7 +1,9 @@
-// "Share" (X intent with per-preset text + the token page link, which X shows as the token's card) and "Copy link".
+// "Share" (X intent with per-preset text + the token page link, which X shows as the token's card), "Copy link"
+// and "Copy Blink" (a dial.to link to the token's buy Action; the plain token link also unfurls as a Blink
+// once the site is in the Dialect Actions registry, via /actions.json).
 import { useState } from 'react';
 import { Button, CheckIcon, CopyIcon } from '@/components/ds';
-import { shareText, tokenPageUrl, xIntentUrl, type ShareInfo } from '@/lib/share';
+import { blinkUrl, shareText, tokenPageUrl, xIntentUrl, type ShareInfo } from '@/lib/share';
 import { cn } from '@/lib/utils';
 
 const XLogo = ({ size = 14 }: { size?: number }) => (
@@ -33,20 +35,23 @@ export function ShareActions({
   size = 'header',
   className,
   buttonClassName,
+  showBlink = false,
 }: {
   mint: string;
   info: ShareInfo;
+  /** Offer "Copy Blink" (the token page, for pools still on the curve). */
+  showBlink?: boolean;
   label?: string;
   size?: 'header' | 'md' | 'sm';
   className?: string;
   buttonClassName?: string;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'link' | 'blink' | null>(null);
   const url = tokenPageUrl(mint);
-  const copy = async () => {
-    if (await copyText(url)) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1600);
+  const copy = async (what: 'link' | 'blink') => {
+    if (await copyText(what === 'link' ? url : blinkUrl(mint))) {
+      setCopied(what);
+      setTimeout(() => setCopied(null), 1600);
     }
   };
   return (
@@ -57,10 +62,24 @@ export function ShareActions({
           {label}
         </a>
       </Button>
-      <Button type="button" variant="ghost" size={size} onClick={copy} className={cn('gap-2', buttonClassName)} aria-live="polite">
-        {copied ? <CheckIcon size={13} className="text-success" /> : <CopyIcon size={13} />}
-        {copied ? 'Copied' : 'Copy link'}
+      <Button type="button" variant="ghost" size={size} onClick={() => copy('link')} className={cn('gap-2', buttonClassName)} aria-live="polite">
+        {copied === 'link' ? <CheckIcon size={13} className="text-success" /> : <CopyIcon size={13} />}
+        {copied === 'link' ? 'Copied' : 'Copy link'}
       </Button>
+      {showBlink && (
+        <Button
+          type="button"
+          variant="ghost"
+          size={size}
+          onClick={() => copy('blink')}
+          className={cn('gap-2', buttonClassName)}
+          aria-live="polite"
+          title="A link anyone can buy from on X, in wallets or on dial.to"
+        >
+          {copied === 'blink' ? <CheckIcon size={13} className="text-success" /> : <CopyIcon size={13} />}
+          {copied === 'blink' ? 'Copied' : 'Copy Blink'}
+        </Button>
+      )}
     </div>
   );
 }

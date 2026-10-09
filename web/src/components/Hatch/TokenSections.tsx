@@ -105,7 +105,7 @@ function TokenShare({ mint, pool, symbol }: { mint: string; pool: HatchPool | nu
     progressPct: pool ? pool.progress * 100 : null,
     hatched: !!pool?.isMigrated,
   };
-  return <ShareActions mint={mint} info={info} className="self-start md:self-center" />;
+  return <ShareActions mint={mint} info={info} showBlink={!!pool && pool.presetId !== null && !pool.isMigrated} className="self-start md:self-center" />;
 }
 
 function HeroChips({ mint, pool, quote, domain, url }: { mint: string; pool: HatchPool | null | undefined; quote: string; domain: string | null; url?: string }) {
@@ -147,7 +147,7 @@ export function LiveShieldCard({ pool }: { pool: HatchPool }) {
       <div className="flex min-w-0 flex-col gap-1.5">
         <span className="text-[15px] font-semibold text-ink">Sniper shield is on</span>
         <span className="text-[13px] leading-normal text-ink-2">
-          Live fee {formatFeePercent(fee.percent)}, falling to {formatFeePercent(fee.shield.end)} in {fee.secondsLeft}s. Bots buying now pay it; it is the pool&apos;s real fee.
+          Live fee {formatFeePercent(fee.percent)}, falling to {formatFeePercent(fee.shield.end)} in {fee.secondsLeft}s. Anyone buying now pays it; it is the pool&apos;s real fee.
         </span>
         <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-success">Live</span>
       </div>
@@ -156,8 +156,8 @@ export function LiveShieldCard({ pool }: { pool: HatchPool }) {
 }
 
 /**
- * After the shield window of a v2 pool: what buys in that window actually paid (the "sniper receipt"), from
- * the pool's on-chain swap events via /api/shield. Amounts only, never wallets.
+ * After the shield window of a v2 pool: what the fee scheduler collected above its end fee from early buys,
+ * from the pool's on-chain swap events via /api/shield. Amounts only; buyers are never labelled.
  */
 export function SniperReceiptCard({ pool }: { pool: HatchPool }) {
   const fee = useLiveBaseFee(pool);
@@ -176,16 +176,16 @@ export function SniperReceiptCard({ pool }: { pool: HatchPool }) {
       </div>
       {r.buys === 0 ? (
         <>
-          <span className="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink md:text-[26px]">No one sniped this launch.</span>
+          <span className="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink md:text-[26px]">No early buys hit the shield.</span>
           <span className="text-[13px] leading-normal text-ink-2">
             No buys landed in the first {seconds}s, while the fee was falling from {formatFeePercent(r.startFeePct)} to {base}.
           </span>
         </>
       ) : (
         <>
-          <span className="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink md:text-[26px]">Snipers paid {amt(r.feesRaw)}</span>
+          <span className="font-display text-[22px] font-semibold tracking-[-0.02em] text-ink md:text-[26px]">Shield collected {amt(r.taxRaw)}</span>
           <span className="text-[13px] leading-normal text-ink-2">
-            {r.buys} {r.buys === 1 ? 'buy' : 'buys'} in the first {seconds}s paid {amt(r.feesRaw)} in anti-sniper fees, {amt(r.taxRaw)} above the {base} base.
+            from {r.buys} early {r.buys === 1 ? 'buy' : 'buys'} in the first {seconds}s. Total fees paid: {amt(r.feesRaw)}.
           </span>
           {r.signatures[0] && (
             <a
@@ -231,8 +231,9 @@ function ShieldHowItWorks({ start, end, seconds, step }: { start: string; end: s
       </button>
       {open && (
         <div role="note" className="absolute right-0 top-full z-20 mt-2 w-[min(300px,calc(100vw-48px))] rounded-[14px] border border-line bg-surface-2 p-3.5 text-[12px] leading-normal text-ink-2 shadow-lg">
-          For the first {seconds} seconds after launch, the trading fee starts at {start} and steps down every {step} seconds until it reaches {end}. A
-          buy in that window pays the fee in force at that moment. These are the pool&apos;s real trading fees, read from each swap on chain; nothing extra is charged.
+          The shield is designed to tax snipers. For the first {seconds} seconds after launch, the trading fee starts at {start} and steps down every {step}
+          seconds until it reaches {end}; a buy in that window pays the fee in force at that moment. &ldquo;Shield collected&rdquo; is the part above {end}. It
+          leaves out the small volatility fee any trade can pay. All figures are read from each swap on chain.
         </div>
       )}
     </div>

@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { baseFeeNumerator, eventCoder, summarizeShield, swapsInTx, type PoolSwap } from '../src/lib/server/shield.ts';
-import type { FeeSchedule } from '../src/lib/dbc/feeSchedule.ts';
+import { baseFeeNumeratorAt, type FeeSchedule } from '../src/lib/dbc/feeSchedule.ts';
 
 const DBC = 'dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN';
 const GCHIP_POOL = 'Guefiz1ESQuA5hBWKDi8SRugcpK6uR8LrrPJds7WQxbw';
@@ -27,26 +27,35 @@ test('the v2 base fee is the schedule end (~1%)', () => {
   assert.ok(n > 9_900_000 && n < 10_200_000, String(n));
 });
 
-test('summary: buys inside [start, end) only; tax is the fee above the base rate', () => {
-  const base = baseFeeNumerator(V2);
+test('summary: buys inside [start, end) only; tax is the scheduler fee above the end fee, excluding the dynamic fee', () => {
+  const start = 1791497100;
   const r = summarizeShield(
     [
-      swap({ signature: 'a', timestamp: 1791497140, inputRaw: BigInt(346500000), feeRaw: BigInt(12778786) }), // GCHIP's real buy
-      swap({ signature: 'b', timestamp: 1791497100 + 60, inputRaw: BigInt(1e9), feeRaw: BigInt(1e7) }), // at end: outside
-      swap({ signature: 'c', timestamp: 1791497099, inputRaw: BigInt(1e9), feeRaw: BigInt(5e8) }), // before activation
-      swap({ signature: 'd', buy: false, timestamp: 1791497110, inputRaw: BigInt(1e9), feeRaw: BigInt(4e8) }), // a sell
+      swap({ signature: 'a', timestamp: start + 40, inputRaw: BigInt(346500000), feeRaw: BigInt(12778786) }), // GCHIP's real buy
+      swap({ signature: 'b', timestamp: start + 60, inputRaw: BigInt(1e9), feeRaw: BigInt(1e7) }), // at end: outside
+      swap({ signature: 'c', timestamp: start - 1, inputRaw: BigInt(1e9), feeRaw: BigInt(5e8) }), // before activation
+      swap({ signature: 'd', buy: false, timestamp: start + 10, inputRaw: BigInt(1e9), feeRaw: BigInt(4e8) }), // a sell
     ],
-    { start: 1791497100, end: 1791497160, baseFeeNumerator: base }
+    { start, end: start + 60, schedule: V2 }
   );
-  const atBase = (BigInt(346500000) * base) / BigInt(1e9);
+  // At +40 s (period 8) the scheduler charges 0.5 x (1 - 0.2781)^8 = 3.6878%; the end fee is 1.0016%.
+  const scheduled = BigInt(baseFeeNumeratorAt(V2, String(start), start + 40).toString());
+  assert.ok(scheduled > BigInt(36_870_000) && scheduled < BigInt(36_890_000), String(scheduled));
   assert.equal(r.buys, 1);
   assert.equal(r.feesRaw, '12778786');
-  assert.equal(r.baseRaw, atBase.toString());
-  assert.equal(r.taxRaw, (BigInt(12778786) - atBase).toString());
+  assert.equal(r.taxRaw, ((BigInt(346500000) * (scheduled - baseFeeNumerator(V2))) / BigInt(1e9)).toString());
   assert.deepEqual(r.signatures, ['a']);
 });
 
+test('a dynamic fee on top never counts as shield tax', () => {
+  const start = 0;
+  const plain = summarizeShield([swap({ timestamp: 30, inputRaw: BigInt(1e9), feeRaw: BigInt(1e8) })], { start, end: 60, schedule: V2 });
+  const withDynamic = summarizeShield([swap({ timestamp: 30, inputRaw: BigInt(1e9), feeRaw: BigInt(1e8 + 2e6) })], { start, end: 60, schedule: V2 });
+  assert.equal(withDynamic.taxRaw, plain.taxRaw);
+  assert.notEqual(withDynamic.feesRaw, plain.feesRaw);
+});
+
 test('no buys in the window: zeros', () => {
-  const r = summarizeShield([], { start: 0, end: 60, baseFeeNumerator: BigInt(1e7) });
-  assert.deepEqual(r, { buys: 0, feesRaw: '0', baseRaw: '0', taxRaw: '0', signatures: [] });
+  const r = summarizeShield([], { start: 0, end: 60, schedule: V2 });
+  assert.deepEqual(r, { buys: 0, feesRaw: '0', taxRaw: '0', signatures: [] });
 });

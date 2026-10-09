@@ -31,9 +31,9 @@ export function feeScheduleOf(config: PoolConfig): FeeSchedule {
 export const hasSniperShield = (f: FeeSchedule | null | undefined): f is FeeSchedule =>
   !!f && (f.mode === 0 || f.mode === 1) && f.periodFrequency !== '0' && f.numberOfPeriod > 0;
 
-/** Base fee (%) at `currentPoint` (unix seconds for timestamp-activated pools). */
-export function baseFeePercentAt(f: FeeSchedule, activationPoint: string, currentPoint: number): number {
-  const n = getBaseFeeNumerator(
+/** Base-fee numerator (out of 1e9) the scheduler charges at `currentPoint`; excludes the dynamic (volatility) fee. */
+export function baseFeeNumeratorAt(f: FeeSchedule, activationPoint: string, currentPoint: number): BN {
+  return getBaseFeeNumerator(
     new BN(f.cliffFeeNumerator),
     f.numberOfPeriod,
     new BN(f.periodFrequency),
@@ -42,7 +42,11 @@ export function baseFeePercentAt(f: FeeSchedule, activationPoint: string, curren
     BN.max(new BN(Math.floor(currentPoint)), new BN(activationPoint)),
     new BN(activationPoint)
   );
-  return (Number(n.toString()) / FEE_DENOMINATOR) * 100;
+}
+
+/** Base fee (%) at `currentPoint` (unix seconds for timestamp-activated pools). */
+export function baseFeePercentAt(f: FeeSchedule, activationPoint: string, currentPoint: number): number {
+  return (Number(baseFeeNumeratorAt(f, activationPoint, currentPoint).toString()) / FEE_DENOMINATOR) * 100;
 }
 
 /** Seconds (or slots) from activation until the schedule reaches its final fee. */

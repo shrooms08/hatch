@@ -37,6 +37,12 @@ export function shareText(s: ShareInfo): string {
 /** X web intent with prefilled text and link. */
 export const xIntentUrl = (text: string, url: string) => `https://x.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`;
 
+/** Public origin for links shared off-site (Blinks): the production site, else this page's origin. */
+const publicOrigin = () => process.env.HATCH_SITE_ORIGIN || (typeof window === 'undefined' ? 'https://hatchfun.vercel.app' : window.location.origin);
+
+/** The token's buy Action as a dial.to Blink link (works anywhere, before the site is in the Actions registry). */
+export const blinkUrl = (mint: string) => `https://dial.to/?action=solana-action:${publicOrigin()}/api/actions/buy/${mint}`;
+
 /** Absolute token page URL in the browser (the page's own origin). */
 export const tokenPageUrl = (mint: string) => (typeof window === 'undefined' ? `/token/${mint}` : `${window.location.origin}/token/${mint}`);
 

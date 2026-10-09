@@ -17,7 +17,8 @@ import { computeShieldReceipt, type ShieldReceipt } from '@/lib/server/shield';
 import { swr } from '@/lib/server/swrCache';
 
 const OPEN_TTL_MS = 10_000;
-const r2Key = (pool: string) => `shield/v1/${pool}.json`;
+// v2: shield tax = scheduler fee above the end fee only (v1 also counted the dynamic fee).
+const r2Key = (pool: string) => `shield/v2/${pool}.json`;
 /** Final receipts, per instance (they never change). */
 const finals = new Map<string, ShieldReceipt>();
 

@@ -25,6 +25,10 @@ const nextConfig: NextConfig = {
   turbopack: { root: path.resolve(__dirname) },
   outputFileTracingRoot: path.resolve(__dirname),
   images: { remotePatterns: r2RemotePattern() },
+  // Solana Actions: /actions.json must sit at the site root (served by an API route for its CORS headers).
+  async rewrites() {
+    return [{ source: '/actions.json', destination: '/api/actions-json' }];
+  },
   // Fallback token images: native renderer + the bundled font file.
   serverExternalPackages: ['@resvg/resvg-js'],
   outputFileTracingIncludes: { '/api/**/*': ['./assets/fonts/**/*'] },

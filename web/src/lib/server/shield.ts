@@ -3,12 +3,15 @@
 // Real on-chain data only: every swap's fee comes from the DBC program's own swap event (emitted by self-CPI as
 // an inner instruction), never from an estimate. Fees are paid in the quote token (all Hatch configs collect
 // fees in the quote token), so a buy's fee = trading + protocol + referral fee = included - excluded input.
+// That fee has two parts: the fee scheduler's base fee (the shield: 50% falling to 1%) and DBC's dynamic
+// (volatility) fee, up to 0.2% on Hatch configs. The "shield tax" counts the scheduler part only: for each
+// buy, input x (scheduler fee at that second - the schedule's end fee).
 import BN from 'bn.js';
 import bs58 from 'bs58';
 import { Connection } from '@solana/web3.js';
 import { DYNAMIC_BONDING_CURVE_PROGRAM_ID, createDbcProgram, getBaseFeeNumeratorByPeriod } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import type { FeeSchedule } from '@/lib/dbc/feeSchedule';
-import { shieldDuration, shieldRange } from '@/lib/dbc/feeSchedule';
+import { baseFeeNumeratorAt, shieldDuration, shieldRange } from '@/lib/dbc/feeSchedule';
 
 export type ShieldReceipt = {
   pool: string;
@@ -23,9 +26,7 @@ export type ShieldReceipt = {
   /** Buys that landed in the window, and what they paid (raw quote units, as strings). */
   buys: number;
   feesRaw: string;
-  /** The part of feesRaw a buy would have paid at the base fee anyway. */
-  baseRaw: string;
-  /** feesRaw - baseRaw: what the shield added. */
+  /** What the fee scheduler charged above its end fee (the shield's own take; no dynamic fee). */
   taxRaw: string;
   /** Up to 10 in-window buy signatures, oldest first, so anyone can check the numbers on an explorer. */
   signatures: string[];
@@ -114,22 +115,24 @@ export function swapsInTx(tx: RawTx, pool: string, coder: EventCoder): PoolSwap[
   return v2.length ? v2 : v1;
 }
 
-/** Buys in [start, end): count, total fees, the base-fee share of them and the excess (the shield's tax). */
-export function summarizeShield(swaps: PoolSwap[], o: { start: number; end: number; baseFeeNumerator: bigint }) {
+/**
+ * Buys in [start, end): count, total fees paid (scheduler + dynamic fee), and the shield tax: per buy,
+ * input x (scheduler fee numerator at that second - end fee numerator) / 1e9, never more than the fee paid.
+ */
+export function summarizeShield(swaps: PoolSwap[], o: { start: number; end: number; schedule: FeeSchedule }) {
   const inWindow = swaps.filter((s) => s.buy && s.timestamp >= o.start && s.timestamp < o.end).sort((a, b) => a.timestamp - b.timestamp);
+  const endNumerator = baseFeeNumerator(o.schedule);
   let fees = BigInt(0);
-  let base = BigInt(0);
   let tax = BigInt(0);
   for (const s of inWindow) {
-    const atBase = (s.inputRaw * o.baseFeeNumerator) / FEE_DENOMINATOR;
+    const scheduled = BigInt(baseFeeNumeratorAt(o.schedule, String(o.start), s.timestamp).toString());
+    const above = scheduled > endNumerator ? (s.inputRaw * (scheduled - endNumerator)) / FEE_DENOMINATOR : BigInt(0);
     fees += s.feeRaw;
-    base += atBase < s.feeRaw ? atBase : s.feeRaw;
-    tax += s.feeRaw > atBase ? s.feeRaw - atBase : BigInt(0);
+    tax += above < s.feeRaw ? above : s.feeRaw;
   }
   return {
     buys: inWindow.length,
     feesRaw: fees.toString(),
-    baseRaw: base.toString(),
     taxRaw: tax.toString(),
     signatures: [...new Set(inWindow.map((s) => s.signature))].slice(0, EXAMPLE_SIGNATURES),
   };
@@ -198,7 +201,7 @@ export async function computeShieldReceipt(
     windowEnd: end,
     startFeePct: range.start,
     baseFeePct: range.end,
-    ...summarizeShield(swaps, { start, end, baseFeeNumerator: baseFeeNumerator(p.schedule) }),
+    ...summarizeShield(swaps, { start, end, schedule: p.schedule }),
     final,
     computedAt: Math.floor(nowS),
   };

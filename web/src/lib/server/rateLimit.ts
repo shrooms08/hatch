@@ -20,7 +20,9 @@ export function rateLimited(
   bucket: string,
   limit: number,
   windowMs = 60 * 60 * 1000,
-  cost = 1
+  cost = 1,
+  /** Shape of the 429 body (Solana Actions clients read `message`). */
+  body: (message: string) => object = (message) => ({ error: message })
 ): boolean {
   const key = `${bucket}:${clientIp(req)}`;
   const now = Date.now();
@@ -28,7 +30,7 @@ export function rateLimited(
   if (recent.length + cost > limit) {
     const retryAfter = Math.max(1, Math.ceil(((recent[0] ?? now) + windowMs - now) / 1000));
     res.setHeader('Retry-After', String(retryAfter));
-    res.status(429).json({ error: `Too many requests, try again in ${retryAfter < 120 ? `${retryAfter} s` : `${Math.ceil(retryAfter / 60)} min`}` });
+    res.status(429).json(body(`Too many requests, try again in ${retryAfter < 120 ? `${retryAfter} s` : `${Math.ceil(retryAfter / 60)} min`}`));
     hits.set(key, recent);
     return true;
   }
