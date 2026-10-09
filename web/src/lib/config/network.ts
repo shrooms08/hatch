@@ -15,8 +15,24 @@ const DEFAULT_RPC: Record<SolanaNetwork, string> = {
  * so no provider key ever ships to the browser. A path ("/api/rpc") resolves against the page origin.
  */
 const RAW_PUBLIC_RPC = process.env.NEXT_PUBLIC_RPC_URL || DEFAULT_RPC[NETWORK];
-export const PUBLIC_RPC_URL =
-  RAW_PUBLIC_RPC.startsWith('/') && typeof window !== 'undefined' ? `${window.location.origin}${RAW_PUBLIC_RPC}` : RAW_PUBLIC_RPC;
+const RPC_PROXY_PATH = '/api/rpc';
+
+/**
+ * Hatch's own proxy ("/api/rpc", or an absolute URL ending in /api/rpc such as https://hatchfun.vercel.app/api/rpc)
+ * is always called on the page's own origin: the site is served from more than one domain (hatchem.fun and
+ * hatchfun.vercel.app) and /api/rpc only accepts same-origin requests. Any other RPC URL is used as given.
+ */
+export function browserRpcUrl(raw: string, pageOrigin: string | null): string {
+  if (!pageOrigin) return raw;
+  if (raw.startsWith('/')) return `${pageOrigin}${raw}`;
+  try {
+    return new URL(raw).pathname === RPC_PROXY_PATH ? `${pageOrigin}${RPC_PROXY_PATH}` : raw;
+  } catch {
+    return raw;
+  }
+}
+
+export const PUBLIC_RPC_URL = browserRpcUrl(RAW_PUBLIC_RPC, typeof window !== 'undefined' ? window.location.origin : null);
 
 /** RPC used by API routes and the /api/rpc proxy (secret; server only). */
 export function serverRpcUrl() {

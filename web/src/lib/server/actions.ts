@@ -33,7 +33,7 @@ export function parseBlinkSol(input: unknown): string {
   const n = Number(s);
   if (!(n > 0)) throw new Error('Enter an amount greater than zero');
   if (n < MIN_BLINK_SOL) throw new Error(`The smallest Blink buy is ${MIN_BLINK_SOL} SOL`);
-  if (n > MAX_BLINK_SOL) throw new Error(`A Blink buy is capped at ${MAX_BLINK_SOL} SOL. For more, use hatchfun.vercel.app`);
+  if (n > MAX_BLINK_SOL) throw new Error(`A Blink buy is capped at ${MAX_BLINK_SOL} SOL. For more, use hatchem.fun`);
   return s;
 }
 

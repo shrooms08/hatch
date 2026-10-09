@@ -9,7 +9,7 @@
 import { defineBackground } from "wxt/utils/define-background";
 import { browser } from "wxt/browser";
 import { api } from "../lib/api";
-import { HATCH_WEB_ORIGIN, POLL_MINUTES, tokenPageUrl, webUrl } from "../lib/config";
+import { HATCH_WEB_ORIGINS, POLL_MINUTES, tokenPageUrl, webUrl } from "../lib/config";
 import { SIDEPANEL_PORT, type BgRequest, type NoticeResponse, type OffscreenMessage, type OffscreenResult, type TabMessage } from "../lib/messages";
 import { SOUNDS, type SoundName } from "../lib/buddy/config";
 import { diffMilestones } from "../lib/milestones";
@@ -221,7 +221,7 @@ export default defineBackground(() => {
           // Only from our bridge script on the Hatch web app (it checks event.origin too).
           let fromHatch = false;
           try {
-            fromHatch = !!sender.url && new URL(sender.url).origin === HATCH_WEB_ORIGIN;
+            fromHatch = !!sender.url && HATCH_WEB_ORIGINS.includes(new URL(sender.url).origin);
           } catch {
             fromHatch = false;
           }

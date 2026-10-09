@@ -15,7 +15,11 @@ try {
 
 const HATCH_WEB_URL = (process.env.WXT_HATCH_WEB_URL ?? "http://localhost:3000").replace(/\/$/, "");
 process.env.WXT_HATCH_WEB_URL = HATCH_WEB_URL;
-const HATCH_WEB_MATCH = `${new URL(HATCH_WEB_URL).origin}/*`;
+// Other origins that serve the same web app (e.g. the old hatchfun.vercel.app next to hatchem.fun): the
+// bridge also runs there, so connecting a wallet works on either domain. Comma list of URLs.
+const ALT_WEB_URLS = (process.env.WXT_HATCH_ALT_WEB_URLS ?? "").split(",").map((u) => u.trim()).filter(Boolean);
+process.env.WXT_HATCH_ALT_WEB_URLS = ALT_WEB_URLS.join(",");
+const HATCH_WEB_MATCHES = [...new Set([HATCH_WEB_URL, ...ALT_WEB_URLS].map((u) => `${new URL(u).origin}/*`))];
 
 // Stable extension ID (knfkjiebkbhddjogcbniiachhomkmdkm): the manifest "key" is the PUBLIC key, committed in
 // extension-key.pub. The private key stays in .keys/hatch-extension.pem (gitignored) and is only needed to
@@ -40,8 +44,8 @@ export default defineConfig({
     // offscreen: all buddy sounds play from an offscreen document (page autoplay rules can't block it).
     // No "tabs": the side panel gets the page (and its URL) from our content script, never tab.url.
     permissions: ["storage", "sidePanel", "alarms", "notifications", "offscreen"],
-    // Only the Hatch web app (AI + hatches API). Content scripts declare their own matches.
-    host_permissions: [HATCH_WEB_MATCH],
+    // Only the Hatch web app (AI + hatches API) and its other domains. Content scripts declare their own matches.
+    host_permissions: HATCH_WEB_MATCHES,
     action: { default_title: "Hatch" },
     ...(mode === "production"
       ? { content_security_policy: { extension_pages: "script-src 'self'; object-src 'self'; frame-ancestors 'none';" } }
@@ -62,10 +66,10 @@ export default defineConfig({
       }
       for (const f of SFX_FILES) files.push({ absoluteSrc: `${SFX_DIR}${f}`, relativeDest: `sfx/${f}` });
     },
-    // The bridge content script must run only on the Hatch web app, whose origin is a build-time value.
+    // The bridge content script must run only on the Hatch web app, whose origins are build-time values.
     "build:manifestGenerated": (_wxt, manifest) => {
       for (const cs of manifest.content_scripts ?? []) {
-        if (cs.js?.some((f) => f.includes("hatch-bridge"))) cs.matches = [HATCH_WEB_MATCH];
+        if (cs.js?.some((f) => f.includes("hatch-bridge"))) cs.matches = HATCH_WEB_MATCHES;
       }
     },
   },

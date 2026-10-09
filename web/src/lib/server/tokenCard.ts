@@ -195,7 +195,7 @@ ${fillW ? `<rect x="540" y="532" width="${fillW}" height="14" rx="7" fill="${col
 <rect width="1200" height="630" fill="url(#glow)"/>
 <g transform="translate(80 46) scale(0.62)">${MARK}</g>
 <text x="128" y="82" font-family="Unbounded" font-weight="700" font-size="34" letter-spacing="-1" fill="${C.ink}">Hatch</text>
-<text x="1120" y="80" text-anchor="end" font-family="Geist Mono" font-weight="500" font-size="18" fill="${C.muted}">hatchfun.vercel.app</text>
+<text x="1120" y="80" text-anchor="end" font-family="Geist Mono" font-weight="500" font-size="18" fill="${C.muted}">hatchem.fun</text>
 <rect x="80" y="140" width="400" height="400" rx="48" fill="${C.surface}" filter="url(#drop)"/>
 <image x="80" y="140" width="400" height="400" preserveAspectRatio="xMidYMid slice" clip-path="url(#art)" href="${imageHref}" xlink:href="${imageHref}"/>
 <rect x="80.75" y="140.75" width="398.5" height="398.5" rx="47.5" fill="none" stroke="${C.ink}" stroke-opacity="0.12" stroke-width="1.5"/>

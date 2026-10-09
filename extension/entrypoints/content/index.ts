@@ -2,7 +2,7 @@ import "./buddy.css";
 import { defineContentScript } from "wxt/utils/define-content-script";
 import { createShadowRootUi } from "wxt/utils/content-script-ui/shadow-root";
 import { browser } from "wxt/browser";
-import { HATCH_WEB_ORIGIN } from "../../lib/config";
+import { HATCH_WEB_ORIGINS } from "../../lib/config";
 import { canAutoNotice, detectFromDom } from "../../lib/detect";
 import { clean, collectPageContext } from "../../lib/page";
 import { sendToBackground, type NoticeResponse, type TabMessage } from "../../lib/messages";
@@ -21,7 +21,7 @@ export default defineContentScript({
   cssInjectionMode: "ui",
   async main(ctx) {
     if (window.top !== window) return; // top frame only
-    if (location.origin === HATCH_WEB_ORIGIN) return; // the web app has its own UI (and the bridge script)
+    if (HATCH_WEB_ORIGINS.includes(location.origin)) return; // the web app has its own UI (and the bridge script)
 
     let egg: BuddyView | null = null;
     let ui: Awaited<ReturnType<typeof createShadowRootUi>> | null = null;

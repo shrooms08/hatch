@@ -28,7 +28,7 @@ const SITE_ORIGIN = process.env.HATCH_SITE_ORIGIN || '';
 function originOf(req: NextApiRequest) {
   if (SITE_ORIGIN) return SITE_ORIGIN;
   const host = String(req.headers.host ?? '');
-  return /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) ? `http://${host}` : 'https://hatchfun.vercel.app';
+  return /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host) ? `http://${host}` : 'https://hatchem.fun';
 }
 
 /** The token's Hatch pool (shared 30 s list, else a direct read). null: no pool or not under a Hatch config. */
@@ -152,7 +152,7 @@ async function post(req: NextApiRequest, res: NextApiResponse, mint: string) {
       const q = await quotePayWithSol({ connection, pool: pool.address, solUi, slippageBps: BLINK_SLIPPAGE_BPS });
       const plan = await buildPayWithSol(connection, owner, q);
       if (plan.kind !== 'single') {
-        return send(res, 400, actionError(`This route is too large for one transaction right now. Buy on hatchfun.vercel.app/token/${mint}`));
+        return send(res, 400, actionError(`This route is too large for one transaction right now. Buy on hatchem.fun/token/${mint}`));
       }
       tx = plan.tx;
     }

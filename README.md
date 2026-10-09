@@ -15,7 +15,7 @@ ships with a **Sniper shield**: fees start high for the first minute so bots pay
 - **Draft it.** The side panel drafts name, ticker, description, preset and image with AI. You edit it in plain words ("shorter ticker").
 - **Hatch it.** One click opens the web app prefilled. You sign with your own wallet. The token incubates on a Meteora bonding curve and hatches into a full Meteora pool.
 
-**Live:** [hatchfun.vercel.app](https://hatchfun.vercel.app) · **Extension:** [download for Chrome](https://hatchfun.vercel.app/extension) (load unpacked, ID `knfkjiebkbhddjogcbniiachhomkmdkm`)
+**Live:** [hatchem.fun](https://hatchem.fun) · **Extension:** [download for Chrome](https://hatchem.fun/extension) (load unpacked, ID `knfkjiebkbhddjogcbniiachhomkmdkm`)
 
 | Token page | Side panel | Hatched! |
 |---|---|---|
@@ -96,7 +96,7 @@ More in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Privacy
 
-Full details, in plain words: [hatchfun.vercel.app/privacy](https://hatchfun.vercel.app/privacy).
+Full details, in plain words: [hatchem.fun/privacy](https://hatchem.fun/privacy).
 
 - The extension holds **no keys, wallets or API keys**. All AI calls go through the Hatch server.
 - **Automatic hints** happen only on stock pages and tweets (a setting turns them off), once per page. They send the page title, URL without query string or hash, and a short text excerpt.
@@ -126,7 +126,7 @@ pnpm test                              # unit tests
 # extension (WXT, Chrome MV3)
 cd extension && pnpm install
 pnpm build                             # dist/chrome-mv3 -> chrome://extensions -> Load unpacked
-pnpm build:prod                        # against https://hatchfun.vercel.app
+pnpm build:prod                        # against https://hatchem.fun (bridge also on hatchfun.vercel.app)
 pnpm test
 
 # scripts (configs, launches, fee claims): devnet by default, simulate-first

@@ -11,7 +11,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useWindowWidthListener } from '@/lib/device';
 import { NETWORK } from '@/lib/config/network';
 import { useWalletHatchEvents } from '@/lib/extensionBridge';
-import { DEFAULT_SOCIAL, SocialMeta } from '@/components/SocialMeta';
+import { DEFAULT_SOCIAL, SITE_ORIGIN, SocialMeta } from '@/components/SocialMeta';
+import { useRouter } from 'next/router';
 import { OnboardingProvider } from '@/components/Onboarding/Walkthrough';
 
 /** Lives inside the wallet provider so it can see the connected wallet. */
@@ -22,6 +23,9 @@ function HatchEvents(): null {
 
 function AppProviders({ Component, pageProps }: AppProps) {
   const { resolvedTheme } = useTheme();
+  // Canonical URL on the canonical domain (hatchem.fun in production), path only; pages may override it.
+  const { asPath } = useRouter();
+  const canonicalUrl = SITE_ORIGIN ? `${SITE_ORIGIN}${asPath.split(/[?#]/)[0]}` : undefined;
 
   const wallets: Adapter[] = useMemo(() => {
     return [new PhantomWalletAdapter(), new SolflareWalletAdapter()].filter(
@@ -56,7 +60,7 @@ function AppProviders({ Component, pageProps }: AppProps) {
         }}
       >
         <HatchEvents />
-        <SocialMeta {...DEFAULT_SOCIAL} />
+        <SocialMeta {...DEFAULT_SOCIAL} url={canonicalUrl} />
         {/* Toasts are rendered by components/ds/Toast (sonner custom), placed under the header. */}
         <Toaster theme={walletTheme} position="top-right" offset={{ top: 88, right: 24 }} mobileOffset={{ top: 72 }} gap={12} />
         <OnboardingProvider>

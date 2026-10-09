@@ -89,7 +89,7 @@ type Head = { status: number; location: string | null; contentLength: number; re
 function request(target: URL): Promise<Head> {
   const lib = target.protocol === 'https:' ? https : http;
   return new Promise((resolve, reject) => {
-    const req = lib.get(target, { lookup: checkedLookup, timeout: FETCH_TIMEOUT_MS, headers: { 'user-agent': 'HatchBot/1.0 (+https://hatchfun.vercel.app)' } }, (res) =>
+    const req = lib.get(target, { lookup: checkedLookup, timeout: FETCH_TIMEOUT_MS, headers: { 'user-agent': 'HatchBot/1.0 (+https://hatchem.fun)' } }, (res) =>
       resolve({
         status: res.statusCode ?? 0,
         location: typeof res.headers.location === 'string' ? res.headers.location : null,

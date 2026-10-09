@@ -1,5 +1,5 @@
 // GET /actions.json (rewritten here in next.config): maps token pages to the buy Action, so a plain
-// https://hatchfun.vercel.app/token/<mint> link unfurls as a Blink in Action-aware clients.
+// https://hatchem.fun/token/<mint> link (or the old hatchfun.vercel.app one) unfurls as a Blink in Action-aware clients.
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { ACTIONS_JSON, actionHeaders } from '@/lib/server/actions';
 

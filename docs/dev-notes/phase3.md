@@ -130,16 +130,19 @@ Extension build vars: `WXT_HATCH_NETWORK=mainnet-beta`, `WXT_HATCH_WEB_URL=http:
 
 ## Phase 3c: production (Vercel) + extension release
 
-- **Web app:** https://hatchfun.vercel.app (Vercel project `hatch`, root directory `web/`, mainnet).
+- **Web app:** https://hatchem.fun, the canonical domain (Vercel project `hatch`, root directory `web/`, mainnet;
+  www.hatchem.fun redirects to it). https://hatchfun.vercel.app serves the same app with no redirects, because
+  extension 0.6.2 calls its /api/* and links wallets only on that origin; canonical tags point to hatchem.fun.
   Connected to GitHub `shrooms08/hatch`: every push to `master` deploys production.
 - **Extension:** v0.1.0, ID `knfkjiebkbhddjogcbniiachhomkmdkm`. Download:
   https://pub-d237e2e1ade348e0af7801e5588300ab.r2.dev/releases/hatch-extension-v0.1.0.zip
   (also on the GitHub release https://github.com/shrooms08/hatch/releases/tag/v0.1.0, private while the repo is).
-  Install steps are on https://hatchfun.vercel.app/extension.
+  Install steps are on https://hatchem.fun/extension.
 
 ### RPC: no provider key in the browser
 The browser's Solana RPC is Hatch's own same-origin proxy, `POST /api/rpc`
-(`NEXT_PUBLIC_RPC_URL=https://hatchfun.vercel.app/api/rpc`; locally `/api/rpc`). It forwards to the
+(`NEXT_PUBLIC_RPC_URL=/api/rpc`; an absolute `.../api/rpc` value is rewritten to the page's own origin, so it
+works on hatchem.fun and hatchfun.vercel.app alike). It forwards to the
 server-only `HATCH_SERVER_RPC_URL` (falls back to `RPC_URL`):
 - allowlisted methods only: getAccountInfo, getMultipleAccounts, getBalance, getTokenAccountBalance,
   getTokenAccountsByOwner, getProgramAccounts (Meteora DBC program only), getLatestBlockhash,

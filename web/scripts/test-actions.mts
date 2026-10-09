@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { ACTIONS_CORS_HEADERS } from '@solana/actions';
 import { ACTIONS_JSON, MAX_BLINK_SOL, actionHeaders, blinkMetadata, parseBlinkSol, type BlinkToken } from '../src/lib/server/actions.ts';
 
-const ORIGIN = 'https://hatchfun.vercel.app';
+const ORIGIN = 'https://hatchem.fun';
 const token = (o: Partial<BlinkToken> = {}): BlinkToken => ({
   mint: 'HFXWB1araE22DeLP9zP2K3iu4rcE7N5qUvPgSQ78zow5',
   name: 'Green Chip Hatchling',

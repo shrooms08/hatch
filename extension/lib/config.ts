@@ -1,6 +1,17 @@
 /** Build-time configuration. WXT exposes `WXT_*` env vars to the bundle (see wxt.config.ts). */
 export const HATCH_WEB_URL = ((import.meta.env.WXT_HATCH_WEB_URL as string | undefined) ?? "http://localhost:3000").replace(/\/$/, "");
 export const HATCH_WEB_ORIGIN = new URL(HATCH_WEB_URL).origin;
+/** Every origin serving the web app: HATCH_WEB_URL first, then WXT_HATCH_ALT_WEB_URLS (e.g. the old vercel.app domain). */
+export const HATCH_WEB_ORIGINS: string[] = [
+  ...new Set([
+    HATCH_WEB_ORIGIN,
+    ...((import.meta.env.WXT_HATCH_ALT_WEB_URLS as string | undefined) ?? "")
+      .split(",")
+      .map((u) => u.trim())
+      .filter(Boolean)
+      .map((u) => new URL(u).origin),
+  ]),
+];
 
 export type HatchNetwork = "devnet" | "mainnet-beta";
 export const NETWORK: HatchNetwork = (import.meta.env.WXT_HATCH_NETWORK as string | undefined) === "mainnet-beta" ? "mainnet-beta" : "devnet";

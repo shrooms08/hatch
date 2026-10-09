@@ -22,16 +22,16 @@ test('share: viewer wording shows progress; hatched drops the shield', () => {
 });
 
 test('share: X intent URL encodes text and link', () => {
-  const u = new URL(xIntentUrl('I just hatched $A & more:', 'https://hatchfun.vercel.app/token/abc'));
+  const u = new URL(xIntentUrl('I just hatched $A & more:', 'https://hatchem.fun/token/abc'));
   assert.equal(u.origin + u.pathname, 'https://x.com/intent/tweet');
   assert.equal(u.searchParams.get('text'), 'I just hatched $A & more:');
-  assert.equal(u.searchParams.get('url'), 'https://hatchfun.vercel.app/token/abc');
+  assert.equal(u.searchParams.get('url'), 'https://hatchem.fun/token/abc');
 });
 
 test('mobile: Phantom browse deep link', () => {
   assert.equal(
-    phantomBrowseUrl('https://hatchfun.vercel.app/token/abc?x=1', 'https://hatchfun.vercel.app'),
-    'https://phantom.app/ul/browse/https%3A%2F%2Fhatchfun.vercel.app%2Ftoken%2Fabc%3Fx%3D1?ref=https%3A%2F%2Fhatchfun.vercel.app'
+    phantomBrowseUrl('https://hatchem.fun/token/abc?x=1', 'https://hatchem.fun'),
+    'https://phantom.app/ul/browse/https%3A%2F%2Fhatchem.fun%2Ftoken%2Fabc%3Fx%3D1?ref=https%3A%2F%2Fhatchem.fun'
   );
 });
 
@@ -47,4 +47,13 @@ test('og: meta and card escape and describe the token', () => {
   const svg = tokenCardSvg(CARD, 'data:image/png;base64,AA==');
   assert.ok(svg.includes('Tesla &#60;Egg&#62; &#38; Co') && !svg.includes('<Egg>'));
   for (const s of ['SNIPER SHIELD', 'paired with TSLAx', '>12%<', 'to hatch', 'width="1200" height="630"']) assert.ok(svg.includes(s), s);
+});
+
+test('browser RPC: Hatch\'s /api/rpc proxy is always same-origin (hatchem.fun and hatchfun.vercel.app)', async () => {
+  const { browserRpcUrl } = await import('../src/lib/config/network.ts');
+  assert.equal(browserRpcUrl('https://hatchfun.vercel.app/api/rpc', 'https://hatchem.fun'), 'https://hatchem.fun/api/rpc');
+  assert.equal(browserRpcUrl('https://hatchfun.vercel.app/api/rpc', 'https://hatchfun.vercel.app'), 'https://hatchfun.vercel.app/api/rpc');
+  assert.equal(browserRpcUrl('/api/rpc', 'http://localhost:3200'), 'http://localhost:3200/api/rpc');
+  assert.equal(browserRpcUrl('https://api.mainnet-beta.solana.com', 'https://hatchem.fun'), 'https://api.mainnet-beta.solana.com');
+  assert.equal(browserRpcUrl('https://hatchfun.vercel.app/api/rpc', null), 'https://hatchfun.vercel.app/api/rpc');
 });
