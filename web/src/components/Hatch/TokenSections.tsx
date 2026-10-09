@@ -1,5 +1,6 @@
 // Token page sections (design/v1 "Token Page" + "Hatched States"). Display only: all data comes
 // from chain via the existing hooks.
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   AddressChip,
@@ -9,7 +10,6 @@ import {
   Card,
   DefRow,
   EGG_RADIUS,
-  EggVessel,
   HonestNote,
   InspiredChip,
   Overline,
@@ -28,7 +28,8 @@ import { explorerAddressUrl, meteoraPoolUrl } from '@/lib/config/network';
 import { sourceDomain } from '@/lib/metadata/token';
 import { stockForConfig, stockPreset } from '@/lib/presets';
 import { useHolders, useIsTestLaunch, useLiveBaseFee, usePresetConfigs, useQuoteSymbol, useTokenMetadata } from '@/hooks/useHatch';
-import { SNIPER_SHIELD_LINE, formatFeePercent, hasSniperShield } from '@/lib/dbc/feeSchedule';
+import { SNIPER_SHIELD_LINE, baseFeePercentAt, formatFeePercent, hasSniperShield } from '@/lib/dbc/feeSchedule';
+import { EggFill, HatchBurst, ShieldLive } from '@/components/motion';
 import { useWallet } from '@jup-ag/wallet-adapter';
 import type { ShareInfo } from '@/lib/share';
 import { ShareActions } from './ShareActions';
@@ -129,6 +130,29 @@ function HeroChips({ mint, pool, quote, domain, url }: { mint: string; pool: Hat
   );
 }
 
+/**
+ * First 60 seconds of a v2 pool (creation time known): the Sniper shield with the LIVE fee from the pool's
+ * real fee scheduler. Hidden once the fee has reached its floor, or when the creation time is unknown.
+ */
+export function LiveShieldCard({ pool }: { pool: HatchPool }) {
+  const fee = useLiveBaseFee(pool);
+  const feeNow = useCallback(() => baseFeePercentAt(pool.feeSchedule, pool.activationPoint, Date.now() / 1000), [pool.feeSchedule, pool.activationPoint]);
+  const known = Number(pool.activationPoint) > 0;
+  if (!known || pool.presetId === null || pool.isMigrated || !fee?.shield || !fee.decaying) return null;
+  return (
+    <Card className="flex items-center gap-4 rounded-[24px] border-success/30 p-4 md:p-5">
+      <ShieldLive feeNow={feeNow} className="h-[176px] w-[176px] shrink-0 md:h-[200px] md:w-[200px]" />
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <span className="text-[15px] font-semibold text-ink">Sniper shield is on</span>
+        <span className="text-[13px] leading-normal text-ink-2">
+          Live fee {formatFeePercent(fee.percent)}, falling to {formatFeePercent(fee.shield.end)} in {fee.secondsLeft}s. Bots buying now pay it; it is the pool&apos;s real fee.
+        </span>
+        <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-success">Live</span>
+      </div>
+    </Card>
+  );
+}
+
 /** Incubating / almost hatched: the big egg, % to hatch, raised vs goal, pool facts. */
 export function ProgressCard({ pool }: { pool: HatchPool }) {
   const quote = useQuoteSymbol(pool.quote);
@@ -142,17 +166,27 @@ export function ProgressCard({ pool }: { pool: HatchPool }) {
         className="pointer-events-none absolute inset-0"
         style={{ backgroundImage: 'radial-gradient(rgb(var(--dot-field) / 0.05) 1px, transparent 1px)', backgroundSize: '20px 20px' }}
       />
-      <EggVessel progress={pool.progress} className="relative max-lg:hidden" />
+      {/* The egg fills to the pool's real progress; each buy the poll picks up pours in (+amount). */}
+      <EggFill
+        progress={pool.progress}
+        raised={pool.quoteReserveUi.toNumber()}
+        quoteSymbol={quote}
+        ready={pool.isMigrated || pool.progress >= 1}
+        className="relative mx-auto h-[340px] w-full max-w-[300px] max-lg:hidden"
+      />
       <div className="relative flex min-w-0 flex-col gap-[22px]">
         <Overline>Hatching progress</Overline>
         <Tip id="token-progress">This fills as people buy. At 100% it hatches.</Tip>
         <div className="flex items-center gap-4">
           {/* Mobile: the egg sits beside the number (design M3) */}
-          <div className="relative h-[96px] w-[76px] shrink-0 lg:hidden" aria-hidden>
-            <div className="absolute left-0 top-0 origin-top-left scale-[0.29]">
-              <EggVessel progress={pool.progress} compact />
-            </div>
-          </div>
+          <EggFill
+            progress={pool.progress}
+            raised={pool.quoteReserveUi.toNumber()}
+            quoteSymbol={quote}
+            ready={pool.isMigrated || pool.progress >= 1}
+            showLabel={false}
+            className="relative h-[96px] w-[96px] shrink-0 lg:hidden"
+          />
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-3.5 gap-y-1">
             <span className="font-display text-[44px] font-bold leading-[0.9] tracking-[-0.04em] text-yolk sm:text-[56px] md:text-[80px]">{formatPercent(pool.progress)}</span>
             <span className="text-base text-ink-2">to hatch</span>
@@ -232,10 +266,18 @@ export function AboutCard({ pool, mint }: { pool: HatchPool | null | undefined; 
 }
 
 /** Hatched: ember card with cracked shell + buddy, final raise. */
+/** Graduated pools whose burst already played in this visit (once per token per page load). */
+const burstPlayed = new Set<string>();
+
 export function HatchedCard({ pool, symbol }: { pool: HatchPool; symbol: string }) {
   const quote = useQuoteSymbol(pool.quote);
+  const [burst, setBurst] = useState(() => !burstPlayed.has(pool.baseMint));
+  useEffect(() => {
+    burstPlayed.add(pool.baseMint);
+  }, [pool.baseMint]);
   return (
     <Card className="relative grid grid-cols-[minmax(0,1fr)] items-center gap-8 overflow-hidden rounded-[24px] border-ember/50 p-6 md:grid-cols-[260px_minmax(0,1fr)] md:gap-11 md:p-10">
+      {burst && <HatchBurst onDone={() => setBurst(false)} />}
       <div aria-hidden className="pointer-events-none absolute -left-20 -top-20 h-[520px] w-[520px] bg-[radial-gradient(circle,rgba(232,87,42,0.28)_0%,rgba(232,87,42,0)_60%)]" />
       <div className="relative mx-auto h-[300px] w-[260px]" aria-hidden>
         <div

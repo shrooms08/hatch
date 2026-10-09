@@ -1,13 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter';
 import Page from '@/components/ui/Page/Page';
-import { Button, Card, EggGlyph, Field, HonestNote, InspiredChip, Input, Note, PresetBadge, PresetCard, TextArea, UploadIcon, notify } from '@/components/ds';
+import { Card, Field, HonestNote, InspiredChip, Input, Note, PresetBadge, PresetCard, TextArea, UploadIcon, notify } from '@/components/ds';
 import { TokenArt } from '@/components/ds/TokenArt';
 import { HatchedMoment } from '@/components/Hatch/HatchedMoment';
 import { OpenInWallet } from '@/components/Hatch/OpenInWallet';
 import { Tip } from '@/components/Onboarding/Tip';
+import { CrackButton, ShieldIllustration, type CrackPhase } from '@/components/motion';
 import { useConfigThreshold, usePresetConfigs, useRentPerByte, useShieldedConfigs, useSolLamports } from '@/hooks/useHatch';
 import { reportTxError, type FriendlyError } from '@/lib/txErrors';
 import { formatSol, formatSolNeed, launchCostLamports } from '@/lib/costs';
@@ -69,6 +70,8 @@ export default function CreatePool() {
   const [formError, setFormError] = useState<FriendlyError | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [created, setCreated] = useState<{ mint: string; signature: string } | null>(null);
+  const [phase, setPhase] = useState<CrackPhase>('idle');
+  const pendingCreated = useRef<{ mint: string; signature: string } | null>(null);
 
   useEffect(() => {
     if (!router.isReady) return;
@@ -122,6 +125,22 @@ export default function CreatePool() {
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Development only: rehearse the button without a transaction (?demo=crack succeeds, ?demo=fail fails).
+    const demo = process.env.NODE_ENV !== 'production' ? router.query.demo : undefined;
+    if (demo === 'crack' || demo === 'fail') {
+      setIsLoading(true);
+      setPhase('pending');
+      await new Promise((r) => setTimeout(r, 1800));
+      setIsLoading(false);
+      if (demo === 'fail') {
+        setPhase('idle');
+        notify.error({ title: "Launch didn't go through", body: 'Demo: simulated failure. The button resets with no crack.' });
+      } else {
+        pendingCreated.current = { mint: typeof router.query.mint === 'string' ? router.query.mint : 'Eekou3Ckcd2Hxk1MaeVepRafCH6SHU7sybNrifizUZfb', signature: '' };
+        setPhase('success');
+      }
+      return;
+    }
     if (!wallet.publicKey) return setShowModal(true);
     const parsed = launchFieldsSchema.safeParse(form);
     const next: FieldErrors = {};
@@ -140,6 +159,7 @@ export default function CreatePool() {
     }
 
     setIsLoading(true);
+    setPhase('pending');
     try {
       const result = await launchToken({
         wallet,
@@ -148,11 +168,14 @@ export default function CreatePool() {
         image: imageFile ?? imageUrl,
       });
       notify.success({ title: 'Your token is hatching!', action: { label: `View on ${EXPLORER_NAME}`, href: explorerTxUrl(result.signature) } });
-      setCreated(result);
+      // Confirmed on chain: now (and only now) the button cracks; the success screen opens when it's done.
+      pendingCreated.current = result;
+      setPhase('success');
       emitHatchEvent('launched', wallet.publicKey!.toBase58(), result.mint);
     } catch (err) {
       const f = reportTxError(err, { balanceLamports: solLamports.data, neededLamports: launchNeed }, 'launch');
       setFormError(f);
+      setPhase('idle'); // failed: the button resets, no crack
       notify.error({ title: "Launch didn't go through", body: f.message });
     } finally {
       setIsLoading(false);
@@ -187,6 +210,17 @@ export default function CreatePool() {
         );
       })}
     </div>
+    {/* Sniper shield explainer next to the shielded preset (v2 configs). An illustration, not live data. */}
+    {shieldOn && (
+      <div className="flex items-center gap-3.5 rounded-[16px] border border-success/25 bg-surface-1 p-3 md:gap-4">
+        <ShieldIllustration className="h-[176px] w-[176px] shrink-0 md:h-[200px] md:w-[200px]" />
+        <div className="flex min-w-0 flex-col gap-1.5">
+          <span className="text-[14px] font-semibold text-ink">Sniper shield</span>
+          <span className="text-[13px] leading-normal text-ink-2">Bots that buy in the first minute hit a high fee (from 50%) and pay; it falls to 1%, so real buyers pass.</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-muted">Illustration</span>
+        </div>
+      </div>
+    )}
     </div>
   );
 
@@ -205,18 +239,13 @@ export default function CreatePool() {
   );
   const honest = form.preset === 'STOCK' ? <HonestNote>{copy?.honest ?? preset.explainer[2]?.replace("The stock token's issuer", 'The issuer')}</HonestNote> : null;
   const submit = (
-    <Button type="submit" size="lg" block glow loading={isLoading} disabled={solShort} className="h-[62px]">
-      {!wallet.publicKey ? (
-        'Connect wallet'
-      ) : isLoading ? (
-        'Hatching…'
-      ) : (
-        <>
-          <EggGlyph size={20} />
-          Hatch it
-        </>
-      )}
-    </Button>
+    <CrackButton
+      phase={phase}
+      label={!wallet.publicKey ? 'Connect wallet' : phase === 'pending' ? 'Hatching…' : 'Hatch it'}
+      showEgg={!!wallet.publicKey}
+      disabled={solShort}
+      onSequenceDone={() => pendingCreated.current && setCreated(pendingCreated.current)}
+    />
   );
 
   return (

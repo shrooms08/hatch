@@ -1,7 +1,7 @@
 import Page from '@/components/ui/Page/Page';
 import { useHatchPool, useRouteMint, useTokenMetadata } from '@/hooks/useHatch';
 import { TradePanel } from '@/components/Hatch/TradePanel';
-import { AboutCard, HatchedCard, ProgressCard, StageTimeline, TokenHero, TradeOnMeteora } from '@/components/Hatch/TokenSections';
+import { AboutCard, HatchedCard, LiveShieldCard, ProgressCard, StageTimeline, TokenHero, TradeOnMeteora } from '@/components/Hatch/TokenSections';
 import { Button, Card, Skeleton } from '@/components/ds';
 import { ClaimCreatorFees } from '@/components/Hatch/ClaimCreatorFees';
 import Head from 'next/head';
@@ -60,6 +60,10 @@ const HatchOnChain = ({ mint }: { mint: string }) => {
     <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 md:gap-7 lg:grid-cols-[minmax(0,1fr)_420px]">
       <div className="flex min-w-0 flex-col gap-5 max-lg:contents md:gap-6">
         <div className="max-lg:order-1">{pool.isMigrated ? <HatchedCard pool={pool} symbol={md?.symbol ?? ''} /> : <ProgressCard pool={pool} />}</div>
+        {/* First 60 s of a v2 pool: the Sniper shield with the live fee (renders nothing otherwise). */}
+        <div className="empty:hidden max-lg:order-1">
+          <LiveShieldCard pool={pool} />
+        </div>
         {!pool.isMigrated && (
           <div className="max-lg:order-3">
             <StageTimeline pool={pool} />

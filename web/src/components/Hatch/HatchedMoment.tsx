@@ -1,5 +1,6 @@
 // Full-screen "Hatched!" moment shown right after a launch confirms (design/v1 Hatched States, 04).
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { HatchBurst } from '@/components/motion';
 import { Button, EGG_RADIUS, IconButton, Modal, XIcon } from '@/components/ds';
 import { shortAddr } from '@/components/ds/Pill';
 import { TokenArt } from '@/components/ds/TokenArt';
@@ -52,6 +53,9 @@ export function HatchedMoment({
   onClose: () => void;
 }) {
   const confetti = useConfetti();
+  // The hatch burst plays once over the whole card each time the moment opens (sound at the pop).
+  const [burst, setBurst] = useState(false);
+  useEffect(() => setBurst(open), [open]);
   const shell = 'polygon(0 0,100% 0,100% 42%,84% 52%,70% 40%,55% 54%,40% 41%,26% 53%,12% 42%,0 50%)';
   const base = 'polygon(0 50%,12% 42%,26% 53%,40% 41%,55% 54%,70% 40%,84% 52%,100% 42%,100% 100%,0 100%)';
   return (
@@ -75,6 +79,7 @@ export function HatchedMoment({
             style={{ left: c.left, top: c.top, width: c.size, height: c.size, borderRadius: c.radius, background: c.color, transform: `rotate(${c.rot}deg)`, animationDelay: `${300 + c.delay}ms` }}
           />
         ))}
+        {burst && <HatchBurst onDone={() => setBurst(false)} />}
         <IconButton label="Close" onClick={onClose} className="absolute right-4 top-4 border-line-strong text-ink-2 md:right-8 md:top-7">
           <XIcon size={14} />
         </IconButton>

@@ -6,6 +6,7 @@ import { Button, DotField, EggGlyph, PuzzleIcon, StatTile, Tag } from '@/compone
 import { ChickenOrb } from '@/components/ds/ChickenOrb';
 import { TokenArt } from '@/components/ds/TokenArt';
 import { HatchTable } from '@/components/Hatch/HatchTable';
+import { DotNumber } from '@/components/motion';
 import { useHatchPools, useHatchStats } from '@/hooks/useHatch';
 import { formatUsdCompact } from '@/lib/format/time';
 
@@ -79,18 +80,16 @@ function HeroIllustration() {
 }
 
 function StatsStrip() {
-  const { data, isLoading, isError } = useHatchStats();
-  const n = (v: number | undefined) => (v === undefined ? '-' : v.toLocaleString('en-US'));
+  const { data, isError } = useHatchStats();
+  // Real values only, as dot digits that roll in when scrolled into view; dashes while loading.
+  const n = (v: number | undefined) => (v === undefined ? null : v.toLocaleString('en-US'));
+  const usd = data && data.volumeUsd !== null ? formatUsdCompact(data.volumeUsd) : null;
+  const digits = (label: string, value: string | null, accent = false) => <DotNumber label={label} value={value} accent={accent} className="h-[34px] w-full md:h-[46px]" />;
   return (
     <div className="grid grid-cols-3 overflow-hidden rounded-[22px] border border-surface-3 bg-surface-1 md:grid-cols-[repeat(3,minmax(0,1fr))_auto]">
-      <StatTile label="Tokens hatched" value={n(data?.tokens)} loading={isLoading} className="border-r border-surface-3 max-md:px-3.5 max-md:py-3" />
-      <StatTile label="Unique wallets" value={n(data?.wallets)} loading={isLoading} className="border-r border-surface-3 max-md:px-3.5 max-md:py-3" />
-      <StatTile
-        label="Volume · USD"
-        value={data ? formatUsdCompact(data.volumeUsd) : '-'}
-        loading={isLoading}
-        className="max-md:px-3.5 max-md:py-3 md:border-r md:border-surface-3"
-      />
+      <StatTile label="Tokens hatched" value={digits('Tokens hatched', n(data?.tokens))} className="border-r border-surface-3 max-md:px-3.5 max-md:py-3" />
+      <StatTile label="Unique wallets" value={digits('Unique wallets', n(data?.wallets))} className="border-r border-surface-3 max-md:px-3.5 max-md:py-3" />
+      <StatTile label="Volume · USD" value={digits('Volume in USD', usd, true)} className="max-md:px-3.5 max-md:py-3 md:border-r md:border-surface-3" />
       <div className="hidden items-center gap-2.5 px-8 font-mono text-xs font-medium md:flex">
         {isError ? (
           <span className="text-ink-muted">OFFLINE</span>

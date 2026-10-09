@@ -1,0 +1,72 @@
+/* Crack button (lab specimen 7, design/motion/hatch-motion-lab.html): lifts and the egg wobbles on hover;
+   pressed while the launch is pending; after the launch confirms the crack draws, the button splits, a chick
+   peeks out and it seals as "Hatched!". Same timings and curves as the lab, sized like the launch CTA. */
+.crack-btn {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 62px;
+  border: 0;
+  padding: 0;
+  background: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  font-family: var(--font-unbounded), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: -0.01em;
+  transition: transform 0.18s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.crack-btn:hover:not(:disabled) { transform: translateY(-3px); }
+.crack-btn:focus-visible { outline: none; box-shadow: 0 0 0 4px rgb(var(--hatch-yolk) / 0.3); }
+.crack-btn:disabled { cursor: not-allowed; }
+.crack-half {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: 9999px;
+  background: #f2a93b;
+  color: #120e0b;
+  box-shadow: 0 14px 44px -14px rgba(242, 169, 59, 0.7);
+  transition: transform 0.32s cubic-bezier(0.2, 1.5, 0.4, 1), background-color 0.2s;
+}
+.crack-btn:disabled .crack-half { background: rgb(var(--surface-3)); color: rgb(var(--text-disabled)); box-shadow: none; }
+.crack-btn.is-pending:disabled .crack-half { background: #f2a93b; color: #120e0b; }
+.crack-egg { width: 16px; height: 21px; display: block; transform-origin: 50% 90%; }
+.crack-btn:hover:not(:disabled) .crack-egg { animation: crack-wobble 0.55s ease-in-out infinite; }
+.crack-btn.is-press .crack-half { transform: scale(0.95); }
+.crack-btn.is-split .crack-half.top { transform: translate(-4px, -12px) rotate(-4deg); }
+.crack-btn.is-split .crack-half.bot { transform: translate(3px, 8px) rotate(2.5deg); }
+.crack-btn.is-done .crack-half,
+.crack-btn.is-done:disabled .crack-half { background: #f6eedc; color: #120e0b; }
+.crack-line { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.crack-line path { fill: none; stroke: #e8572a; stroke-width: 3; stroke-linejoin: round; stroke-dasharray: 400; stroke-dashoffset: 400; opacity: 0; }
+.crack-btn.is-cracking .crack-line path { animation: crack-draw 0.22s ease-out forwards; }
+.crack-btn.is-split .crack-line path { opacity: 0; transition: opacity 0.1s; }
+.crack-chick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 46px;
+  height: 46px;
+  margin: -30px 0 0 -23px;
+  transform: scale(0);
+  transition: transform 0.38s cubic-bezier(0.2, 1.8, 0.4, 1);
+  pointer-events: none;
+}
+.crack-btn.is-split .crack-chick { transform: scale(1) translateY(-6px); }
+.crack-spark { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; pointer-events: none; animation: crack-fly 0.9s cubic-bezier(0.15, 0.7, 0.3, 1) forwards; }
+@keyframes crack-wobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-14deg); } 75% { transform: rotate(14deg); } }
+@keyframes crack-draw { 0% { opacity: 1; stroke-dashoffset: 400; } 100% { opacity: 1; stroke-dashoffset: 0; } }
+@keyframes crack-fly {
+  0% { transform: translate(-50%, -50%) rotate(0) scale(1); opacity: 1; }
+  100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) rotate(var(--rot)) scale(0.4); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .crack-btn, .crack-half, .crack-chick { transition: none; }
+  .crack-btn:hover:not(:disabled) { transform: none; }
+  .crack-btn:hover:not(:disabled) .crack-egg, .crack-spark, .crack-btn.is-cracking .crack-line path { animation: none; }
+}
