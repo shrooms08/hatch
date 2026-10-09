@@ -105,7 +105,8 @@ function TokenShare({ mint, pool, symbol }: { mint: string; pool: HatchPool | nu
     progressPct: pool ? pool.progress * 100 : null,
     hatched: !!pool?.isMigrated,
   };
-  return <ShareActions mint={mint} info={info} showBlink={!!pool && pool.presetId !== null && !pool.isMigrated} className="self-start md:self-center" />;
+  // "Copy Blink" stays off while dial.to is down (its links would be dead); /actions.json and the Action API stay live.
+  return <ShareActions mint={mint} info={info} className="self-start md:self-center" />;
 }
 
 function HeroChips({ mint, pool, quote, domain, url }: { mint: string; pool: HatchPool | null | undefined; quote: string; domain: string | null; url?: string }) {
