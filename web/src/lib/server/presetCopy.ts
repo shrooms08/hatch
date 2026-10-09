@@ -6,7 +6,7 @@ import { dbcClient } from '@/lib/dbc/pool';
 import { feeScheduleOf, feeSentence, formatFeePercent, hasSniperShield, shieldRange } from '@/lib/dbc/feeSchedule';
 import { fetchMintInfo, rawToUi } from '@/lib/solana/mint';
 import { formatAmount } from '@/lib/format/amount';
-import { stockPreset, type HatchConfigs } from '@/lib/presets';
+import { stockDisclosure, type HatchConfigs } from '@/lib/presets';
 import { copyKey, howItWorksText, type PresetCopy } from '@/lib/presets/copy';
 
 const TTL_MS = 10 * 60_000;
@@ -36,7 +36,7 @@ export function presetCopies(hc: HatchConfigs): Promise<Record<string, PresetCop
     if (key) jobs.push([copyKey(id), configCopy(connection, key, 'SOL', false, null)]);
   }
   for (const s of Object.values(hc.stocks)) {
-    const honest = stockPreset(s).explainer[2]?.replace("The stock token's issuer", 'The issuer') ?? null;
+    const honest = stockDisclosure(s);
     jobs.push([copyKey('STOCK', s.ticker), configCopy(connection, s.config, s.symbol, true, honest)]);
   }
   const value = Promise.all(jobs.map(async ([k, p]) => [k, await p.catch((): null => null)] as const)).then((entries) => {

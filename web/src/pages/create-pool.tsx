@@ -243,7 +243,7 @@ export default function CreatePool() {
         })}
     </Note>
   );
-  const honest = form.preset === 'STOCK' ? <HonestNote>{copy?.honest ?? preset.explainer[2]?.replace("The stock token's issuer", 'The issuer')}</HonestNote> : null;
+  const honest = form.preset === 'STOCK' ? <HonestNote>{copy?.honest ?? preset.explainer[2]}</HonestNote> : null;
   const submit = (
     <CrackButton
       phase={phase}

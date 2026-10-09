@@ -9,7 +9,7 @@ import { baseFeePercentAt, formatFeePercent, hasSniperShield, shieldRange } from
 import { explorerAddressUrl, meteoraPoolUrl } from '@/lib/config/network';
 import { formatAmount, formatPercent } from '@/lib/format/amount';
 import { countdownParts, formatLaunchTime, lifecycleSteps, timeAgo, type StepKey, type StepState } from '@/lib/lifecycle';
-import { stockForConfig } from '@/lib/presets';
+import { stockDisclosure, stockForConfig } from '@/lib/presets';
 import { useHatchPools, useHolders, useLiveBaseFee, usePresetConfigs, useQuoteSymbol, useTokenMetadata, useUsdPrice } from '@/hooks/useHatch';
 import { cn } from '@/lib/utils';
 import { TokenAvatar } from './TokenAvatar';
@@ -214,7 +214,7 @@ export function HatchInfoCard({ pool }: { pool: HatchPool }) {
           </div>
         ))}
       </div>
-      {stock && <HonestNote className="rounded-[14px] px-4 py-3.5">This token is not the stock. Its pool holds tokenized {stock.name}. The issuer can pause transfers.</HonestNote>}
+      {stock && <HonestNote className="rounded-[14px] px-4 py-3.5">{stockDisclosure(stock)}</HonestNote>}
     </Card>
   );
 }

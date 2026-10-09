@@ -41,7 +41,7 @@ export const PRESETS: Record<PresetId, Preset> = {
     explainer: [
       'People buy your token with tokenized NVIDIA (NVDAx) instead of SOL, and every purchase nudges the price up.',
       'Once enough NVDAx has come in, your token "hatches" into a full trading pool paired with NVDAx. Fees start at 50% for the first minute so bots pay, then 1% per trade, split evenly between you and Hatch.',
-      "This token is not the stock. Its pool holds tokenized NVIDIA. The stock token's issuer can pause transfers.",
+      stockDisclosure({ name: 'NVIDIA', symbol: 'NVDAx' }),
     ],
   },
   AI_AGENT: {
@@ -124,6 +124,14 @@ export function stockForConfig(hc: HatchConfigs, configKey: string): StockInfo |
 /** True for configs that are still recognized but no longer used for new launches. */
 export const isLegacyConfig = (hc: HatchConfigs, configKey: string) => (hc.legacy ?? []).some((l) => l.config === configKey);
 
+/**
+ * The stock-paired disclosure, one line wherever it appears. Accurate per the on-chain mints: NVDAx/TSLAx are
+ * Token-2022 with the Pausable extension, a freeze authority and a permanent delegate (move/burn from any account).
+ */
+export function stockDisclosure(stock: Pick<StockInfo, 'name' | 'symbol'>): string {
+  return `This token is not the stock. Its pool holds tokenized ${stock.name} (${stock.symbol}), and the issuer can pause, freeze or move ${stock.symbol}, including from this pool.`;
+}
+
 /** The STOCK preset's copy for a specific stock. */
 export function stockPreset(stock: Pick<StockInfo, 'symbol' | 'name' | 'quoteMint'> | null | undefined): Preset {
   if (!stock) return PRESETS.STOCK;
@@ -135,7 +143,7 @@ export function stockPreset(stock: Pick<StockInfo, 'symbol' | 'name' | 'quoteMin
     explainer: [
       `People buy your token with tokenized ${stock.name} (${stock.symbol}) instead of SOL, and every purchase nudges the price up.`,
       `Once enough ${stock.symbol} has come in, your token "hatches" into a full trading pool paired with ${stock.symbol}. Fees start at 50% for the first minute so bots pay, then 1% per trade, split evenly between you and Hatch.`,
-      `This token is not the stock. Its pool holds tokenized ${stock.name}. The stock token's issuer can pause transfers.`,
+      stockDisclosure(stock),
     ],
   };
 }
