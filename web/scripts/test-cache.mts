@@ -58,7 +58,7 @@ test('pool JSON: Decimal amounts survive the round trip', () => {
   const pool = {
     address: 'p', baseMint: 'm', configKey: 'c', presetId: 'MEME', creator: 'x',
     quote: { address: 'So11111111111111111111111111111111111111112', programId: 't', isToken2022: false, isNativeSol: true, decimals: 9, multiplier: 1 },
-    baseDecimals: 6, price: new Decimal('0.0000000312'), progress: 0.03, quoteReserveUi: new Decimal('0.3337'), thresholdUi: new Decimal('10'),
+    baseDecimals: 6, price: new Decimal('0.0000000312'), startPrice: new Decimal('0.0000000300'), totalSupply: new Decimal('1000000000'), progress: 0.03, quoteReserveUi: new Decimal('0.3337'), thresholdUi: new Decimal('10'),
     status: 'INCUBATING', isMigrated: false, dammV2Pool: null,
     feeSchedule: { mode: 1, cliffFeeNumerator: '500000000', numberOfPeriod: 12, periodFrequency: '5', reductionFactor: '1', activationType: 1 },
     activationPoint: '1791000000', legacyConfig: false, creatorFeePct: 50, baseVault: 'bv', quoteVault: 'qv',
@@ -71,6 +71,13 @@ test('pool JSON: Decimal amounts survive the round trip', () => {
   assert.equal(back.fees.creatorQuoteRaw, '6715368');
   assert.ok(back.fees.creatorEarnedQuote.eq('0.0068') && back.fees.creatorClaimedQuote.eq('0.0067'));
   assert.deepEqual(back.feeSchedule, pool.feeSchedule);
+  assert.ok(back.startPrice.eq('0.00000003') && back.totalSupply!.eq(1e9));
+  // A list cached before these fields existed still parses (no supply, start price 0).
+  const old = JSON.parse(JSON.stringify(poolToJson(pool)));
+  delete old.startPrice;
+  delete old.totalSupply;
+  const fromOld = poolFromJson(old);
+  assert.ok(fromOld.startPrice.isZero() && fromOld.totalSupply === null);
 });
 
 test('creator earnings: from pool counters, as the SDK breakdown (HGTEST and GCHIP real numbers)', async () => {

@@ -35,6 +35,10 @@ export type HatchPool = {
   baseDecimals: number;
   /** Price of 1 base token in UI quote units (scaled multiplier applied). */
   price: Decimal;
+  /** The curve's starting price (config sqrtStartPrice), same units as `price`. */
+  startPrice: Decimal;
+  /** Fixed token supply from the config (UI units); null for configs without a fixed supply. */
+  totalSupply: Decimal | null;
   /** quoteReserve / migrationQuoteThreshold, clamped to [0, 1]. */
   progress: number;
   quoteReserveUi: Decimal;
@@ -128,6 +132,8 @@ export async function describePool(
     quote,
     baseDecimals,
     price: new Decimal(rawPrice.toString()).mul(quote.multiplier),
+    startPrice: new Decimal(getPriceFromSqrtPrice(config.sqrtStartPrice, baseDecimals, quote.decimals).toString()).mul(quote.multiplier),
+    totalSupply: config.fixedTokenSupplyFlag === 1 ? rawToUi(config.postMigrationTokenSupply, baseUnit) : null,
     progress,
     quoteReserveUi: rawToUi(s.quoteReserve, quote),
     thresholdUi: rawToUi(config.migrationQuoteThreshold, quote),

@@ -10,13 +10,11 @@ import {
   Card,
   DefRow,
   EGG_RADIUS,
-  HonestNote,
   InspiredChip,
   Overline,
   PresetBadge,
   ShellBar,
   Skeleton,
-  StageEgg,
   StatusPill,
   ShieldBadge,
   TestBadge,
@@ -26,8 +24,8 @@ import type { HatchPool } from '@/lib/dbc/pool';
 import { formatAmount, formatPercent } from '@/lib/format/amount';
 import { explorerAddressUrl, explorerTxUrl, EXPLORER_NAME, meteoraPoolUrl } from '@/lib/config/network';
 import { sourceDomain } from '@/lib/metadata/token';
-import { stockForConfig, stockPreset } from '@/lib/presets';
-import { useHolders, useIsTestLaunch, useLiveBaseFee, useMintSupply, usePresetConfigs, useQuoteSymbol, useShieldReceipt, useTokenMetadata, useUsdPrice } from '@/hooks/useHatch';
+import { stockForConfig } from '@/lib/presets';
+import { useIsTestLaunch, useLiveBaseFee, usePresetConfigs, useQuoteSymbol, useShieldReceipt, useTokenMetadata } from '@/hooks/useHatch';
 import { rawToUi } from '@/lib/solana/mint';
 import { SNIPER_SHIELD_LINE, baseFeePercentAt, formatFeePercent, hasSniperShield } from '@/lib/dbc/feeSchedule';
 import { EggFill, HatchBurst, ShieldLive } from '@/components/motion';
@@ -37,8 +35,8 @@ import { ShareActions } from './ShareActions';
 import { Tip } from '@/components/Onboarding/Tip';
 import { HowItWorksChip } from '@/components/Onboarding/Walkthrough';
 import { shortAddr } from '@/components/ds/Pill';
-import { cn } from '@/lib/utils';
 import { TokenAvatar } from './TokenAvatar';
+import { HeroPriceOrCountdown, SectionTitle, useStockOf } from './TokenLayout';
 
 export function TokenHero({ mint, pool }: { mint: string; pool: HatchPool | null | undefined }) {
   const { data: md, isLoading } = useTokenMetadata(mint);
@@ -55,9 +53,13 @@ export function TokenHero({ mint, pool }: { mint: string; pool: HatchPool | null
           <span className="mx-1.5">/</span>
           <span className="text-ink">{symbol || shortAddr(mint, 4)}</span>
         </nav>
-        <HowItWorksChip />
+        <div className="flex flex-wrap items-center gap-2">
+          {md?.name && pool !== undefined && <TokenShare mint={mint} pool={pool} symbol={symbol} />}
+          <HowItWorksChip />
+        </div>
       </div>
-      <div className="flex flex-col gap-5 md:flex-row md:items-center md:gap-7">
+      {/* Design v2 header: image, big name + ticker, badges; live price (or the shield countdown) on the right. */}
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between lg:gap-8">
         <div className="flex min-w-0 flex-1 items-center gap-4 md:gap-7">
           <TokenAvatar mint={mint} size={112} paired={pool?.presetId === 'STOCK' ? quote : null} className="max-md:!h-[72px] max-md:!w-[72px]" />
           <div className="flex min-w-0 flex-1 flex-col gap-3.5">
@@ -79,7 +81,7 @@ export function TokenHero({ mint, pool }: { mint: string; pool: HatchPool | null
         <div className="flex flex-wrap items-center gap-2 md:hidden">
           <HeroChips mint={mint} pool={pool} quote={quote} domain={domain} url={md?.json?.external_url} />
         </div>
-        {md?.name && pool !== undefined && <TokenShare mint={mint} pool={pool} symbol={symbol} />}
+        {pool && <HeroPriceOrCountdown pool={pool} />}
       </div>
       {pool && pool.presetId !== null && hasSniperShield(pool.feeSchedule) && (
         <Tip id="token-shield" title="Sniper shield." className="max-w-[640px]">
@@ -106,7 +108,7 @@ function TokenShare({ mint, pool, symbol }: { mint: string; pool: HatchPool | nu
     hatched: !!pool?.isMigrated,
   };
   // "Copy Blink" stays off while dial.to is down (its links would be dead); /actions.json and the Action API stay live.
-  return <ShareActions mint={mint} info={info} className="self-start md:self-center" />;
+  return <ShareActions mint={mint} info={info} size="sm" />;
 }
 
 function HeroChips({ mint, pool, quote, domain, url }: { mint: string; pool: HatchPool | null | undefined; quote: string; domain: string | null; url?: string }) {
@@ -170,9 +172,9 @@ export function SniperReceiptCard({ pool }: { pool: HatchPool }) {
   const amt = (raw: string) => `${formatAmount(rawToUi(raw, pool.quote))} ${quote}`;
   const base = formatFeePercent(r.baseFeePct);
   return (
-    <Card className="flex flex-col gap-2 rounded-[24px] p-5 md:p-6">
+    <Card className="flex flex-col gap-2.5 rounded-[24px] px-5 py-6 md:px-9 md:py-8">
       <div className="flex items-center justify-between gap-3">
-        <Overline className="text-success">Sniper receipt</Overline>
+        <Overline className="text-success">Shield receipt</Overline>
         <ShieldHowItWorks start={formatFeePercent(r.startFeePct)} end={base} seconds={seconds} step={Number(pool.feeSchedule.periodFrequency)} />
       </div>
       {r.buys === 0 ? (
@@ -241,157 +243,71 @@ function ShieldHowItWorks({ start, end, seconds, step }: { start: string; end: s
   );
 }
 
-/** Incubating / almost hatched: the big egg, % to hatch, raised vs goal, pool facts. */
+/**
+ * Incubating / almost hatched (design v2 "Hatching progress"): the dot-matrix egg fills to the real progress
+ * beside the % and the bar. Pool facts live in HatchInfoCard.
+ */
 export function ProgressCard({ pool }: { pool: HatchPool }) {
   const quote = useQuoteSymbol(pool.quote);
-  const holders = useHolders(pool.baseMint);
   const toGo = pool.thresholdUi.minus(pool.quoteReserveUi);
-  const stock = useStockName(pool);
-  const stockInfo = useStockInfo(pool);
-  const supply = useMintSupply(stockInfo ? pool.baseMint : undefined, pool.baseDecimals);
-  const usd = useUsdPrice(stockInfo ? pool.quote.address : undefined);
-  // Market cap in quote-token units: current curve price x total supply (NVDAx ~ NVDA shares).
-  const marketCap = stockInfo && supply.data ? pool.price.mul(supply.data) : null;
+  const stock = useStockOf(pool);
+  const egg = (variant: 'full' | 'compact', className: string) => (
+    <EggFill
+      progress={pool.progress}
+      raised={pool.quoteReserveUi.toNumber()}
+      quoteSymbol={quote}
+      ready={pool.isMigrated || pool.progress >= 1}
+      variant={variant}
+      showLabel={false}
+      className={className}
+    />
+  );
   return (
     <div className="flex flex-col gap-2.5">
-    <Card className="relative grid grid-cols-[minmax(0,1fr)] items-center gap-8 overflow-hidden rounded-[24px] p-5 md:p-9 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-11">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={{ backgroundImage: 'radial-gradient(rgb(var(--dot-field) / 0.05) 1px, transparent 1px)', backgroundSize: '20px 20px' }}
-      />
-      {/* The egg fills to the pool's real progress; each buy the poll picks up pours in (+amount). */}
-      {/* Desktop: the egg fills the left column (canvas absolutely placed, so it never grows the card). */}
-      <div className="relative min-h-[340px] self-stretch max-lg:hidden">
-        <EggFill
-          progress={pool.progress}
-          raised={pool.quoteReserveUi.toNumber()}
-          quoteSymbol={quote}
-          ready={pool.isMigrated || pool.progress >= 1}
-          variant="full"
-          className="absolute inset-0 h-full w-full"
+      <Card className="relative grid grid-cols-[minmax(0,1fr)] items-center gap-6 overflow-hidden rounded-[24px] px-5 py-6 md:grid-cols-[150px_minmax(0,1fr)] md:gap-8 md:px-9 md:py-8">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{ backgroundImage: 'radial-gradient(rgb(var(--dot-field) / 0.05) 1px, transparent 1px)', backgroundSize: '20px 20px' }}
         />
-      </div>
-      <div className="relative flex min-w-0 flex-col gap-[22px]">
-        <Overline>Hatching progress</Overline>
-        <Tip id="token-progress">This fills as people buy. At 100% it hatches.</Tip>
-        <div className="flex items-center gap-4">
-          {/* Mobile: the egg sits beside the number (design M3) */}
-          <EggFill
-            progress={pool.progress}
-            raised={pool.quoteReserveUi.toNumber()}
-            quoteSymbol={quote}
-            ready={pool.isMigrated || pool.progress >= 1}
-            variant="compact"
-            showLabel={false}
-            className="relative h-[96px] w-[96px] shrink-0 lg:hidden"
-          />
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3.5 gap-y-1">
-            <span className="font-display text-[44px] font-bold leading-[0.9] tracking-[-0.04em] text-yolk sm:text-[56px] md:text-[80px]">{formatPercent(pool.progress)}</span>
-            <span className="text-base text-ink-2">to hatch</span>
+        {/* The egg fills to the pool's real progress; each buy the poll picks up pours in (+amount). */}
+        <div className="relative h-[150px] w-[150px] max-md:hidden">{egg('full', 'absolute inset-0 h-full w-full')}</div>
+        <div className="relative flex min-w-0 flex-col gap-4">
+          <div className="flex items-center gap-4">
+            {egg('compact', 'relative h-[84px] w-[84px] shrink-0 md:hidden')}
+            <div className="flex min-w-0 flex-1 flex-wrap items-end justify-between gap-x-4 gap-y-1">
+              <SectionTitle>Hatching progress</SectionTitle>
+              <span className="font-display text-[34px] font-bold leading-none tracking-[-0.04em] text-yolk md:text-[40px]">{formatPercent(pool.progress)}</span>
+            </div>
           </div>
-        </div>
-        <div className="flex flex-col gap-2.5">
-          <div className="flex flex-wrap justify-between gap-2 font-mono text-[15px] font-medium">
+          <Tip id="token-progress">This fills as people buy. At 100% it hatches.</Tip>
+          <ShellBar progress={pool.progress} height={10} />
+          <div className="flex flex-wrap justify-between gap-2 font-mono text-[13px] font-medium md:text-sm">
             <span>
               <Amount value={pool.quoteReserveUi} className="text-ink" /> <span className="text-ink-muted">/ {formatAmount(pool.thresholdUi)} {quote}</span>
             </span>
             <span className="text-ink-muted">{formatAmount(toGo.gt(0) ? toGo : 0)} to go</span>
           </div>
-          <ShellBar progress={pool.progress} height={12} />
         </div>
-        <div className="flex flex-col gap-3 pt-1.5">
-          <DefRow label="Price">
-            <Amount value={pool.price} unit={quote} className="text-[15px]" />
-          </DefRow>
-          {stockInfo && (
-            <>
-              {/* Stock-paired: what the token is worth and what the pool holds, in the stock itself. */}
-              <DefRow label="Market cap">
-                {marketCap ? (
-                  <span className="whitespace-nowrap">
-                    {formatAmount(marketCap)} {stockInfo.ticker}
-                    {usd.data && <span className="text-ink-muted"> · ≈ ${formatUsd(marketCap.mul(usd.data).toNumber())}</span>}
-                  </span>
-                ) : (
-                  '…'
-                )}
-              </DefRow>
-              <DefRow label="Pool holds">
-                {formatAmount(pool.quoteReserveUi)} {stockInfo.symbol}
-              </DefRow>
-            </>
-          )}
-          <DefRow label="Quote token">
-            {quote}
-            {stock ? ` · tokenized ${stock}` : pool.quote.isNativeSol ? ' · Solana' : ''}
-          </DefRow>
-          <DefRow label="Pool">
-            <a href={explorerAddressUrl(pool.address)} target="_blank" rel="noreferrer" className="text-ink-accent hover:underline">
-              Meteora DBC · {shortAddr(pool.address, 4)} ↗
-            </a>
-          </DefRow>
-          <DefRow label="Holders">{holders.data ?? (holders.isLoading ? '…' : '-')}</DefRow>
-        </div>
-      </div>
-    </Card>
-    {stockInfo && (
-      <p className="px-1 text-[13px] leading-normal text-ink-muted">
-        Priced in tokenized {stockInfo.name}. Graduates into a Meteora DAMM v2 pool paired with {stockInfo.symbol}.
-      </p>
-    )}
+      </Card>
+      {stock && (
+        <p className="px-1 text-[13px] leading-normal text-ink-muted">
+          Priced in tokenized {stock.name}. Graduates into a Meteora DAMM v2 pool paired with {stock.symbol}.
+        </p>
+      )}
     </div>
-  );
-}
-
-/** The xStock a stock-paired pool is quoted in (NVDAx / TSLAx; legacy configs included), else null. */
-function useStockInfo(pool: HatchPool) {
-  const { data: hc } = usePresetConfigs();
-  return pool.presetId === 'STOCK' && hc ? stockForConfig(hc, pool.configKey) : null;
-}
-
-const formatUsd = (v: number) => (v >= 1000 ? v.toLocaleString('en-US', { maximumFractionDigits: 0 }) : v >= 1 ? v.toFixed(2) : v.toPrecision(2));
-
-function useStockName(pool: HatchPool) {
-  const { data: hc } = usePresetConfigs();
-  return pool.presetId === 'STOCK' && hc ? stockForConfig(hc, pool.configKey)?.name ?? null : null;
-}
-
-/** Incubating -> Almost hatched (80%, shell cracks) -> Hatched (full Meteora pool). */
-export function StageTimeline({ pool }: { pool: HatchPool }) {
-  const idx = pool.status === 'HATCHED' ? 2 : pool.status === 'ALMOST_HATCHED' ? 1 : 0;
-  const stages = [
-    { title: 'Incubating', here: 'You are here. Buys fill the egg.', note: 'Buys fill the egg.' },
-    { title: 'Almost hatched', here: 'You are here. The shell is cracking.', note: 'From 80%. The shell cracks.' },
-    { title: 'Hatched', here: 'Moved to a full Meteora pool.', note: 'Moves to a full Meteora pool.' },
-  ];
-  return (
-    <Card className="grid grid-cols-[minmax(0,1fr)] gap-5 rounded-[24px] px-5 py-6 sm:grid-cols-3 md:px-9 md:py-7">
-      {stages.map((s, i) => (
-        <div key={s.title} className={cn('flex items-center gap-3.5', i > idx && 'opacity-55')}>
-          <StageEgg state={i < idx ? 'done' : i === idx ? 'current' : 'next'} />
-          <div className="flex flex-col gap-[3px]">
-            <span className="text-[15px] font-semibold text-ink">{s.title}</span>
-            <span className="text-[13px] text-ink-2">{i === idx ? s.here : s.note}</span>
-          </div>
-        </div>
-      ))}
-    </Card>
   );
 }
 
 export function AboutCard({ pool, mint }: { pool: HatchPool | null | undefined; mint: string }) {
   const { data: md } = useTokenMetadata(mint);
-  const { data: hc } = usePresetConfigs();
-  const stock = pool?.presetId === 'STOCK' && hc ? stockForConfig(hc, pool.configKey) : null;
-  const honest = pool?.presetId === 'STOCK' ? stockPreset(stock).explainer[2] : null;
   const description = md?.json?.description?.trim();
-  if (!description && !honest) return null;
+  // The "not the stock" note for stock pools lives in Hatch info.
+  if (!description || !pool) return null;
   return (
     <Card className="flex flex-col gap-4 rounded-[24px] px-5 py-6 md:px-9 md:py-8">
-      <h2 className="font-display text-xl font-semibold tracking-[-0.01em] text-ink">About</h2>
-      {description && <p className="max-w-[720px] whitespace-pre-line break-words text-base leading-relaxed text-ink-2">{description}</p>}
-      {honest && <HonestNote>{honest.replace("The stock token's issuer", 'The issuer')}</HonestNote>}
+      <SectionTitle>About</SectionTitle>
+      <p className="max-w-[720px] whitespace-pre-line break-words text-base leading-relaxed text-ink-2">{description}</p>
     </Card>
   );
 }

@@ -1,7 +1,8 @@
 import Page from '@/components/ui/Page/Page';
 import { useHatchPool, useRouteMint, useTokenMetadata } from '@/hooks/useHatch';
 import { TradePanel } from '@/components/Hatch/TradePanel';
-import { AboutCard, HatchedCard, LiveShieldCard, ProgressCard, SniperReceiptCard, StageTimeline, TokenHero, TradeOnMeteora } from '@/components/Hatch/TokenSections';
+import { AboutCard, HatchedCard, LiveShieldCard, ProgressCard, SniperReceiptCard, TokenHero, TradeOnMeteora } from '@/components/Hatch/TokenSections';
+import { HatchInfoCard, LifecycleStepper, MoreHatches } from '@/components/Hatch/TokenLayout';
 import { Button, Card, Skeleton } from '@/components/ds';
 import { ClaimCreatorFees } from '@/components/Hatch/ClaimCreatorFees';
 import Head from 'next/head';
@@ -56,35 +57,38 @@ const HatchOnChain = ({ mint }: { mint: string }) => {
     );
 
   return (
-    // Desktop: two columns. Mobile (design M3): progress, trade, fees, then stages and About.
-    <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 md:gap-7 lg:grid-cols-[minmax(0,1fr)_420px]">
-      <div className="flex min-w-0 flex-col gap-5 max-lg:contents md:gap-6">
-        <div className="max-lg:order-1">{pool.isMigrated ? <HatchedCard pool={pool} symbol={md?.symbol ?? ''} /> : <ProgressCard pool={pool} />}</div>
-        {/* v2 pools: the Sniper shield with the live fee for the first 60 s, then the sniper receipt (else nothing). */}
-        <div className="empty:hidden max-lg:order-1">
-          <LiveShieldCard pool={pool} />
-          <SniperReceiptCard pool={pool} />
-        </div>
-        {!pool.isMigrated && (
-          <div className="max-lg:order-3">
-            <StageTimeline pool={pool} />
+    // Design v2: lifecycle stepper; two columns (progress, shield, info, about | trade, earnings); more hatches.
+    // Mobile: one column in the order progress, trade + earnings, shield, info, about.
+    <>
+      {pool.presetId !== null && <LifecycleStepper pool={pool} />}
+      <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 md:gap-7 lg:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="flex min-w-0 flex-col gap-5 max-lg:contents md:gap-6">
+          <div className="max-lg:order-1">{pool.isMigrated ? <HatchedCard pool={pool} symbol={md?.symbol ?? ''} /> : <ProgressCard pool={pool} />}</div>
+          {/* v2 pools: the Sniper shield with the live fee for the first 60 s, then the shield receipt (else nothing). */}
+          <div className="flex flex-col gap-5 empty:hidden max-lg:order-3 md:gap-6">
+            <LiveShieldCard pool={pool} />
+            <SniperReceiptCard pool={pool} />
           </div>
-        )}
-        <div className="max-lg:order-4">
-          <AboutCard pool={pool} mint={mint} />
+          <div className="max-lg:order-4">
+            <HatchInfoCard pool={pool} />
+          </div>
+          <div className="empty:hidden max-lg:order-5">
+            <AboutCard pool={pool} mint={mint} />
+          </div>
+        </div>
+        <div className="flex min-w-0 flex-col gap-5 max-lg:order-2 lg:sticky lg:top-24">
+          {pool.presetId === null ? (
+            <NotHatchLaunch />
+          ) : pool.isMigrated ? (
+            <TradeOnMeteora pool={pool} />
+          ) : (
+            <TradePanel pool={pool} baseSymbol={symbol} />
+          )}
+          <ClaimCreatorFees pool={pool} baseSymbol={symbol} />
         </div>
       </div>
-      <div className="flex min-w-0 flex-col gap-5 max-lg:order-2 lg:sticky lg:top-24">
-        {pool.presetId === null ? (
-          <NotHatchLaunch />
-        ) : pool.isMigrated ? (
-          <TradeOnMeteora pool={pool} />
-        ) : (
-          <TradePanel pool={pool} baseSymbol={symbol} />
-        )}
-        <ClaimCreatorFees pool={pool} baseSymbol={symbol} />
-      </div>
-    </div>
+      {pool.presetId !== null && <MoreHatches pool={pool} />}
+    </>
   );
 };
 
