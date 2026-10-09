@@ -126,13 +126,13 @@ export default function CreatePool() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     // Development only: rehearse the button without a transaction (?demo=crack succeeds, ?demo=fail fails).
-    const demo = process.env.NODE_ENV !== 'production' ? router.query.demo : undefined;
-    if (demo === 'crack' || demo === 'fail') {
+    // The whole block is removed from production builds (NODE_ENV is inlined).
+    if (process.env.NODE_ENV !== 'production' && (router.query.demo === 'crack' || router.query.demo === 'fail')) {
       setIsLoading(true);
       setPhase('pending');
       await new Promise((r) => setTimeout(r, 1800));
       setIsLoading(false);
-      if (demo === 'fail') {
+      if (router.query.demo === 'fail') {
         setPhase('idle');
         notify.error({ title: "Launch didn't go through", body: 'Demo: simulated failure. The button resets with no crack.' });
       } else {
