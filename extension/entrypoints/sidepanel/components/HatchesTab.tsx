@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../../lib/api";
+import { claimableLine } from "../../../lib/claimable";
 import type { Holding } from "../../../lib/types";
 import { tokenPageUrl, webUrl } from "../../../lib/config";
 import { sendToBackground } from "../../../lib/messages";
@@ -7,17 +8,6 @@ import { KEYS, type HatchesCache } from "../../../lib/storage";
 import { useStorageValue } from "../hooks";
 import { EmptyState } from "./states";
 import { ArrowUpRight, Button, Card, Overline, ShellBar, Skeleton, StatusPill, TokenArt, TokenImage, cx, presetLabel, progressInk } from "./ui";
-
-/** Sums "0.4212" style amounts per symbol for the claimable summary. */
-function claimableTotals(list: HatchesCache["list"]) {
-  const totals = new Map<string, number>();
-  for (const h of list) {
-    if (!h.claimableCreatorFees.hasFees) continue;
-    const n = Number(h.claimableCreatorFees.amount.replace(/,/g, ""));
-    if (Number.isFinite(n)) totals.set(h.claimableCreatorFees.symbol, (totals.get(h.claimableCreatorFees.symbol) ?? 0) + n);
-  }
-  return [...totals.entries()].map(([sym, n]) => `${n.toLocaleString("en-US", { maximumSignificantDigits: 6 })} ${sym}`);
-}
 
 type View = "created" | "holdings";
 
@@ -163,7 +153,7 @@ function CreatedList({ wallet }: { wallet: string }) {
   }, [stale]);
 
   const list = cache?.wallet === wallet ? cache.list : [];
-  const totals = claimableTotals(list);
+  const claimable = cache?.wallet === wallet ? claimableLine(cache) : null;
   if (cache?.wallet === wallet && list.length === 0 && !cache.error)
     return (
       <EmptyState
@@ -180,7 +170,7 @@ function CreatedList({ wallet }: { wallet: string }) {
       <Card className="flex items-center justify-between gap-3 px-3.5 py-3">
         <div className="flex min-w-0 flex-col gap-[3px]">
           <Overline>Claimable fees</Overline>
-          <span className="truncate font-mono text-[13px] font-medium">{totals.length ? totals.join(" · ") : "Nothing to claim yet"}</span>
+          <span className="truncate font-mono text-[13px] font-medium">{claimable ?? "Nothing to claim yet"}</span>
         </div>
         <a
           href={webUrl("/my-hatches")}

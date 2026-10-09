@@ -14,6 +14,7 @@ import { useRouter } from 'next/router';
 import type { HatchPool } from '@/lib/dbc/pool';
 import { buildClaimCreatorFees, signAndSend } from '@/lib/dbc/transactions';
 import { formatAmount, formatPercent } from '@/lib/format/amount';
+import { claimableByQuote, hasCreatorFees } from '@/lib/claimable';
 import { getConnection } from '@/lib/solana/connection';
 import { EXPLORER_NAME, explorerTxUrl } from '@/lib/config/network';
 import { progressInk } from '@/components/ds/Progress';
@@ -21,7 +22,7 @@ import { cn } from '@/lib/utils';
 import { reportTxError, type FriendlyError } from '@/lib/txErrors';
 import { TxErrorNote } from '@/components/Hatch/TxErrorNote';
 
-const hasFees = (p: HatchPool) => !p.fees.creatorQuote.isZero() || !p.fees.creatorBase.isZero();
+const hasFees = hasCreatorFees;
 
 /** Claims creator fees for one pool with the existing transaction builder. */
 function useClaim() {
@@ -104,13 +105,8 @@ function ClaimableSummary({ pools }: { pools: HatchPool[] }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [txError, setTxError] = useState<FriendlyError | null>(null);
   const withFees = pools.filter(hasFees);
-  // Totals per quote token (SOL pools and NVDAx pools add up separately).
-  const totals = new Map<string, { pool: HatchPool; sum: Decimal }>();
-  for (const p of withFees) {
-    const t = totals.get(p.quote.address) ?? { pool: p, sum: new Decimal(0) };
-    t.sum = t.sum.add(p.fees.creatorQuote);
-    totals.set(p.quote.address, t);
-  }
+  // Totals per quote token (SOL pools and NVDAx pools add up separately); shared with /api/hatches.
+  const totals = claimableByQuote(pools);
   const claimAll = async () => {
     setTxError(null);
     for (const [i, p] of withFees.entries()) {
@@ -130,10 +126,10 @@ function ClaimableSummary({ pools }: { pools: HatchPool[] }) {
     <Card className="flex flex-wrap items-center justify-between gap-4 rounded-[18px] p-4 md:p-6">
       <div className="flex flex-col gap-1">
         <Overline className="text-[10px] md:text-[11px]">Claimable</Overline>
-        {totals.size === 0 ? (
+        {totals.length === 0 ? (
           <span className="font-mono text-[13px] font-medium text-ink-muted md:text-base">Nothing to claim yet</span>
         ) : (
-          [...totals.values()].map(({ pool, sum }, i) => <QuoteTotal key={pool.quote.address} pool={pool} sum={sum} plus={i > 0} />)
+          totals.map(({ pool, sum }, i) => <QuoteTotal key={pool.quote.address} pool={pool} sum={sum} plus={i > 0} />)
         )}
         {busy && <span className="text-xs text-ink-accent">{busy}</span>}
       </div>

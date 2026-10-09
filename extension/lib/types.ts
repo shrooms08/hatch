@@ -44,9 +44,16 @@ export type HatchSummary = {
   preset: PresetId | null;
   progress: number;
   status: HatchStatus;
-  claimableCreatorFees: { amount: string; symbol: string; hasFees: boolean };
+  /**
+   * Unclaimed creator quote fees. `amount` is the web's display string (formatAmount: "0.0₄4806"); never parse it.
+   * `ui` (exact decimal) and `raw` + `decimals` are absent in caches written before v0.6.2.
+   */
+  claimableCreatorFees: { amount: string; ui?: string; raw?: string; decimals?: number; symbol: string; hasFees: boolean };
   tokenUrl: string;
 };
+
+/** Claimable totals per quote token, computed by the web app exactly as its My Hatches page shows them. */
+export type ClaimableTotal = { symbol: string; amount: string; ui: string };
 
 export type EggState = "idle" | "noticed" | "thinking" | "ready";
 

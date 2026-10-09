@@ -4,7 +4,7 @@
  * through the background.
  */
 import { HATCH_WEB_URL, withPreviewBypass } from "./config";
-import type { BuddyDraft, BuddyNotice, ChatMessage, Draft, HatchSummary, Holding, PageContext, PresetCopyMap, PresetInfo, Result, StockMap } from "./types";
+import type { BuddyDraft, BuddyNotice, ChatMessage, ClaimableTotal, Draft, HatchSummary, Holding, PageContext, PresetCopyMap, PresetInfo, Result, StockMap } from "./types";
 
 /** Page URLs go to the server without query string or hash (they can carry personal data). */
 export function stripUrl(url: string): string {
@@ -49,7 +49,7 @@ export const api = {
   notice: (input: Pick<PageContext, "url" | "title" | "text" | "detected">) =>
     request<BuddyNotice>("POST", "/api/buddy/notice", { ...input, url: stripUrl(input.url) }, 20_000),
   hatches: (wallet: string) =>
-    request<{ wallet: string; network: string; hatches: HatchSummary[] }>("GET", `/api/hatches?wallet=${encodeURIComponent(wallet)}`),
+    request<{ wallet: string; network: string; hatches: HatchSummary[]; claimableTotals?: ClaimableTotal[] }>("GET", `/api/hatches?wallet=${encodeURIComponent(wallet)}`),
   presets: () => request<{ network: string; presets: PresetInfo[]; copy?: PresetCopyMap }>("GET", "/api/presets"),
   stocks: () => request<{ network: string; stocks: StockMap }>("GET", "/api/stocks"),
   holdings: (wallet: string) => request<{ wallet: string; network: string; holdings: Holding[] }>("GET", `/api/holdings?wallet=${encodeURIComponent(wallet)}`),

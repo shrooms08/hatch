@@ -127,11 +127,12 @@ async function poll() {
   const r = await api.hatches(wallet);
   if (!r.ok) {
     const prev = await getLocal<HatchesCache | null>(KEYS.hatches, null);
-    await setLocal(KEYS.hatches, { wallet, at: prev?.at ?? 0, list: prev?.wallet === wallet ? prev.list : [], error: r.error } satisfies HatchesCache);
+    const same = prev?.wallet === wallet;
+    await setLocal(KEYS.hatches, { wallet, at: prev?.at ?? 0, list: same ? prev.list : [], totals: same ? prev.totals : [], error: r.error } satisfies HatchesCache);
     return;
   }
   const list = r.data.hatches;
-  await setLocal(KEYS.hatches, { wallet, at: Date.now(), list } satisfies HatchesCache);
+  await setLocal(KEYS.hatches, { wallet, at: Date.now(), list, totals: r.data.claimableTotals ?? [] } satisfies HatchesCache);
   await setBadge(incubatingCount(list));
 
   const { next, events } = diffMilestones(await getLocal<Milestones>(KEYS.milestones, {}), list);

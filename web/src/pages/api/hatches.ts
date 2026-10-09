@@ -5,11 +5,11 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { NETWORK, serverRpcUrl } from '@/lib/config/network';
 import { fetchHatchPools, STATUS_LABEL } from '@/lib/dbc/pool';
 import { fetchOnChainMetadata } from '@/lib/metadata/token';
-import { formatAmount } from '@/lib/format/amount';
+import { claimableJson, claimableTotalsJson } from '@/lib/claimable';
 import { loadHatchConfigs } from '@/lib/server/presets';
 import { handleCors } from '@/lib/server/cors';
 import { rateLimited } from '@/lib/server/rateLimit';
-import type { HatchSummary } from '@/lib/buddy/schema';
+import type { HatchSummary, HatchesResponse } from '@/lib/buddy/schema';
 
 const REQUESTS_PER_HOUR = 300;
 const symbolCache = new Map<string, string>();
@@ -36,7 +36,7 @@ async function quoteSymbol(connection: Connection, mint: string, isNativeSol: bo
 
 export default async function handler(
   req: NextApiRequest,
-  res: NextApiResponse<{ wallet: string; network: string; hatches: HatchSummary[] } | { error: string }>
+  res: NextApiResponse<HatchesResponse | { error: string }>
 ) {
   if (handleCors(req, res, ['GET'])) return;
   const wallet = typeof req.query.wallet === 'string' ? req.query.wallet : '';
@@ -50,10 +50,12 @@ export default async function handler(
   try {
     const connection = new Connection(serverRpcUrl(), 'confirmed');
     const pools = await fetchHatchPools(connection, loadHatchConfigs(), { creator: wallet });
+    const symbols = new Map<string, string>();
     const hatches = await Promise.all(
       pools.map(async (p): Promise<HatchSummary> => {
         const md = await fetchOnChainMetadata(connection, p.baseMint).catch((): null => null);
         const qSym = await quoteSymbol(connection, p.quote.address, p.quote.isNativeSol);
+        symbols.set(p.quote.address, qSym);
         return {
           name: md?.name || 'Unknown token',
           symbol: md?.symbol || '',
@@ -62,17 +64,15 @@ export default async function handler(
           preset: p.presetId,
           progress: Math.round(p.progress * 10_000) / 100,
           status: STATUS_LABEL[p.status] as HatchSummary['status'],
-          claimableCreatorFees: {
-            amount: formatAmount(p.fees.creatorQuote),
-            symbol: qSym,
-            hasFees: !p.fees.creatorQuote.isZero() || !p.fees.creatorBase.isZero(),
-          },
+          // Same amounts and formatting as the web My Hatches page (lib/claimable).
+          claimableCreatorFees: claimableJson(p, qSym),
           tokenUrl: `/token/${p.baseMint}`,
         };
       })
     );
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(200).json({ wallet, network: NETWORK, hatches });
+    const claimableTotals = claimableTotalsJson(pools, (mint) => symbols.get(mint) ?? `${mint.slice(0, 4)}…`);
+    return res.status(200).json({ wallet, network: NETWORK, hatches, claimableTotals });
   } catch (e) {
     console.error('hatches failed:', e instanceof Error ? e.message : e);
     return res.status(502).json({ error: 'Could not read hatches from chain' });

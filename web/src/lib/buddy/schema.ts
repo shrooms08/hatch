@@ -82,6 +82,15 @@ export type HatchSummary = {
   preset: PresetId | null;
   progress: number; // percent, 2 decimals
   status: 'Incubating' | 'Almost hatched' | 'Hatched';
-  claimableCreatorFees: { amount: string; symbol: string; hasFees: boolean };
+  /**
+   * Unclaimed creator quote fees. `amount` is the display string (formatAmount: "0.0₄4806"; never parse it),
+   * `ui` the exact decimal, `raw` + `decimals` the on-chain units.
+   */
+  claimableCreatorFees: { amount: string; ui: string; raw: string; decimals: number; symbol: string; hasFees: boolean };
   tokenUrl: string;
 };
+
+/** Claimable totals per quote token, as the web My Hatches page shows them. */
+export type ClaimableTotal = { symbol: string; amount: string; ui: string };
+
+export type HatchesResponse = { wallet: string; network: string; hatches: HatchSummary[]; claimableTotals: ClaimableTotal[] };

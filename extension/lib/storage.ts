@@ -1,6 +1,6 @@
 /** browser.storage keys and typed helpers. No keys, wallets' secrets or API keys are ever stored. */
 import { browser } from "wxt/browser";
-import type { HatchSummary } from "./types";
+import type { ClaimableTotal, HatchSummary } from "./types";
 
 export const KEYS = {
   settings: "hatch:settings",
@@ -35,7 +35,8 @@ export const DEFAULT_SETTINGS: Settings = { hiddenSites: [], hiddenEverywhere: f
 export type EggPos = { right: number; bottom: number };
 export const DEFAULT_EGG_POS: EggPos = { right: 24, bottom: 24 };
 
-export type HatchesCache = { wallet: string; at: number; list: HatchSummary[]; error?: string };
+/** `totals`: claimable fees per quote token from /api/hatches (absent in caches written before v0.6.2). */
+export type HatchesCache = { wallet: string; at: number; list: HatchSummary[]; totals?: ClaimableTotal[]; error?: string };
 
 /** Per-mint flags so each milestone is announced once. */
 export type Milestones = Record<string, { seen: boolean; almost: boolean; hatched: boolean; fees: boolean }>;
