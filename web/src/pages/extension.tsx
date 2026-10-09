@@ -5,8 +5,11 @@ import Page from '@/components/ui/Page/Page';
 import { Button, DotField, DownloadIcon, EGG_RADIUS, Overline } from '@/components/ds';
 import { ChickenOrb } from '@/components/ds/ChickenOrb';
 
-const EXTENSION_VERSION = '0.6.0';
+// The public release (R2 releases/, write-once; older zips stay there but are no longer linked).
+const EXTENSION_VERSION = '0.6.2';
 const FILE = `hatch-extension-v${EXTENSION_VERSION}.zip`;
+/** The folder unzipping creates (named after the zip). */
+const FOLDER = FILE.replace(/\.zip$/, '');
 
 type Props = { downloadUrl: string; size: string | null };
 
@@ -36,7 +39,11 @@ const NumberEgg = ({ n }: { n: number }) => (
 const STEPS: { title: string; body: React.ReactNode; art: React.ReactNode }[] = [
   {
     title: 'Unzip',
-    body: 'Double-click the downloaded file to get the hatch-extension folder.',
+    body: (
+      <>
+        Double-click the downloaded file to get the <span className="font-mono text-ink">{FOLDER}</span> folder.
+      </>
+    ),
     art: (
       <div className="flex items-center gap-[18px]">
         <div className="relative flex h-[88px] w-[70px] items-end justify-center rounded-[12px] border border-line-strong bg-surface-3 pb-2.5">
@@ -86,7 +93,11 @@ const STEPS: { title: string; body: React.ReactNode; art: React.ReactNode }[] = 
   },
   {
     title: 'Load unpacked',
-    body: 'Pick the unzipped folder. The chicken appears on your next page.',
+    body: (
+      <>
+        Pick the unzipped <span className="font-mono text-ink">{FOLDER}</span> folder. The chicken appears on your next page.
+      </>
+    ),
     art: (
       <div className="relative">
         <span className="flex h-[42px] items-center rounded-[10px] border-[1.5px] border-yolk bg-yolk/10 px-5 text-sm font-semibold text-ink-accent">Load unpacked</span>
