@@ -7,7 +7,7 @@ export const SITE_ORIGIN = process.env.HATCH_SITE_ORIGIN || '';
 
 export const DEFAULT_SOCIAL = {
   title: 'Hatch · Launch anything you see',
-  description: 'Hatch a coin whose pool is priced in tokenized stock. Pay with SOL; we swap it for you.',
+  description: 'Launch anything you see. A browser buddy that turns news, memes, AI agents and stocks into coins on Meteora DBC, with a built-in sniper shield.',
   image: `${SITE_ORIGIN}/og.png`,
 };
 

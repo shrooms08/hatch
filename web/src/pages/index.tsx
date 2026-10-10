@@ -120,10 +120,10 @@ function HatchHome() {
               <span className="truncate">Stock-paired launches<span className="hidden sm:inline"> with tokenized NVIDIA</span></span>
             </span>
             <h1 className="text-balance font-display text-[38px] font-bold leading-[0.98] tracking-[-0.045em] text-ink sm:text-[56px] xl:text-[76px]">
-              Turn stock news into coins <span className="text-yolk">priced in real stocks.</span>
+              Launch anything <span className="text-yolk">you see.</span>
             </h1>
             <p className="max-w-[560px] text-pretty text-[15px] leading-[1.55] text-ink-2 md:text-[19px]">
-              A browser buddy that spots the news, launches on Meteora DBC, and taxes snipers with the curve itself.
+              A browser buddy that turns news, memes, AI agents and stocks into coins on Meteora DBC. Sniper shield built in.
             </p>
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button asChild glow className="h-[52px] px-7 text-base md:h-[58px]">
