@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { LinkError, MAX_LINK_LENGTH, canonicalize, isLookupPrefix, linkIdHash, lookupPrefix, matchLookup } from '../src/lib/links/canonical.ts';
 import { checkBlocked, blockedDomain } from '../src/lib/links/blocklist.ts';
+import { prefillUrl } from '../src/lib/links/prefill.ts';
 import { isValidName, isValidTicker, sanitizeName, sanitizeTicker, suggestCoin } from '../src/lib/links/suggest.ts';
 import { r2ObjectKey } from '../src/lib/server/r2.ts';
 import { SafeFetchError } from '../src/lib/server/safeFetch.ts';
@@ -240,4 +241,11 @@ test('first buy cap: 1 SOL by default, LINK_MAX_FIRST_BUY_SOL overrides (sane va
     if (saved === undefined) delete process.env.LINK_MAX_FIRST_BUY_SOL;
     else process.env.LINK_MAX_FIRST_BUY_SOL = saved;
   }
+});
+
+test('/link?u= prefill: http(s) URLs only, anything else ignored', () => {
+  assert.equal(prefillUrl('https://www.youtube.com/watch?v=jNQXAC9IVRw'), 'https://www.youtube.com/watch?v=jNQXAC9IVRw');
+  assert.equal(prefillUrl(' http://example.com/a '), 'http://example.com/a');
+  for (const bad of ['javascript:alert(1)', 'data:text/html,hi', 'file:///etc/passwd', 'ftp://x.com', 'not a url', '', undefined, ['https://a.com'], 'https://a.com/' + 'x'.repeat(MAX_LINK_LENGTH)])
+    assert.equal(prefillUrl(bad), null, String(bad).slice(0, 40));
 });

@@ -13,6 +13,20 @@ export const HATCH_WEB_ORIGINS: string[] = [
   ]),
 ];
 
+/**
+ * Dev builds only (build:dev): other web apps the link features may point at for testing, e.g. a local devnet
+ * server (http://localhost:3200). Empty in every other build, so the "Web app" dev setting does not exist there.
+ */
+export const DEV_WEB_URLS: string[] = ((import.meta.env.WXT_HATCH_DEV_WEB_URLS as string | undefined) ?? "")
+  .split(",")
+  .map((u) => u.trim().replace(/\/$/, ""))
+  .filter(Boolean);
+
+/** The web app the link features talk to: the dev setting when it names an allowed dev URL, else HATCH_WEB_URL. */
+export function linkWebBase(devWebBase: string | null | undefined): string {
+  return devWebBase && DEV_WEB_URLS.includes(devWebBase) ? devWebBase : HATCH_WEB_URL;
+}
+
 export type HatchNetwork = "devnet" | "mainnet-beta";
 export const NETWORK: HatchNetwork = (import.meta.env.WXT_HATCH_NETWORK as string | undefined) === "mainnet-beta" ? "mainnet-beta" : "devnet";
 

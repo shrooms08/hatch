@@ -9,7 +9,8 @@ import { baseFeePercentAt, formatFeePercent, hasSniperShield, shieldRange } from
 import { explorerAddressUrl, meteoraPoolUrl } from '@/lib/config/network';
 import { formatAmount, formatPercent } from '@/lib/format/amount';
 import { countdownParts, formatLaunchTime, lifecycleSteps, timeAgo, type StepKey, type StepState } from '@/lib/lifecycle';
-import { stockDisclosure, stockForConfig } from '@/lib/presets';
+import { isLinkConfig, stockDisclosure, stockForConfig } from '@/lib/presets';
+import { useLinkForMint } from './LinkCoinBanner';
 import { useHatchPools, useHolders, useLiveBaseFee, usePresetConfigs, useQuoteSymbol, useTokenMetadata, useUsdPrice } from '@/hooks/useHatch';
 import { cn } from '@/lib/utils';
 import { TokenAvatar } from './TokenAvatar';
@@ -164,6 +165,10 @@ export function HatchInfoCard({ pool }: { pool: HatchPool }) {
   const holders = useHolders(pool.baseMint);
   const stock = useStockOf(pool);
   const usd = useUsdPrice(stock ? pool.quote.address : undefined);
+  const { data: hc } = usePresetConfigs();
+  const isLink = !!hc && isLinkConfig(hc, pool.configKey);
+  const { data: linkInfo } = useLinkForMint(pool.baseMint, isLink);
+  const heldForOwner = isLink && !linkInfo?.claimed;
   const at = launchedAt(pool);
   const fee = hasSniperShield(pool.feeSchedule) ? shieldRange(pool.feeSchedule).end : baseFeePercentAt(pool.feeSchedule, '0', 0);
   const marketCap = stock && pool.totalSupply ? pool.price.mul(pool.totalSupply) : null;
@@ -176,15 +181,33 @@ export function HatchInfoCard({ pool }: { pool: HatchPool }) {
     ['Starting price', <Amount key="s" value={pool.startPrice} unit={quote} className="text-sm" />],
     ['Hatches at', `${formatAmount(pool.thresholdUi)} ${quote}`],
     ['Total supply', pool.totalSupply ? pool.totalSupply.toNumber().toLocaleString('en-US') : '-'],
-    ['Holders', holders.data != null ? holders.data.toLocaleString('en-US') : holders.isLoading ? '…' : '-'],
+    ['Holders', holders.data != null ? holders.data.toLocaleString('en-US') : holders.isError ? 'n/a' : holders.isLoading ? '…' : 'n/a'],
     ['Launched', at ? <span key="t" title={formatLaunchTime(at)}>{timeAgo(at)}</span> : '-'],
   ];
   const right: [string, React.ReactNode][] = [
     ['Quote token', stock ? `${quote} · tokenized ${stock.name}` : quote],
     ['Pay with', pool.quote.isNativeSol ? 'SOL' : `SOL or ${quote}`],
-    ['Trade fee', `${formatFeePercent(fee)} · ${formatFeePercent((fee * pool.creatorFeePct) / 100)} to creator`],
+    [
+      'Trade fee',
+      heldForOwner ? (
+        // Link coins: the full sentence wraps instead of truncating.
+        <span key="f" className="block whitespace-normal">
+          {formatFeePercent(fee)} · {formatFeePercent((fee * pool.creatorFeePct) / 100)} held for the link&apos;s owner until they claim it
+        </span>
+      ) : (
+        `${formatFeePercent(fee)} · ${formatFeePercent((fee * pool.creatorFeePct) / 100)} to creator`
+      ),
+    ],
     ['Pool', pool.isMigrated && pool.dammV2Pool ? link(meteoraPoolUrl(pool.dammV2Pool), `DAMM v2 · ${shortAddr(pool.dammV2Pool, 4)} ↗`) : link(explorerAddressUrl(pool.address), `Meteora DBC · ${shortAddr(pool.address, 4)} ↗`)],
-    ['Creator', link(explorerAddressUrl(pool.creator), shortAddr(pool.creator, 4))],
+    heldForOwner
+      ? [
+          'Fee vault',
+          <span key="v" className="block whitespace-normal">
+            {link(explorerAddressUrl(pool.creator), shortAddr(pool.creator, 4))}{' '}
+            <span className="text-ink-muted">({heldFor(linkInfo)})</span>
+          </span>,
+        ]
+      : ['Creator', link(explorerAddressUrl(pool.creator), shortAddr(pool.creator, 4))],
   ];
   if (stock) {
     left.push([
@@ -217,6 +240,14 @@ export function HatchInfoCard({ pool }: { pool: HatchPool }) {
       {stock && <HonestNote className="rounded-[14px] px-4 py-3.5">{stockDisclosure(stock)}</HonestNote>}
     </Card>
   );
+}
+
+const PLATFORM_NAME: Record<string, string> = { x: 'X', youtube: 'YouTube', github: 'GitHub' };
+/** "held for @jack on X", "held for example.com", or "held for the link's owner" when unknown. */
+function heldFor(info: { ownerHandle: string | null; ownerPlatform: string | null } | null | undefined) {
+  if (!info?.ownerHandle) return "held for the link's owner";
+  const platform = info.ownerPlatform ? PLATFORM_NAME[info.ownerPlatform] : undefined;
+  return `held for ${info.ownerHandle}${platform ? ` on ${platform}` : ''}`;
 }
 
 const formatUsd = (v: number) => (v >= 1000 ? v.toLocaleString('en-US', { maximumFractionDigits: 0 }) : v >= 1 ? v.toFixed(2) : v.toPrecision(2));

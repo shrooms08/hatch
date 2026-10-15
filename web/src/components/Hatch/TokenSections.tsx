@@ -130,7 +130,8 @@ function HeroChips({ mint, pool, quote, domain, url }: { mint: string; pool: Hat
       )}
       {pool && <StatusPill status={pool.status} className="h-[30px]" />}
       {pool?.presetId && <PresetBadge preset={pool.presetId} quote={quote} className="h-[30px]" />}
-      {domain && <InspiredChip domain={domain} href={url} />}
+      {/* Link coins: the "Coin for" card names the link instead. */}
+      {domain && !(pool && hc && isLinkConfig(hc, pool.configKey)) && <InspiredChip domain={domain} href={url} />}
       <AddressChip address={mint} label="Mint" />
     </>
   );

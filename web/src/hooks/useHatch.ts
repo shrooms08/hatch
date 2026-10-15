@@ -168,6 +168,7 @@ export function useHolders(mint: string | undefined) {
     enabled: !!mint,
     staleTime: 60_000,
     refetchInterval: 60_000,
+    retry: 1, // a count that cannot load shows "n/a" instead of waiting through retries
   });
 }
 

@@ -29,8 +29,12 @@ export type Settings = {
   /** Double chirp on heads-ups (hint bubbles) and tracking alerts (80%, hatched, fees). */
   chirpAlerts: boolean;
   noticeAuto: boolean;
+  /** Link coins: also look up ordinary web pages (tweets, YouTube videos and GitHub repos are always looked up). */
+  checkAnyWebsite: boolean;
+  /** Dev builds only: the web app for link features (one of DEV_WEB_URLS); null = the build's web app. */
+  devWebBase: string | null;
 };
-export const DEFAULT_SETTINGS: Settings = { hiddenSites: [], hiddenEverywhere: false, sounds: true, chirpAlerts: true, noticeAuto: true };
+export const DEFAULT_SETTINGS: Settings = { hiddenSites: [], hiddenEverywhere: false, sounds: true, chirpAlerts: true, noticeAuto: true, checkAnyWebsite: false, devWebBase: null };
 
 export type EggPos = { right: number; bottom: number };
 export const DEFAULT_EGG_POS: EggPos = { right: 24, bottom: 24 };

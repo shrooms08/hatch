@@ -9,8 +9,9 @@
 import { defineBackground } from "wxt/utils/define-background";
 import { browser } from "wxt/browser";
 import { api } from "../lib/api";
-import { HATCH_WEB_ORIGINS, POLL_MINUTES, tokenPageUrl, webUrl } from "../lib/config";
-import { SIDEPANEL_PORT, type BgRequest, type NoticeResponse, type OffscreenMessage, type OffscreenResult, type TabMessage } from "../lib/messages";
+import { HATCH_WEB_ORIGINS, POLL_MINUTES, linkWebBase, tokenPageUrl, webUrl } from "../lib/config";
+import { createLinkLookup, httpFetchPrefix } from "../lib/linkCheck";
+import { SIDEPANEL_PORT, type BgRequest, type LinkLookupResponse, type NoticeResponse, type OffscreenMessage, type OffscreenResult, type TabMessage } from "../lib/messages";
 import { SOUNDS, type SoundName } from "../lib/buddy/config";
 import { diffMilestones } from "../lib/milestones";
 import { EMPTY_HEADS_UP, alertChirp, alertKey, headsUpChirp, type HeadsUpState } from "../lib/chirp";
@@ -84,6 +85,19 @@ async function notice(page: Extract<BgRequest, { type: "notice" }>["page"]): Pro
   cache[key] = hint;
   await browser.storage.session.set({ [KEYS.noticed]: cache });
   return { hint };
+}
+
+// ---- link coins: private lookup (8-hex hash prefix only), 60 s cache per prefix, one cache per web app ----
+const linkLookups = new Map<string, ReturnType<typeof createLinkLookup>>();
+async function linkLookup(canonicalId: string): Promise<LinkLookupResponse> {
+  const base = linkWebBase((await getSettings()).devWebBase);
+  let lookup = linkLookups.get(base);
+  if (!lookup) {
+    lookup = createLinkLookup({ fetchPrefix: httpFetchPrefix(base) }); // 404 where link coins are off (mainnet today)
+    linkLookups.set(base, lookup);
+  }
+  const status = await lookup(canonicalId).catch(() => null);
+  return status ? { base, status } : null;
 }
 
 /** A hint bubble appeared on `url`: double chirp, at most once per page per session and once every 2 min. */
@@ -243,6 +257,10 @@ export default defineBackground(() => {
           return { ok: true }; // for the side panel (it listens to runtime messages too)
         case "heads-up":
           return headsUp(msg.url);
+        case "link-lookup":
+          // From a page's content script only; it sends the canonical id, never the page URL.
+          if (!sender.tab || typeof msg.canonicalId !== "string" || msg.canonicalId.length > 2100) return null;
+          return linkLookup(msg.canonicalId);
         case "get-stocks":
           return loadStocks();
         case "debug-alert":

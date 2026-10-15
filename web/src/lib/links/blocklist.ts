@@ -45,7 +45,7 @@ export function checkBlocked(input: { host?: string; texts?: (string | null | un
     const text = words(t);
     for (const { category, re } of WORD_RES) {
       const m = text.match(re);
-      if (m) return { category, match: m[1].toLowerCase() };
+      if (m) return { category, match: (m[1] ?? '').toLowerCase() };
     }
   }
   return null;

@@ -14,6 +14,7 @@ import { countHolders, hasTraded } from '@/lib/server/holders';
 import { allHatchPools } from '@/lib/server/pools';
 import { swr } from '@/lib/server/swrCache';
 import { loadHatchConfigs } from '@/lib/server/presets';
+import { isLinkConfig } from '@/lib/presets';
 
 const TTL_MS = 30_000;
 type Result = { holders: number; hatch: boolean; traded: boolean };
@@ -61,7 +62,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         // The pool from the shared 30 s list (no extra reads); a brand-new pool falls back to a direct lookup.
         const listed = (await allHatchPools().catch((): null => null))?.value.find((p: HatchPool) => p.baseMint === key);
         const pool = listed ?? (await fetchHatchPoolByMint(new Connection(serverRpcUrl(), 'confirmed'), key, hc));
-        if (!pool || pool.presetId === null) return { holders: 0, hatch: false, traded: false };
+        // Hatch launches and link coins (their own config) only.
+        if (!pool || (pool.presetId === null && !isLinkConfig(hc, pool.configKey))) return { holders: 0, hatch: false, traded: false };
         const holders = await readHolders(mint, pool);
         const traded = hasTraded({ quoteReserveRaw: pool.quoteReserveUi.isZero() ? '0' : '1', feesRaw: [pool.fees.creatorQuoteRaw, pool.fees.creatorBaseRaw] });
         return { holders, hatch: true, traded };

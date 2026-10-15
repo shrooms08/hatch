@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
-import { NETWORK, webUrl } from "../../../lib/config";
+import { DEV_WEB_URLS, HATCH_WEB_URL, NETWORK, linkWebBase, webUrl } from "../../../lib/config";
 import { sendToBackground } from "../../../lib/messages";
 import { GridBuddy } from "../../../lib/buddy/grid";
 import { GRID } from "../../../lib/buddy/art";
@@ -77,7 +77,8 @@ export function SettingsTab({ activeUrl }: { activeUrl: string | null }) {
   const host = hostOf(activeUrl);
   const hiddenHere = !!host && settings.hiddenSites.includes(host);
   const otherHidden = settings.hiddenSites.filter((s) => s !== host);
-  const version = browser.runtime.getManifest().version;
+  const manifest = browser.runtime.getManifest();
+  const version = manifest.version_name ?? manifest.version;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto p-3.5">
@@ -96,6 +97,9 @@ export function SettingsTab({ activeUrl }: { activeUrl: string | null }) {
         <Row title="Notice pages automatically" sub="Stock pages and tweets only, once per page">
           <Toggle label="Notice pages automatically" checked={settings.noticeAuto !== false} onChange={(v) => void updateSettings((s) => ({ ...s, noticeAuto: v }))} />
         </Row>
+        <Row title="Check any website" sub="Tweets, YouTube videos and GitHub repos are always checked for a coin. On: other pages too">
+          <Toggle label="Check any website" checked={settings.checkAnyWebsite === true} onChange={(v) => void updateSettings((s) => ({ ...s, checkAnyWebsite: v }))} />
+        </Row>
         <Row title="Hide on this site" sub={host ?? "Open a web page first"} mono>
           <Toggle
             label="Hide on this site"
@@ -110,6 +114,25 @@ export function SettingsTab({ activeUrl }: { activeUrl: string | null }) {
           <Toggle label="Hide everywhere" checked={settings.hiddenEverywhere} onChange={(v) => void updateSettings((s) => ({ ...s, hiddenEverywhere: v }))} />
         </Row>
       </Card>
+
+      {DEV_WEB_URLS.length > 0 && (
+        <Card className="flex flex-col gap-2 rounded-[16px] p-4">
+          <span className="text-[13px] font-semibold">Dev: web app for link coins</span>
+          <span className="text-xs text-ink-muted">Dev builds only. Link lookups, Hatch and View coin use this web app.</span>
+          <select
+            aria-label="Web app for link coins"
+            className="h-9 rounded-[10px] border border-surface-3 bg-surface-2 px-2 font-mono text-xs text-ink"
+            value={linkWebBase(settings.devWebBase)}
+            onChange={(e) => void updateSettings((s) => ({ ...s, devWebBase: e.target.value === HATCH_WEB_URL ? null : e.target.value }))}
+          >
+            {[HATCH_WEB_URL, ...DEV_WEB_URLS].map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
+        </Card>
+      )}
 
       {otherHidden.length > 0 && (
         <Card className="flex flex-col gap-1 rounded-[16px] p-4">

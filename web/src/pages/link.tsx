@@ -2,8 +2,9 @@
 // "Already hatched" or a name/ticker form that hatches it: the server returns ONE partially signed transaction
 // (one-time pool creator + your first buy + creator role to the Hatch vault); your wallet signs and sends it.
 // Deliberately plain; the real design comes later.
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
+import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { Transaction } from '@solana/web3.js';
 import { useWallet } from '@jup-ag/wallet-adapter';
@@ -11,6 +12,7 @@ import Page from '@/components/ui/Page/Page';
 import { Button, Card } from '@/components/ds';
 import { getConnection } from '@/lib/solana/connection';
 import { explorerTxUrl } from '@/lib/config/network';
+import { prefillUrl } from '@/lib/links/prefill';
 
 type Prepared = {
   canonicalId: string;
@@ -36,6 +38,8 @@ const fromBase64 = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCode
 
 export default function LinkPage() {
   const wallet = useWallet();
+  const router = useRouter();
+  const prefilled = useRef(false);
   const [url, setUrl] = useState('');
   const [prep, setPrep] = useState<Prepared | null>(null);
   const [name, setName] = useState('');
@@ -45,13 +49,13 @@ export default function LinkPage() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ mint: string; signature: string } | null>(null);
 
-  const check = async () => {
+  const check = async (target = url) => {
     setError(null);
     setDone(null);
     setPrep(null);
     setBusy('Reading the link…');
     try {
-      const p = await post<Prepared>('/api/links/prepare', { url });
+      const p = await post<Prepared>('/api/links/prepare', { url: target });
       setPrep(p);
       if (p.suggested) {
         setName(p.suggested.name);
@@ -63,6 +67,17 @@ export default function LinkPage() {
       setBusy(null);
     }
   };
+
+  // /link?u=<url>: fill the input and check it right away (the server validates and canonicalizes as usual).
+  useEffect(() => {
+    if (!router.isReady || prefilled.current) return;
+    prefilled.current = true;
+    const u = prefillUrl(router.query.u);
+    if (!u) return;
+    setUrl(u);
+    void check(u);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router.isReady]);
 
   const hatch = async () => {
     if (!wallet.publicKey || !wallet.signTransaction || !prep) return;
@@ -108,7 +123,7 @@ export default function LinkPage() {
             A tweet, YouTube video, GitHub repo or web page
           </label>
           <input id="link-url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://x.com/user/status/…" className="h-11 rounded-md border border-line bg-inset px-3 font-mono text-sm text-ink" />
-          <Button onClick={check} disabled={!url || !!busy}>
+          <Button onClick={() => check()} disabled={!url || !!busy}>
             Check link
           </Button>
         </Card>
