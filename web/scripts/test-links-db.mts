@@ -133,3 +133,32 @@ test('My Hatches: link coins are matched by the wallet that hatched them (hatche
   assert.ok((await store!.listedLinks('devnet')).some((r) => r.canonical_id === hatchedId));
   assert.ok(!(await store!.listedLinks('devnet')).some((r) => r.canonical_id === pendingId));
 });
+
+test('claims: one open claim per link, the destination and action can never change, the claim log is append-only', { skip: !configured && 'Supabase not configured' }, async () => {
+  const id = fresh();
+  const r = { ...(await row(id, mint())), pool: `pool-${randomBytes(6).toString('hex')}` };
+  assert.ok(await store!.reserveLink(r, { prevMint: null }));
+  assert.ok(await store!.markHatched('devnet', id, r.mint));
+  const base = { network: 'devnet' as const, canonical_id: id, mint: r.mint, platform: 'github', account_id: '42', account_login: 'tester', verified_at: new Date().toISOString() };
+  const c = await store!.insertClaim({ ...base, action: 'claim', destination: 'DestOne1111111111111111111111111111111111111' });
+  assert.equal(c.status, 'pending');
+  // A second open claim for the same link is refused by the database.
+  await assert.rejects(() => store!.insertClaim({ ...base, action: 'disown', destination: 'DestTwo1111111111111111111111111111111111111' }), store!.ClaimOpenError);
+  // The destination (and the action) cannot be changed once set.
+  const sb = supabaseAdmin!();
+  const d = await sb.from('claims').update({ destination: 'DestTwo1111111111111111111111111111111111111' }).eq('id', c.id);
+  assert.match(String(d.error?.message), /destination cannot be changed/);
+  const a = await sb.from('claims').update({ action: 'disown' }).eq('id', c.id);
+  assert.match(String(a.error?.message), /action cannot be changed/);
+  // Status transitions still work; once rejected the link is free for a new claim (to change the wallet).
+  assert.equal((await store!.updateClaim(c.id, { status: 'rejected' }, ['pending', 'proposed']))?.status, 'rejected');
+  const again = await store!.insertClaim({ ...base, action: 'disown', destination: 'DestTwo1111111111111111111111111111111111111' });
+  assert.equal(again.action, 'disown');
+  await store!.updateClaim(again.id, { status: 'failed' }, ['pending']);
+  // The log: insert works, update / delete are refused. (A test row stays: the log is append-only by design.)
+  await store!.appendClaimLog({ network: 'devnet', claim_id: null, canonical_id: id, event: 'test', detail: { from: 'test-links-db' } });
+  const logged = await sb.from('claim_log').select('id').eq('canonical_id', id).limit(1).single();
+  assert.ok(logged.data?.id);
+  assert.match(String((await sb.from('claim_log').update({ event: 'tampered' }).eq('id', logged.data!.id)).error?.message), /append-only/);
+  assert.match(String((await sb.from('claim_log').delete().eq('id', logged.data!.id)).error?.message), /append-only/);
+});

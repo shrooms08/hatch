@@ -72,3 +72,17 @@ export function dailyCapReached(res: NextApiResponse, bucket: CapBucket = 'draft
   s.count++;
   return false;
 }
+
+/** Per-key limit (e.g. per verified account, on top of the per-IP limit). True when over `limit` per `windowMs`. */
+export function keyLimited(key: string, limit: number, windowMs: number): boolean {
+  const now = Date.now();
+  const k = `key:${key}`;
+  const recent = (hits.get(k) ?? []).filter((t) => now - t < windowMs);
+  if (recent.length >= limit) {
+    hits.set(k, recent);
+    return true;
+  }
+  recent.push(now);
+  hits.set(k, recent);
+  return false;
+}

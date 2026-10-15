@@ -168,7 +168,8 @@ export function HatchInfoCard({ pool }: { pool: HatchPool }) {
   const { data: hc } = usePresetConfigs();
   const isLink = !!hc && isLinkConfig(hc, pool.configKey);
   const { data: linkInfo } = useLinkForMint(pool.baseMint, isLink);
-  const heldForOwner = isLink && !linkInfo?.claimed;
+  const handedOver = isLink && (!!linkInfo?.claimed || !!linkInfo?.disowned);
+  const heldForOwner = isLink && !handedOver;
   const at = launchedAt(pool);
   const fee = hasSniperShield(pool.feeSchedule) ? shieldRange(pool.feeSchedule).end : baseFeePercentAt(pool.feeSchedule, '0', 0);
   const marketCap = stock && pool.totalSupply ? pool.price.mul(pool.totalSupply) : null;
@@ -192,7 +193,11 @@ export function HatchInfoCard({ pool }: { pool: HatchPool }) {
       heldForOwner ? (
         // Link coins: the full sentence wraps instead of truncating.
         <span key="f" className="block whitespace-normal">
-          {formatFeePercent(fee)} · {formatFeePercent((fee * pool.creatorFeePct) / 100)} held for the link&apos;s owner until they claim it
+          {formatFeePercent(fee)} · {formatFeePercent((fee * pool.creatorFeePct) / 100)} held for the link&apos;s owner by Hatch&apos;s vault until they claim it
+        </span>
+      ) : handedOver ? (
+        <span key="f" className="block whitespace-normal">
+          {formatFeePercent(fee)} · {formatFeePercent((fee * pool.creatorFeePct) / 100)} {linkInfo?.disowned ? 'goes to the wallet the owner chose' : "goes to the link's owner"}
         </span>
       ) : (
         `${formatFeePercent(fee)} · ${formatFeePercent((fee * pool.creatorFeePct) / 100)} to creator`
@@ -207,7 +212,15 @@ export function HatchInfoCard({ pool }: { pool: HatchPool }) {
             <span className="text-ink-muted">({heldFor(linkInfo)})</span>
           </span>,
         ]
-      : ['Creator', link(explorerAddressUrl(pool.creator), shortAddr(pool.creator, 4))],
+      : handedOver
+        ? [
+            'Creator',
+            <span key="c" className="block whitespace-normal">
+              {link(explorerAddressUrl(pool.creator), shortAddr(pool.creator, 4))}{' '}
+              <span className="text-ink-muted">({linkInfo?.disowned ? 'chosen by the owner' : "the link's owner"})</span>
+            </span>,
+          ]
+        : ['Creator', link(explorerAddressUrl(pool.creator), shortAddr(pool.creator, 4))],
   ];
   if (stock) {
     left.push([
@@ -245,9 +258,9 @@ export function HatchInfoCard({ pool }: { pool: HatchPool }) {
 const PLATFORM_NAME: Record<string, string> = { x: 'X', youtube: 'YouTube', github: 'GitHub' };
 /** "held for @jack on X", "held for example.com", or "held for the link's owner" when unknown. */
 function heldFor(info: { ownerHandle: string | null; ownerPlatform: string | null } | null | undefined) {
-  if (!info?.ownerHandle) return "held for the link's owner";
+  if (!info?.ownerHandle) return "held for the link's owner by Hatch's vault";
   const platform = info.ownerPlatform ? PLATFORM_NAME[info.ownerPlatform] : undefined;
-  return `held for ${info.ownerHandle}${platform ? ` on ${platform}` : ''}`;
+  return `held for ${info.ownerHandle}${platform ? ` on ${platform}` : ''} by Hatch's vault`;
 }
 
 const formatUsd = (v: number) => (v >= 1000 ? v.toLocaleString('en-US', { maximumFractionDigits: 0 }) : v >= 1 ? v.toFixed(2) : v.toPrecision(2));

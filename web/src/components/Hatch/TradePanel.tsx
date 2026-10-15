@@ -20,12 +20,18 @@ import { useHasTokenAccount, useLiveBaseFee, useQuoteSymbol, useRentPerByte, use
 import { isLinkConfig } from '@/lib/presets';
 import { OpenInWallet } from './OpenInWallet';
 import { SNIPER_SHIELD_LINE, feeSentence, formatFeePercent } from '@/lib/dbc/feeSchedule';
+import { useLinkForMint } from './LinkCoinBanner';
 
 const SLIPPAGE_OPTIONS = [50, 100, 200];
 
 /** Link coins: the creator share is not the hatcher's; it is held for the link's owner until they claim it. */
-function linkFeeSentence(o: { start: string | null; end: string; ownerShare: string }) {
-  const held = `${o.ownerShare} held for the link's owner until they claim it`;
+function linkFeeSentence(o: { start: string | null; end: string; ownerShare: string; state?: 'held' | 'claimed' | 'disowned' }) {
+  const held =
+    o.state === 'claimed'
+      ? `${o.ownerShare} goes to the link's owner`
+      : o.state === 'disowned'
+        ? `${o.ownerShare} goes to the wallet the owner chose`
+        : `${o.ownerShare} held for the link's owner by Hatch's vault until they claim it`;
   return o.start ? `Fees start at ${o.start} for the first minute so bots pay, then ${o.end} per trade (${held}).` : `${o.end} fee per trade (${held}).`;
 }
 const SOL_FEE_BUFFER = 0.01; // keep some SOL for fees (and new token-account rent) when paying with SOL
@@ -116,6 +122,7 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
   }, [preview.error]);
   const { data: hc } = usePresetConfigs();
   const isLinkCoin = !!hc && isLinkConfig(hc, pool.configKey);
+  const { data: linkInfo } = useLinkForMint(pool.baseMint, isLinkCoin);
 
   if (pool.isMigrated) return null; // the page shows "Trade on Meteora" instead
   // Not a Hatch launch: no trading here. Link coins (their own config, see /link) are Hatch launches too.
@@ -310,6 +317,7 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
                   start: fee.shield ? formatFeePercent(fee.shield.start) : null,
                   end: formatFeePercent(fee.shield ? fee.shield.end : (fee.percent ?? 1)),
                   ownerShare: formatFeePercent(((fee.shield ? fee.shield.end : (fee.percent ?? 1)) * pool.creatorFeePct) / 100),
+                  state: linkInfo?.disowned ? 'disowned' : linkInfo?.claimed ? 'claimed' : 'held',
                 })
               : feeSentence({
                   shield: !!fee.shield,

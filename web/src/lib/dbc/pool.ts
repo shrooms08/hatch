@@ -233,7 +233,9 @@ export async function fetchHatchPools(
   opts: { creator?: string; publicList?: boolean } = {}
 ): Promise<HatchPool[]> {
   const client = dbcClient(connection);
-  const configKeys = allConfigKeys(hc);
+  // Creator scans include the link configs: a link coin's owner holds the creator role once they claim it, and
+  // claims future fees from My Hatches like any creator.
+  const configKeys = opts.creator ? listedConfigKeys(hc) : allConfigKeys(hc);
   const configs = new Map<string, PoolConfig>();
   await Promise.all(
     configKeys.map(async (k) => {

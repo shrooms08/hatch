@@ -227,17 +227,17 @@ test('GitHub API failures: rate limits and outages say "try again", never hatch 
   assert.equal(githubRepoIdOrThrow({ githubRepoId: 123456 }), 123456);
 });
 
-test('first buy cap: 1 SOL by default, LINK_MAX_FIRST_BUY_SOL overrides (sane values only)', () => {
+test('first buy cap: 0.5 SOL by default, LINK_MAX_FIRST_BUY_SOL overrides (sane values only)', () => {
   const saved = process.env.LINK_MAX_FIRST_BUY_SOL;
   try {
     delete process.env.LINK_MAX_FIRST_BUY_SOL;
-    assert.equal(LINK_MAX_FIRST_BUY_SOL, 1);
-    assert.equal(maxFirstBuySol(), 1);
-    process.env.LINK_MAX_FIRST_BUY_SOL = '0.5';
+    assert.equal(LINK_MAX_FIRST_BUY_SOL, 0.5);
     assert.equal(maxFirstBuySol(), 0.5);
+    process.env.LINK_MAX_FIRST_BUY_SOL = '0.25';
+    assert.equal(maxFirstBuySol(), 0.25);
     for (const bad of ['0', '-1', 'abc', '1000']) {
       process.env.LINK_MAX_FIRST_BUY_SOL = bad;
-      assert.equal(maxFirstBuySol(), 1, bad);
+      assert.equal(maxFirstBuySol(), 0.5, bad);
     }
   } finally {
     if (saved === undefined) delete process.env.LINK_MAX_FIRST_BUY_SOL;

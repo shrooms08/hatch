@@ -320,7 +320,7 @@ export async function listedLinkPools(): Promise<HatchPool[]> {
   return value;
 }
 
-export type MyLinkHatch = { mint: string; pool: string; canonicalId: string; link: PoolLink; claimed: boolean };
+export type MyLinkHatch = { mint: string; pool: string; canonicalId: string; link: PoolLink; claimed: boolean; disowned: boolean };
 
 /** Link coins this wallet hatched (it paid for the creation transaction). */
 export async function linkHatchesFor(wallet: unknown): Promise<MyLinkHatch[]> {
@@ -332,7 +332,7 @@ export async function linkHatchesFor(wallet: unknown): Promise<MyLinkHatch[]> {
   }
   const network = requireNetwork();
   const { value } = await swr(`links:hatched-by:${network}:${address}`, 15_000, async () =>
-    (await linksHatchedBy(network, address)).map((r) => ({ mint: r.mint!, pool: r.pool!, canonicalId: r.canonical_id, link: toPoolLinkRow(r), claimed: r.status === 'claimed' }))
+    (await linksHatchedBy(network, address)).map((r) => ({ mint: r.mint!, pool: r.pool!, canonicalId: r.canonical_id, link: toPoolLinkRow(r), claimed: r.status === 'claimed', disowned: r.status === 'disowned' }))
   );
   return value;
 }
@@ -343,8 +343,24 @@ export async function linkForMint(mint: string) {
   const network = requireNetwork();
   const { value } = await swr(`links:mint:${network}:${mint}`, 30_000, async () => {
     const r = await getLinkByMint(network, mint);
-    if (!r || (r.status !== 'hatched' && r.status !== 'claimed')) return null;
-    return { canonicalId: r.canonical_id, kind: r.kind, displayUrl: r.display_url, title: r.title, ownerPlatform: r.owner_platform, ownerHandle: r.owner_handle, status: r.status, claimed: r.status === 'claimed' };
+    if (!r || (r.status !== 'hatched' && r.status !== 'claimed' && r.status !== 'disowned')) return null;
+    return {
+      canonicalId: r.canonical_id,
+      kind: r.kind,
+      displayUrl: r.display_url,
+      title: r.title,
+      ownerPlatform: r.owner_platform,
+      ownerHandle: r.owner_handle,
+      status: r.status,
+      claimed: r.status === 'claimed',
+      disowned: r.status === 'disowned',
+      /** Where the owner's share goes now (claimed: their wallet; disowned: the wallet they chose). */
+      claimedWallet: r.claimed_wallet,
+      /** The scout: the wallet that paid for the creation transaction (credit only, no fee share). */
+      hatchedBy: r.hatched_by,
+      /** The first buy inside the creation transaction (the exact amount built into it; the pool only exists if it landed). */
+      firstBuyLamports: r.first_buy_lamports,
+    };
   });
   return value;
 }

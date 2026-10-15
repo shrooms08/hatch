@@ -14,8 +14,8 @@ import { isSupabaseConfigured } from '@/lib/server/supabase';
 import type { LinkNetwork } from './store';
 
 export const WSOL = new PublicKey('So11111111111111111111111111111111111111112');
-/** Most a hatcher may spend on the first buy, in SOL. LINK_MAX_FIRST_BUY_SOL overrides (0 < x <= 100). */
-export const LINK_MAX_FIRST_BUY_SOL = 1;
+/** Most a hatcher may spend on the first buy, in SOL (0.5 since P4a). LINK_MAX_FIRST_BUY_SOL overrides (0 < x <= 100). */
+export const LINK_MAX_FIRST_BUY_SOL = 0.5;
 export function maxFirstBuySol(): number {
   const v = Number(process.env.LINK_MAX_FIRST_BUY_SOL);
   return Number.isFinite(v) && v > 0 && v <= 100 ? v : LINK_MAX_FIRST_BUY_SOL;

@@ -131,7 +131,7 @@ function LinkHatchCard({ hatch, listed }: { hatch: MyLinkHatch; listed?: HatchPo
       </Link>
       {pool && <ShellBar progress={pool.progress} hatched={pool.isMigrated} height={8} />}
       <span className="truncate text-[13px] text-ink-2">
-        You hatched this · {feesLabel(hatch.link, hatch.claimed)}
+        You hatched this · {feesLabel(hatch.link, hatch.claimed, hatch.disowned)}
       </span>
     </Card>
   );

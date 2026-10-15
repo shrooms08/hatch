@@ -33,6 +33,8 @@ export type LinkRow = {
   claimed_at: string | null;
   /** GitHub repos: the numeric repo id (unique per network). */
   github_repo_id: number | null;
+  owner_verified_id?: string | null;
+  owner_verified_at?: string | null;
 };
 
 /** The reservation collided with another row's unique key (e.g. the same GitHub repo under another name). */
@@ -74,14 +76,14 @@ export type ListedLinkRow = Pick<LinkRow, 'canonical_id' | 'kind' | 'mint' | 'po
 
 /** Every live link coin on a network (hatched or claimed), for the public Hatches list. */
 export async function listedLinks(network: LinkNetwork): Promise<ListedLinkRow[]> {
-  const { data, error } = await supabaseAdmin().from('links').select(LISTED_COLUMNS).eq('network', network).in('status', ['hatched', 'claimed']).not('mint', 'is', null).limit(5000);
+  const { data, error } = await supabaseAdmin().from('links').select(LISTED_COLUMNS).eq('network', network).in('status', ['hatched', 'claimed', 'disowned']).not('mint', 'is', null).limit(5000);
   if (error) fail('listed links', error);
   return (data as ListedLinkRow[]) ?? [];
 }
 
 /** Live link coins a wallet hatched (paid for: the creation transaction's fee payer, stored at hatch time). */
 export async function linksHatchedBy(network: LinkNetwork, wallet: string): Promise<ListedLinkRow[]> {
-  const { data, error } = await supabaseAdmin().from('links').select(LISTED_COLUMNS).eq('network', network).eq('hatched_by', wallet).in('status', ['hatched', 'claimed']).not('mint', 'is', null).limit(200);
+  const { data, error } = await supabaseAdmin().from('links').select(LISTED_COLUMNS).eq('network', network).eq('hatched_by', wallet).in('status', ['hatched', 'claimed', 'disowned']).not('mint', 'is', null).limit(200);
   if (error) fail('links hatched by', error);
   return (data as ListedLinkRow[]) ?? [];
 }
@@ -142,4 +144,126 @@ export async function releaseExpired(network: LinkNetwork, canonicalId: string, 
 export async function dropOwnReservation(network: LinkNetwork, canonicalId: string, mint: string): Promise<void> {
   const { error } = await supabaseAdmin().from('links').delete().eq('network', network).eq('canonical_id', canonicalId).eq('mint', mint).eq('status', 'reserved');
   if (error) fail('drop reservation', error);
+}
+
+// ---------- claims (P4a) ----------
+
+export type ClaimStatus = 'pending' | 'proposed' | 'approved' | 'executed' | 'rejected' | 'failed';
+export type ClaimRow = {
+  id: string;
+  network: LinkNetwork;
+  canonical_id: string;
+  mint: string | null;
+  platform: string;
+  action: 'claim' | 'disown';
+  account_id: string;
+  account_login: string | null;
+  verified_handle: string | null;
+  verified_at: string;
+  owner_wallet: string;
+  destination: string;
+  squads_proposal: string | null;
+  transaction_index: number | null;
+  held_lamports: number | null;
+  received_lamports: number | null;
+  propose_signatures: string[];
+  approve_signature: string | null;
+  execute_signature: string | null;
+  status: ClaimStatus;
+  error: string | null;
+  created_at: string;
+  executed_at: string | null;
+};
+
+/** Another claim for this link is already open (pending, proposed or approved). */
+export class ClaimOpenError extends Error {}
+
+export type NewClaim = Pick<ClaimRow, 'network' | 'canonical_id' | 'mint' | 'platform' | 'action' | 'account_id' | 'account_login' | 'verified_at' | 'destination'>;
+
+export async function insertClaim(c: NewClaim): Promise<ClaimRow> {
+  const { data, error } = await supabaseAdmin()
+    .from('claims')
+    .insert({ ...c, verified_handle: c.account_login, owner_wallet: c.destination, status: 'pending' })
+    .select('*')
+    .single();
+  if (error?.code === '23505') throw new ClaimOpenError('A claim for this coin is already open');
+  if (error) fail('insert claim', error);
+  return data as ClaimRow;
+}
+
+/** Updates a claim. `from` guards the transition (only rows currently in one of these states change). */
+export async function updateClaim(id: string, patch: Partial<Omit<ClaimRow, 'id' | 'destination' | 'action'>>, from?: ClaimStatus[]): Promise<ClaimRow | null> {
+  let q = supabaseAdmin().from('claims').update(patch).eq('id', id);
+  if (from) q = q.in('status', from);
+  const { data, error } = await q.select('*').maybeSingle();
+  if (error) fail('update claim', error);
+  return (data as ClaimRow) ?? null;
+}
+
+export async function getClaim(id: string): Promise<ClaimRow | null> {
+  if (!/^[0-9a-f-]{36}$/.test(id)) return null;
+  const { data, error } = await supabaseAdmin().from('claims').select('*').eq('id', id).maybeSingle();
+  if (error) fail('get claim', error);
+  return (data as ClaimRow) ?? null;
+}
+
+export async function claimsForLink(network: LinkNetwork, canonicalId: string): Promise<ClaimRow[]> {
+  const { data, error } = await supabaseAdmin().from('claims').select('*').eq('network', network).eq('canonical_id', canonicalId).order('created_at', { ascending: false }).limit(20);
+  if (error) fail('claims for link', error);
+  return (data as ClaimRow[]) ?? [];
+}
+
+export async function claimsByStatus(network: LinkNetwork, statuses: ClaimStatus[], limit = 100): Promise<ClaimRow[]> {
+  const { data, error } = await supabaseAdmin().from('claims').select('*').eq('network', network).in('status', statuses).order('created_at', { ascending: false }).limit(limit);
+  if (error) fail('claims by status', error);
+  return (data as ClaimRow[]) ?? [];
+}
+
+export type ClaimLogEntry = {
+  network: LinkNetwork;
+  claim_id: string | null;
+  canonical_id: string;
+  event: string;
+  platform?: string | null;
+  account_id?: string | null;
+  account_login?: string | null;
+  destination?: string | null;
+  proposal?: string | null;
+  signatures?: string[];
+  detail?: Record<string, unknown>;
+};
+
+/** Append-only (the table refuses updates and deletes). */
+export async function appendClaimLog(e: ClaimLogEntry): Promise<void> {
+  const { error } = await supabaseAdmin().from('claim_log').insert({ signatures: [], detail: {}, ...e });
+  if (error) fail('claim log', error);
+}
+
+export async function claimLogFor(claimId: string) {
+  const { data, error } = await supabaseAdmin().from('claim_log').select('*').eq('claim_id', claimId).order('id');
+  if (error) fail('claim log read', error);
+  return data ?? [];
+}
+
+/** After an executed handover: the link is claimed (or disowned) by the verified account, paid to `wallet`. */
+export async function markLinkHandedOver(network: LinkNetwork, canonicalId: string, mint: string, status: 'claimed' | 'disowned', wallet: string, accountId: string): Promise<LinkRow | null> {
+  const now = new Date().toISOString();
+  const { data, error } = await supabaseAdmin()
+    .from('links')
+    .update({ status, claimed_wallet: wallet, claimed_at: now, owner_verified_id: accountId, owner_verified_at: now })
+    .eq('network', network)
+    .eq('canonical_id', canonicalId)
+    .eq('mint', mint)
+    .eq('status', 'hatched')
+    .select('*')
+    .maybeSingle();
+  if (error) fail('mark handed over', error);
+  return (data as LinkRow) ?? null;
+}
+
+/** Scouts: who hatched which live link coins. */
+export async function hatchersOfLiveLinks(network: LinkNetwork) {
+  const { data, error } = await supabaseAdmin().from('links').select('hatched_by, mint, pool, status').eq('network', network).in('status', ['hatched', 'claimed', 'disowned']).not('hatched_by', 'is', null).limit(5000);
+  if (error) fail('scouts', error);
+  return (data as Pick<LinkRow, 'hatched_by' | 'mint' | 'pool' | 'status'>[]) ?? [];
 }

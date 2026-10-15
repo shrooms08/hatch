@@ -31,7 +31,7 @@ export function toPoolLink(row: ListedLinkLike): PoolLink {
  * on-chain creator is the Hatch vault, or the owner's wallet once claimed.
  */
 export function verifyListedLinks(pools: readonly Pick<HatchPool, 'baseMint' | 'address' | 'creator' | 'isLink'>[], rows: readonly ListedLinkLike[], vault: string): Map<string, PoolLink> {
-  const byMint = new Map(rows.filter((r) => r.mint && (r.status === 'hatched' || r.status === 'claimed')).map((r) => [r.mint!, r]));
+  const byMint = new Map(rows.filter((r) => r.mint && (r.status === 'hatched' || r.status === 'claimed' || r.status === 'disowned')).map((r) => [r.mint!, r]));
   const out = new Map<string, PoolLink>();
   for (const p of pools) {
     if (!p.isLink) continue;
@@ -43,8 +43,12 @@ export function verifyListedLinks(pools: readonly Pick<HatchPool, 'baseMint' | '
   return out;
 }
 
-/** "fees held for @jawed on YouTube" (unclaimed), "fees go to @jawed on YouTube" (claimed). */
-export function feesLabel(link: Pick<PoolLink, 'platform' | 'ownerHandle'>, claimed: boolean): string {
+/**
+ * "fees held for @jawed on YouTube" (unclaimed), "fees go to @jawed on YouTube" (claimed),
+ * "disowned by the owner" (the owner had the held fees sent to a wallet they chose).
+ */
+export function feesLabel(link: Pick<PoolLink, 'platform' | 'ownerHandle'>, claimed: boolean, disowned = false): string {
+  if (disowned) return 'disowned by the owner';
   const who = link.ownerHandle ? `${link.ownerHandle}${link.platform !== 'web' ? ` on ${PLATFORM_NAME[link.platform]}` : ''}` : "the link's owner";
   return claimed ? `fees go to ${who}` : `fees held for ${who}`;
 }
