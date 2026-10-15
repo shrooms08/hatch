@@ -42,6 +42,7 @@ export function usePresetConfigs() {
         hiddenMints: body.hiddenMints,
         testMints: body.testMints ?? [],
         legacy: body.legacy ?? [],
+        link: body.link ?? null,
         copy: body.copy ?? {},
       };
     },

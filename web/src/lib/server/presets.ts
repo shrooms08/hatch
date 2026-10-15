@@ -117,7 +117,16 @@ export function loadHatchConfigs(): HatchConfigs {
     hiddenMints: loadMintList('HIDDEN_MINTS'),
     testMints: loadMintList('TEST_MINTS'),
     legacy: loadLegacyConfigs(),
+    link: loadLinkConfig(),
   };
+}
+
+/** LINK_CONFIG + LINK_VAULT (both public keys): link coins are enabled only when both are set. */
+function loadLinkConfig(): { config: string; vault: string } | null {
+  const config = process.env.LINK_CONFIG?.trim();
+  const vault = process.env.LINK_VAULT?.trim();
+  if (!config || !vault) return null;
+  return { config: pubkey(config, 'LINK_CONFIG'), vault: pubkey(vault, 'LINK_VAULT') };
 }
 
 /** Config for a launch. STOCK needs a ticker that exists in STOCK_CONFIGS on this network. */

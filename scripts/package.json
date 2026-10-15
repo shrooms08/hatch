@@ -23,7 +23,10 @@
     "status-mainnet": "node --env-file-if-exists=.env --import tsx src/status-mainnet.ts",
     "claim-partner-fees-mainnet": "node --env-file-if-exists=.env --import tsx src/claim-partner-fees-mainnet.ts",
     "swap-nvdax-to-sol-mainnet": "node --env-file-if-exists=.env --import tsx src/swap-nvdax-to-sol-mainnet.ts",
-    "create-config-v2-mainnet": "node --env-file-if-exists=.env --import tsx src/create-config-v2-mainnet.ts"
+    "create-config-v2-mainnet": "node --env-file-if-exists=.env --import tsx src/create-config-v2-mainnet.ts",
+    "create-config-link-mainnet": "node --env-file-if-exists=.env --import tsx src/create-config-link-mainnet.ts",
+    "create-squads-vault-mainnet": "node --env-file-if-exists=.env --import tsx src/create-squads-vault-mainnet.ts",
+    "link-proof-devnet": "tsx src/link-proof-devnet.ts"
   },
   "dependencies": {
     "@meteora-ag/cp-amm-sdk": "1.5.1",
@@ -31,6 +34,7 @@
     "@solana/spl-token": "0.4.15",
     "@solana/spl-token-metadata": "0.1.6",
     "@solana/web3.js": "^1.99.0",
+    "@sqds/multisig": "^2.1.4",
     "bn.js": "^5.2.5"
   },
   "devDependencies": {

@@ -170,7 +170,8 @@ export async function fetchHatchPoolByMint(
   const client = dbcClient(connection);
   const mint = new PublicKey(baseMint);
   // Hatch pools sit at a PDA of (quote mint, base mint, config): plain account reads, no program scan.
-  for (const key of allConfigKeys(hc)) {
+  // Link coins (their own config, not listed with launches) are found the same way.
+  for (const key of [...allConfigKeys(hc), ...(hc.link ? [hc.link.config] : [])]) {
     const config = await client.state.getPoolConfig(key);
     if (!config) continue;
     const address = deriveDbcPoolAddress(config.quoteMint, mint, new PublicKey(key));

@@ -1,0 +1,99 @@
+// Link reservations against the real database (Postgres functions in supabase/migrations). Skipped when
+// SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are not set. Uses throwaway rows (web:race.hatch-test.dev/...) and
+// deletes them afterwards. Run: pnpm test
+import { test, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
+
+try {
+  process.loadEnvFile('.env.local');
+} catch {
+  /* no local env: the test skips */
+}
+const configured = !!process.env.SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+const { linkIdHash } = await import('../src/lib/links/canonical.ts');
+const store = configured ? await import('../src/lib/server/links/store.ts') : null;
+const { supabaseAdmin } = configured ? await import('../src/lib/server/supabase.ts') : { supabaseAdmin: null };
+
+const ids: string[] = [];
+after(async () => {
+  if (configured && ids.length) await supabaseAdmin!().from('links').delete().eq('network', 'devnet').in('canonical_id', ids);
+});
+
+async function row(canonicalId: string, mint: string) {
+  return {
+    network: 'devnet' as const,
+    canonical_id: canonicalId,
+    id_hash: await linkIdHash(canonicalId),
+    kind: 'web_page' as const,
+    display_url: `https://${canonicalId.slice(4)}`,
+    title: 'race test',
+    image_url: null,
+    owner_platform: 'web',
+    owner_handle: 'race.hatch-test.dev',
+    owner_id: null,
+    coin_name: 'Race Test',
+    coin_ticker: 'RACE',
+    metadata_url: null,
+    mint,
+    pool: null,
+    config: null,
+    hatched_by: 'tester',
+    first_buy_lamports: 0,
+  };
+}
+const fresh = () => {
+  const id = `web:race.hatch-test.dev/${randomBytes(6).toString('hex')}`;
+  ids.push(id);
+  return id;
+};
+const mint = () => `mint-${randomBytes(8).toString('hex')}`;
+
+test('reservation race: 10 hatch requests for one link at once, exactly one wins', { skip: !configured && 'Supabase not configured' }, async () => {
+  const id = fresh();
+  const results = await Promise.all(Array.from({ length: 10 }, async () => store!.reserveLink(await row(id, mint()), { prevMint: null })));
+  const winners = results.filter(Boolean);
+  assert.equal(winners.length, 1, `winners: ${winners.length}`);
+  const stored = await store!.getLink('devnet', id);
+  assert.equal(stored?.mint, winners[0]!.mint);
+  assert.equal(stored?.status, 'reserved');
+});
+
+test('an expired reservation can be taken over (only with the right previous mint); a hatched link never', { skip: !configured && 'Supabase not configured' }, async () => {
+  const id = fresh();
+  const first = mint();
+  assert.ok(await store!.reserveLink(await row(id, first), { prevMint: null, ttlSeconds: 1 }));
+  assert.equal(await store!.reserveLink(await row(id, mint()), { prevMint: null }), null, 'still reserved: refused');
+  await new Promise((r) => setTimeout(r, 1600));
+  assert.equal(await store!.reserveLink(await row(id, mint()), { prevMint: 'some-other-mint' }), null, 'wrong previous mint: refused');
+  const second = mint();
+  const taken = await store!.reserveLink(await row(id, second), { prevMint: first });
+  assert.equal(taken?.mint, second, 'expired: taken over');
+  assert.ok(await store!.markHatched('devnet', id, second));
+  assert.equal((await store!.getLink('devnet', id))?.status, 'hatched');
+  // Hatched is final: no takeover, no matter what.
+  assert.equal(await store!.reserveLink(await row(id, mint()), { prevMint: second }), null);
+  assert.equal(await store!.reserveLink(await row(id, mint()), { prevMint: null }), null);
+  assert.equal(await store!.markHatched('devnet', id, 'another-mint'), null, 'only the reserved mint can be marked hatched');
+});
+
+test('release: only an expired reservation, only for its mint', { skip: !configured && 'Supabase not configured' }, async () => {
+  const id = fresh();
+  const m = mint();
+  assert.ok(await store!.reserveLink(await row(id, m), { prevMint: null, ttlSeconds: 1 }));
+  assert.equal(await store!.releaseExpired('devnet', id, m), false, 'not expired yet');
+  await new Promise((r) => setTimeout(r, 1600));
+  assert.equal(await store!.releaseExpired('devnet', id, 'other'), false, 'other mint');
+  assert.equal(await store!.releaseExpired('devnet', id, m), true);
+  assert.equal(await store!.getLink('devnet', id), null);
+});
+
+test('prefix lookup returns every link sharing the 8-hex prefix (and only those)', { skip: !configured && 'Supabase not configured' }, async () => {
+  const id = fresh();
+  const r = await row(id, mint());
+  assert.ok(await store!.reserveLink(r, { prevMint: null }));
+  const hits = await store!.linksByPrefix('devnet', r.id_hash.slice(0, 8));
+  assert.ok(hits.some((h) => h.canonical_id === id));
+  assert.ok(hits.every((h) => h.id_hash.startsWith(r.id_hash.slice(0, 8))));
+  assert.rejects(() => store!.linksByPrefix('devnet', "abc'; drop"), /bad prefix/);
+});

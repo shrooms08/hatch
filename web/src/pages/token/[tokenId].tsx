@@ -3,6 +3,9 @@ import { useHatchPool, useRouteMint, useTokenMetadata } from '@/hooks/useHatch';
 import { TradePanel } from '@/components/Hatch/TradePanel';
 import { AboutCard, HatchedCard, LiveShieldCard, ProgressCard, SniperReceiptCard, TokenHero, TradeOnMeteora } from '@/components/Hatch/TokenSections';
 import { HatchInfoCard, LifecycleStepper, MoreHatches } from '@/components/Hatch/TokenLayout';
+import { LinkCoinBanner } from '@/components/Hatch/LinkCoinBanner';
+import { usePresetConfigs } from '@/hooks/useHatch';
+import { isLinkConfig } from '@/lib/presets';
 import { Button, Card, Skeleton } from '@/components/ds';
 import { ClaimCreatorFees } from '@/components/Hatch/ClaimCreatorFees';
 import Head from 'next/head';
@@ -32,6 +35,7 @@ const NotHatchLaunch = () => (
 const HatchOnChain = ({ mint }: { mint: string }) => {
   const { data: pool, isLoading, error, refetch } = useHatchPool(mint);
   const { data: md } = useTokenMetadata(mint);
+  const { data: hc } = usePresetConfigs();
   const symbol = md?.symbol || 'token';
 
   if (isLoading)
@@ -60,6 +64,7 @@ const HatchOnChain = ({ mint }: { mint: string }) => {
     // Design v2: lifecycle stepper; two columns (progress, shield, info, about | trade, earnings); more hatches.
     // Mobile: one column in the order progress, trade + earnings, shield, info, about.
     <>
+      {hc && isLinkConfig(hc, pool.configKey) && <LinkCoinBanner mint={mint} />}
       {pool.presetId !== null && <LifecycleStepper pool={pool} />}
       <div className="grid grid-cols-[minmax(0,1fr)] items-start gap-5 md:gap-7 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="flex min-w-0 flex-col gap-5 max-lg:contents md:gap-6">
@@ -77,7 +82,7 @@ const HatchOnChain = ({ mint }: { mint: string }) => {
           </div>
         </div>
         <div className="flex min-w-0 flex-col gap-5 max-lg:order-2 lg:sticky lg:top-24">
-          {pool.presetId === null ? (
+          {pool.presetId === null && !(hc && isLinkConfig(hc, pool.configKey)) ? (
             <NotHatchLaunch />
           ) : pool.isMigrated ? (
             <TradeOnMeteora pool={pool} />

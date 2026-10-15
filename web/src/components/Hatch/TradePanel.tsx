@@ -16,7 +16,8 @@ import { WSOL } from '@/lib/jupiter';
 import { friendlyTxError, reportTxError, type FriendlyError } from '@/lib/txErrors';
 import { LAMPORTS_PER_SOL, buyCostLamports, formatSol, formatSolNeed } from '@/lib/costs';
 import { SolShortNote, TxErrorNote } from './TxErrorNote';
-import { useHasTokenAccount, useLiveBaseFee, useQuoteSymbol, useRentPerByte, useSolLamports, useTokenBalance, useTokenMetadata } from '@/hooks/useHatch';
+import { useHasTokenAccount, useLiveBaseFee, useQuoteSymbol, useRentPerByte, useSolLamports, useTokenBalance, useTokenMetadata, usePresetConfigs } from '@/hooks/useHatch';
+import { isLinkConfig } from '@/lib/presets';
 import { OpenInWallet } from './OpenInWallet';
 import { SNIPER_SHIELD_LINE, feeSentence, formatFeePercent } from '@/lib/dbc/feeSchedule';
 
@@ -107,9 +108,11 @@ export function TradePanel({ pool, baseSymbol }: { pool: HatchPool; baseSymbol: 
   useEffect(() => {
     if (preview.error) console.error('[hatch] quote failed:', preview.error);
   }, [preview.error]);
+  const { data: hc } = usePresetConfigs();
 
   if (pool.isMigrated) return null; // the page shows "Trade on Meteora" instead
-  if (pool.presetId === null) return null; // not a Hatch launch: no trading here
+  // Not a Hatch launch: no trading here. Link coins (their own config, see /link) are Hatch launches too.
+  if (pool.presetId === null && !(hc && isLinkConfig(hc, pool.configKey))) return null;
 
   const maxAmount = () => {
     if (!inBalance) return null;
