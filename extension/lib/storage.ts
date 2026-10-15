@@ -31,7 +31,7 @@ export type Settings = {
   noticeAuto: boolean;
   /** Link coins: also look up ordinary web pages (tweets, YouTube videos and GitHub repos are always looked up). */
   checkAnyWebsite: boolean;
-  /** Dev builds only: the web app for link features (one of DEV_WEB_URLS); null = the build's web app. */
+  /** Dev builds only: the web app for link features (HATCH_WEB_URL or one of DEV_WEB_URLS); null = the default (lib/config pickLinkBase). */
   devWebBase: string | null;
 };
 export const DEFAULT_SETTINGS: Settings = { hiddenSites: [], hiddenEverywhere: false, sounds: true, chirpAlerts: true, noticeAuto: true, checkAnyWebsite: false, devWebBase: null };

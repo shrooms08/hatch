@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { canonicalize, linkIdHash, lookupPrefix } from "../lib/linkCanonical";
 import { LINK_CACHE_MS, LINK_DEBOUNCE_MS, createLinkLookup, createUrlWatcher, httpFetchPrefix, linkStatusOf, linkTarget, type LookupEntry } from "../lib/linkCheck";
 import { DEFAULT_SETTINGS } from "../lib/storage";
+import { pickLinkBase } from "../lib/config";
 
 const off = { checkAnyWebsite: false };
 const on = { checkAnyWebsite: true };
@@ -157,5 +158,19 @@ describe("private lookup", () => {
     expect(linkStatusOf(entry("a", { claimed: true, status: "claimed" }))).toMatchObject({ state: "coin", claimed: true });
     expect(linkStatusOf(entry("a", { status: "reserved", mint: null }))).toBeNull();
     expect(linkStatusOf(entry("a", { status: "disowned" }))).toBeNull();
+  });
+});
+
+describe("web app for link features", () => {
+  const prod = "https://hatchem.fun";
+  const dev = ["http://localhost:3200"];
+  it("release builds (no dev URLs) always use the build's web app, whatever is stored", () => {
+    for (const choice of [null, undefined, "http://localhost:3200", prod, "https://evil.example"]) expect(pickLinkBase(choice, prod, [])).toBe(prod);
+  });
+  it("dev builds default to the local server; the choice sticks; anything else falls back", () => {
+    expect(pickLinkBase(null, prod, dev)).toBe("http://localhost:3200");
+    expect(pickLinkBase(prod, prod, dev)).toBe(prod);
+    expect(pickLinkBase("http://localhost:3200", prod, dev)).toBe("http://localhost:3200");
+    expect(pickLinkBase("https://evil.example", prod, dev)).toBe("http://localhost:3200");
   });
 });

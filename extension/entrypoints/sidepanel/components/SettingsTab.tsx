@@ -119,11 +119,16 @@ export function SettingsTab({ activeUrl }: { activeUrl: string | null }) {
         <Card className="flex flex-col gap-2 rounded-[16px] p-4">
           <span className="text-[13px] font-semibold">Dev: web app for link coins</span>
           <span className="text-xs text-ink-muted">Dev builds only. Link lookups, Hatch and View coin use this web app.</span>
+          <span className="font-mono text-xs text-ink">Link features: {linkWebBase(settings.devWebBase)}</span>
           <select
             aria-label="Web app for link coins"
             className="h-9 rounded-[10px] border border-surface-3 bg-surface-2 px-2 font-mono text-xs text-ink"
             value={linkWebBase(settings.devWebBase)}
-            onChange={(e) => void updateSettings((s) => ({ ...s, devWebBase: e.target.value === HATCH_WEB_URL ? null : e.target.value }))}
+            onChange={(e) => {
+              // Read the choice now: the patch runs after an await, when React has already reset the controlled select.
+              const choice = e.target.value;
+              void updateSettings((s) => ({ ...s, devWebBase: choice }));
+            }}
           >
             {[HATCH_WEB_URL, ...DEV_WEB_URLS].map((u) => (
               <option key={u} value={u}>
