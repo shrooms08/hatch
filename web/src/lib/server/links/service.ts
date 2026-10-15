@@ -8,10 +8,14 @@ import { IMAGE_EXT } from '@/lib/validation/launch';
 import { ImageError, loadLaunchImage } from '@/lib/server/image';
 import { renderFallbackPng } from '@/lib/server/fallbackImage';
 import { isR2Configured, publicR2Url, uploadToR2 } from '@/lib/server/r2';
-import { swr } from '@/lib/server/swrCache';
+import { forgetSwr, swr } from '@/lib/server/swrCache';
+import { toPoolLink as toPoolLinkRow, verifyListedLinks } from '@/lib/links/listing';
+import { fetchPoolsByAddress, type HatchPool, type PoolLink } from '@/lib/dbc/pool';
+import { linkConfigKeys } from '@/lib/presets';
+import { loadHatchConfigs } from '@/lib/server/presets';
 import { LinkMetadataError, linkMetadata, type LinkMetadata } from './metadata';
 import { assertLinkConfig, buildLinkHatchTx, checkLinkPool, linkKeys, linkNetwork, maxFirstBuyLamports, maxFirstBuySol } from './chain';
-import { LinkConflictError, dropOwnReservation, getLink, getLinkByGithubRepoId, getLinkByMint, isExpired, linksByPrefix, markHatched, releaseExpired, reserveLink, type LinkNetwork, type LinkRow } from './store';
+import { LinkConflictError, dropOwnReservation, getLink, getLinkByGithubRepoId, getLinkByMint, isExpired, linksByPrefix, linksHatchedBy, listedLinks, markHatched, releaseExpired, reserveLink, type LinkNetwork, type LinkRow } from './store';
 
 /** A failure with an HTTP status and a message safe to show users. */
 export class LinkApiError extends Error {
@@ -259,6 +263,8 @@ export async function confirmLink(body: { canonicalId?: unknown; signature?: unk
   const check = await checkLinkPool(conn, { pool: row.pool, mint: row.mint, config: row.config ? new PublicKey(row.config) : config, vault });
   if (!check.ok) throw new LinkApiError(409, `The pool does not check out: ${check.reason}`);
   const hatched = await markHatched(network, canonicalId, row.mint);
+  // The new coin shows in the Hatches list on the next request (other server instances within 30 s).
+  forgetSwr(listedKey(network));
   if (!hatched) {
     const now = await getLink(network, canonicalId);
     if (now?.status === 'hatched' && now.mint === row.mint) return { status: now.status, mint: now.mint, pool: now.pool };
@@ -287,6 +293,47 @@ export async function lookupPrefix(prefix: string): Promise<LookupEntry[]> {
     }
     return out;
   });
+  return value;
+}
+
+// ---------- lists (Hatches, My Hatches) ----------
+
+const listedKey = (network: LinkNetwork) => `links:listed:${network}`;
+
+/**
+ * Link coins for the public Hatches list, with their link: the pools the links table names (hatched or claimed),
+ * read by address (no program scan), under the current or a legacy LINK config, and checked by verifyListedLinks
+ * (same mint and pool, creator = the vault or the claimer). Pools other people create under the public LINK config
+ * are never listed. Cached 30 s; confirmLink drops the cache so a new coin shows on the next request.
+ * Empty where link coins are off (mainnet until its LINK config exists).
+ */
+export async function listedLinkPools(): Promise<HatchPool[]> {
+  const network = linkNetwork();
+  if (!network) return [];
+  const { value } = await swr(listedKey(network), 30_000, async () => {
+    const hc = loadHatchConfigs();
+    const rows = await listedLinks(network);
+    const pools = await fetchPoolsByAddress(connection(), [...new Set(rows.map((r) => r.pool).filter((p): p is string => !!p))], linkConfigKeys(hc), hc);
+    const links = verifyListedLinks(pools, rows, linkKeys().vault.toBase58());
+    return pools.filter((p) => links.has(p.baseMint)).map((p) => ({ ...p, link: links.get(p.baseMint)! }));
+  });
+  return value;
+}
+
+export type MyLinkHatch = { mint: string; pool: string; canonicalId: string; link: PoolLink; claimed: boolean };
+
+/** Link coins this wallet hatched (it paid for the creation transaction). */
+export async function linkHatchesFor(wallet: unknown): Promise<MyLinkHatch[]> {
+  let address: string;
+  try {
+    address = new PublicKey(String(wallet ?? '')).toBase58();
+  } catch {
+    throw new LinkApiError(400, 'wallet is invalid');
+  }
+  const network = requireNetwork();
+  const { value } = await swr(`links:hatched-by:${network}:${address}`, 15_000, async () =>
+    (await linksHatchedBy(network, address)).map((r) => ({ mint: r.mint!, pool: r.pool!, canonicalId: r.canonical_id, link: toPoolLinkRow(r), claimed: r.status === 'claimed' }))
+  );
   return value;
 }
 

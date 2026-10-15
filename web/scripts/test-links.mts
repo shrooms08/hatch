@@ -6,6 +6,8 @@ import { createHash } from 'node:crypto';
 import { LinkError, MAX_LINK_LENGTH, canonicalize, isLookupPrefix, linkIdHash, lookupPrefix, matchLookup } from '../src/lib/links/canonical.ts';
 import { checkBlocked, blockedDomain } from '../src/lib/links/blocklist.ts';
 import { prefillUrl } from '../src/lib/links/prefill.ts';
+import { feesLabel, matchesHatch, verifyListedLinks } from '../src/lib/links/listing.ts';
+import { EMPTY_HATCH_CONFIGS, allConfigKeys, listedConfigKeys, type HatchConfigs } from '../src/lib/presets/index.ts';
 import { isValidName, isValidTicker, sanitizeName, sanitizeTicker, suggestCoin } from '../src/lib/links/suggest.ts';
 import { r2ObjectKey } from '../src/lib/server/r2.ts';
 import { SafeFetchError } from '../src/lib/server/safeFetch.ts';
@@ -248,4 +250,58 @@ test('/link?u= prefill: http(s) URLs only, anything else ignored', () => {
   assert.equal(prefillUrl(' http://example.com/a '), 'http://example.com/a');
   for (const bad of ['javascript:alert(1)', 'data:text/html,hi', 'file:///etc/passwd', 'ftp://x.com', 'not a url', '', undefined, ['https://a.com'], 'https://a.com/' + 'x'.repeat(MAX_LINK_LENGTH)])
     assert.equal(prefillUrl(bad), null, String(bad).slice(0, 40));
+});
+
+const HC: HatchConfigs = {
+  ...EMPTY_HATCH_CONFIGS,
+  network: 'devnet',
+  configs: { MEME: 'cfgMeme', AI_AGENT: 'cfgAgent' } as HatchConfigs['configs'],
+  stocks: { NVDA: { config: 'cfgNvda' } } as unknown as HatchConfigs['stocks'],
+  link: { config: 'cfgLink2', vault: 'VAULT', legacyConfigs: ['cfgLink1'] },
+};
+
+test('Hatches list configs: launch configs plus the current and every legacy LINK config; none where LINK_CONFIG is unset', () => {
+  assert.deepEqual(listedConfigKeys(HC).sort(), ['cfgAgent', 'cfgLink1', 'cfgLink2', 'cfgMeme', 'cfgNvda']);
+  // Launch-only paths (shield receipts, creator scans) keep excluding link configs.
+  assert.deepEqual(allConfigKeys(HC).sort(), ['cfgAgent', 'cfgMeme', 'cfgNvda']);
+  // Mainnet today: no LINK config, so the list is exactly the launch configs (automatic once LINK_CONFIG is set).
+  const mainnet = { ...HC, link: null };
+  assert.deepEqual(listedConfigKeys(mainnet), allConfigKeys(mainnet));
+});
+
+const linkRow = (o: Record<string, unknown> = {}) => ({ kind: 'youtube_video', mint: 'MZmint', pool: 'MZpool', status: 'hatched', title: 'Me at the zoo', display_url: 'https://www.youtube.com/watch?v=jNQXAC9IVRw', owner_platform: 'youtube', owner_handle: '@jawed', claimed_wallet: null, hatched_at: '2026-10-15T17:00:00Z', ...o });
+const linkPool = (o: Record<string, unknown> = {}) => ({ baseMint: 'MZmint', address: 'MZpool', creator: 'VAULT', isLink: true, ...o });
+
+test('listed link coins: only pools the links table knows (same mint and pool) whose creator is the vault or the claimer', () => {
+  const ok = verifyListedLinks([linkPool()], [linkRow()], 'VAULT');
+  assert.deepEqual(ok.get('MZmint'), { platform: 'youtube', title: 'Me at the zoo', displayUrl: 'https://www.youtube.com/watch?v=jNQXAC9IVRw', ownerHandle: '@jawed', hatchedAt: 1792083600 });
+  // Anyone can create a pool under the public LINK config: such pools are never listed as link coins.
+  assert.equal(verifyListedLinks([linkPool({ baseMint: 'rogue', address: 'roguePool', creator: 'Mallory' })], [linkRow()], 'VAULT').size, 0);
+  assert.equal(verifyListedLinks([linkPool({ creator: 'Mallory' })], [linkRow()], 'VAULT').size, 0);
+  assert.equal(verifyListedLinks([linkPool({ address: 'otherPool' })], [linkRow()], 'VAULT').size, 0);
+  assert.equal(verifyListedLinks([linkPool()], [linkRow({ status: 'reserved' })], 'VAULT').size, 0);
+  // Claimed: the owner's wallet is the creator now.
+  assert.equal(verifyListedLinks([linkPool({ creator: 'OwnerW' })], [linkRow({ status: 'claimed', claimed_wallet: 'OwnerW' })], 'VAULT').size, 1);
+  // Platform falls back to the link kind.
+  assert.equal(verifyListedLinks([linkPool()], [linkRow({ owner_platform: null, kind: 'github_repo' })], 'VAULT').get('MZmint')?.platform, 'github');
+});
+
+test('Hatches list: "Link coins" tab, status tabs, and search by name, ticker, mint or the link title', () => {
+  const link = { status: 'INCUBATING' as const, isLink: true, baseMint: 'MZmint', link: { platform: 'youtube' as const, title: 'Me at the zoo', displayUrl: 'x', ownerHandle: '@jawed', hatchedAt: null } };
+  const meme = { status: 'INCUBATING' as const, isLink: false, baseMint: 'MEMEmint', link: undefined };
+  const md = { name: 'Me Zoo', symbol: 'MZ' };
+  assert.ok(matchesHatch(link, 'LINK', '', md));
+  assert.ok(!matchesHatch(meme, 'LINK', '', { name: 'Doge', symbol: 'DOGE' }));
+  assert.ok(matchesHatch(link, 'ALL', '', md) && matchesHatch(link, 'INCUBATING', '', md) && !matchesHatch(link, 'HATCHED', '', md));
+  assert.ok(matchesHatch(link, 'ALL', 'zoo', md));
+  assert.ok(matchesHatch(link, 'ALL', 'at the', { name: 'Me Zoo', symbol: 'MZ' }), 'title only');
+  assert.ok(matchesHatch(link, 'LINK', '$mz', md));
+  assert.ok(!matchesHatch(meme, 'ALL', 'zoo', { name: 'Doge', symbol: 'DOGE' }));
+});
+
+test('My Hatches label: fees held for the owner (unclaimed) / go to the owner (claimed)', () => {
+  assert.equal(feesLabel({ platform: 'youtube', ownerHandle: '@jawed' }, false), 'fees held for @jawed on YouTube');
+  assert.equal(feesLabel({ platform: 'x', ownerHandle: '@jack' }, true), 'fees go to @jack on X');
+  assert.equal(feesLabel({ platform: 'web', ownerHandle: 'example.com' }, false), 'fees held for example.com');
+  assert.equal(feesLabel({ platform: 'github', ownerHandle: null }, false), "fees held for the link's owner");
 });

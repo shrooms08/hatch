@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import type { HatchStatus } from '@/lib/dbc/pool';
+import type { HatchStatus, PoolLink } from '@/lib/dbc/pool';
+import { PLATFORM_NAME } from '@/lib/links/listing';
 import type { PresetId } from '@/lib/presets';
 import { cn } from '@/lib/utils';
 import { CheckIcon, CopyIcon, CrackedEggGlyph, HalfShellGlyph, SmileIcon, SparkIcon, TrendIcon } from './icons';
@@ -48,6 +49,17 @@ export function PresetBadge({ preset, quote, variant = 'icon', className }: { pr
       {variant === 'dot' ? <span className={cn('h-1.5 w-1.5 rounded-full', m.dot)} /> : m.icon}
       {m.label}
       {quote && <span className={cn('font-mono text-[11px] font-medium', preset === 'STOCK' ? 'text-ink-accent' : 'text-ink-muted')}>{quote}</span>}
+    </span>
+  );
+}
+
+/** Link coins' "preset": "Link · YouTube" (the platform of the link the coin is for, when known). */
+export function LinkBadge({ platform, className }: { platform?: PoolLink['platform'] | null; className?: string }) {
+  return (
+    <span className={cn('inline-flex h-7 shrink-0 items-center gap-[7px] whitespace-nowrap rounded-pill border border-line bg-surface-2 px-[11px] text-xs font-medium text-ink-2', className)}>
+      <span className="h-1.5 w-1.5 rounded-full bg-success" />
+      Link
+      {platform && <span className="font-mono text-[11px] font-medium text-ink-muted">{PLATFORM_NAME[platform]}</span>}
     </span>
   );
 }

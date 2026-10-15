@@ -117,3 +117,19 @@ test('GitHub rename: the old name is hatched, the new name for the same repo id 
   assert.equal(holder?.status, 'hatched');
   assert.equal(holder?.mint, oldMint, 'the 409 can point at this coin');
 });
+
+test('My Hatches: link coins are matched by the wallet that hatched them (hatched only, never another wallet)', { skip: !configured && 'Supabase not configured' }, async () => {
+  const wallet = `tester-${randomBytes(6).toString('hex')}`;
+  const hatchedId = fresh();
+  const pendingId = fresh();
+  const h = { ...(await row(hatchedId, mint())), hatched_by: wallet, pool: `pool-${randomBytes(6).toString('hex')}` };
+  assert.ok(await store!.reserveLink(h, { prevMint: null }));
+  assert.ok(await store!.markHatched('devnet', hatchedId, h.mint));
+  assert.ok(await store!.reserveLink({ ...(await row(pendingId, mint())), hatched_by: wallet }, { prevMint: null })); // still reserved
+  const mine = await store!.linksHatchedBy('devnet', wallet);
+  assert.deepEqual(mine.map((r) => r.canonical_id), [hatchedId]);
+  assert.equal(mine[0]!.pool, h.pool);
+  assert.deepEqual(await store!.linksHatchedBy('devnet', `${wallet}-other`), []);
+  assert.ok((await store!.listedLinks('devnet')).some((r) => r.canonical_id === hatchedId));
+  assert.ok(!(await store!.listedLinks('devnet')).some((r) => r.canonical_id === pendingId));
+});

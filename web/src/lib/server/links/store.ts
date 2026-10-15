@@ -69,6 +69,23 @@ export async function linksByPrefix(network: LinkNetwork, prefix: string): Promi
   return (data as LinkRow[]) ?? [];
 }
 
+const LISTED_COLUMNS = 'canonical_id, kind, mint, pool, status, title, display_url, owner_platform, owner_handle, hatched_by, claimed_wallet, hatched_at';
+export type ListedLinkRow = Pick<LinkRow, 'canonical_id' | 'kind' | 'mint' | 'pool' | 'status' | 'title' | 'display_url' | 'owner_platform' | 'owner_handle' | 'hatched_by' | 'claimed_wallet'> & { hatched_at: string | null };
+
+/** Every live link coin on a network (hatched or claimed), for the public Hatches list. */
+export async function listedLinks(network: LinkNetwork): Promise<ListedLinkRow[]> {
+  const { data, error } = await supabaseAdmin().from('links').select(LISTED_COLUMNS).eq('network', network).in('status', ['hatched', 'claimed']).not('mint', 'is', null).limit(5000);
+  if (error) fail('listed links', error);
+  return (data as ListedLinkRow[]) ?? [];
+}
+
+/** Live link coins a wallet hatched (paid for: the creation transaction's fee payer, stored at hatch time). */
+export async function linksHatchedBy(network: LinkNetwork, wallet: string): Promise<ListedLinkRow[]> {
+  const { data, error } = await supabaseAdmin().from('links').select(LISTED_COLUMNS).eq('network', network).eq('hatched_by', wallet).in('status', ['hatched', 'claimed']).not('mint', 'is', null).limit(200);
+  if (error) fail('links hatched by', error);
+  return (data as ListedLinkRow[]) ?? [];
+}
+
 export async function getLinkByGithubRepoId(network: LinkNetwork, repoId: number): Promise<LinkRow | null> {
   const { data, error } = await supabaseAdmin().from('links').select('*').eq('network', network).eq('github_repo_id', repoId).maybeSingle();
   if (error) fail('get by github repo id', error);

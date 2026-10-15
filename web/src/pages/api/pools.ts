@@ -5,6 +5,8 @@ import { allHatchPools } from '@/lib/server/pools';
 import { loadHatchConfigs } from '@/lib/server/presets';
 import { poolToJson, type PoolJson } from '@/lib/dbc/poolJson';
 import { rateLimited } from '@/lib/server/rateLimit';
+import { listedLinkPools } from '@/lib/server/links/service';
+import type { HatchPool } from '@/lib/dbc/pool';
 
 export type PoolsResponse = { pools: PoolJson[]; at: number };
 
@@ -17,7 +19,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
   try {
     const { value, at, stale } = await allHatchPools();
     const hidden = loadHatchConfigs().hiddenMints;
-    const pools = value.filter((p) => !hidden.includes(p.baseMint)).map(poolToJson);
+    // Link coins (devnet for now): from the links table, checked against chain; the launch list never waits on them.
+    const linkPools = await listedLinkPools().catch((e): HatchPool[] => {
+      console.error('pools: link coins skipped:', e instanceof Error ? e.message : e);
+      return [];
+    });
+    const pools = [...value, ...linkPools].filter((p) => !hidden.includes(p.baseMint)).map(poolToJson);
     res.setHeader('Cache-Control', stale ? 'public, s-maxage=10, stale-while-revalidate=300' : 'public, s-maxage=30, stale-while-revalidate=300');
     if (stale) res.setHeader('X-Hatch-Stale', '1');
     return res.status(200).json({ pools, at });

@@ -17,6 +17,7 @@ import type { PoolsResponse } from '@/pages/api/pools';
 import { poolFromJson } from '@/lib/dbc/poolJson';
 import type { HoldingsResponse } from '@/pages/api/holdings';
 import type { ShieldReceipt } from '@/lib/server/shield';
+import type { MyLinkHatch } from '@/lib/server/links/service';
 
 const POLL_MS = 10_000;
 
@@ -295,6 +296,25 @@ export function useHasTokenAccount(owner: PublicKey | null | undefined, mint: Mi
     },
     enabled: !!owner && !!mint,
     refetchInterval: 60_000, // trades invalidate it right away; otherwise it rarely changes
+  });
+}
+
+/**
+ * Link coins the wallet hatched (GET /api/links/hatched). Their on-chain creator is the Hatch vault, so the creator
+ * scan never finds them. Empty where link coins are off (the route answers 404 there).
+ */
+export function useMyLinkHatches(wallet: string | undefined) {
+  return useQuery({
+    queryKey: ['hatch', 'link-hatches', wallet],
+    queryFn: async (): Promise<MyLinkHatch[]> => {
+      const res = await fetch(`/api/links/hatched?wallet=${encodeURIComponent(wallet!)}`);
+      if (res.status === 404) return [];
+      if (!res.ok) throw new Error('Could not read your link coins');
+      return ((await res.json()) as { hatches: MyLinkHatch[] }).hatches;
+    },
+    enabled: !!wallet,
+    staleTime: 15_000,
+    refetchInterval: 60_000,
   });
 }
 
