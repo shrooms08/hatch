@@ -6,6 +6,11 @@ import { createHash } from 'node:crypto';
 import { LinkError, MAX_LINK_LENGTH, canonicalize, isLookupPrefix, linkIdHash, lookupPrefix, matchLookup } from '../src/lib/links/canonical.ts';
 import { checkBlocked, blockedDomain } from '../src/lib/links/blocklist.ts';
 import { isValidName, isValidTicker, sanitizeName, sanitizeTicker, suggestCoin } from '../src/lib/links/suggest.ts';
+import { r2ObjectKey } from '../src/lib/server/r2.ts';
+import { SafeFetchError } from '../src/lib/server/safeFetch.ts';
+import { classifyFetchError } from '../src/lib/server/links/metadata.ts';
+import { LINK_MAX_FIRST_BUY_SOL, maxFirstBuySol } from '../src/lib/server/links/chain.ts';
+import { LinkApiError, githubRepoIdOrThrow } from '../src/lib/server/links/service.ts';
 
 const id = (u: string) => canonicalize(u).canonicalId;
 
@@ -193,4 +198,46 @@ test('suggestions: deterministic name + ticker from the link title', () => {
   const s = suggestCoin({ title: '', fallback: 'example.com' });
   assert.ok(isValidName(s.name) && isValidTicker(s.ticker), JSON.stringify(s));
   assert.deepEqual(suggestCoin({ title: 'Same title', fallback: 'x' }), suggestCoin({ title: 'Same title', fallback: 'x' }));
+});
+
+test('devnet uploads go under devnet/; mainnet keys are unchanged', () => {
+  assert.equal(r2ObjectKey('images/abc.png', 'devnet'), 'devnet/images/abc.png');
+  assert.equal(r2ObjectKey('/metadata/abc.json', 'devnet'), 'devnet/metadata/abc.json');
+  assert.equal(r2ObjectKey('images/abc.png', 'mainnet-beta'), 'images/abc.png');
+  assert.equal(r2ObjectKey('releases/hatch-extension-v0.6.3.zip', 'mainnet-beta'), 'releases/hatch-extension-v0.6.3.zip');
+  assert.equal(r2ObjectKey('shield/v2/pool.json', 'mainnet-beta'), 'shield/v2/pool.json');
+});
+
+test('GitHub API failures: rate limits and outages say "try again", never hatch without the repo id', () => {
+  const limited = classifyFetchError(new SafeFetchError('URL returned HTTP 403'), 'github');
+  assert.equal(limited.retryable, true);
+  assert.match(limited.message, /GitHub is limiting requests/);
+  assert.equal(classifyFetchError(new SafeFetchError('URL returned HTTP 429'), 'github').retryable, true);
+  assert.equal(classifyFetchError(new SafeFetchError('URL returned HTTP 502'), 'github').retryable, true);
+  assert.equal(classifyFetchError(new SafeFetchError('Download timed out'), 'github').retryable, true);
+  const missing = classifyFetchError(new SafeFetchError('URL returned HTTP 404'), 'github');
+  assert.equal(missing.retryable, false);
+  assert.match(missing.message, /private, deleted, or not found/);
+  assert.equal(classifyFetchError(new SafeFetchError('URL returned HTTP 403'), 'web').retryable, false, 'a 403 elsewhere is not a rate limit');
+  assert.throws(() => githubRepoIdOrThrow({ githubRepoId: null }), (e: unknown) => e instanceof LinkApiError && e.status === 503 && /Try again/.test(e.message));
+  assert.throws(() => githubRepoIdOrThrow({}), LinkApiError);
+  assert.equal(githubRepoIdOrThrow({ githubRepoId: 123456 }), 123456);
+});
+
+test('first buy cap: 1 SOL by default, LINK_MAX_FIRST_BUY_SOL overrides (sane values only)', () => {
+  const saved = process.env.LINK_MAX_FIRST_BUY_SOL;
+  try {
+    delete process.env.LINK_MAX_FIRST_BUY_SOL;
+    assert.equal(LINK_MAX_FIRST_BUY_SOL, 1);
+    assert.equal(maxFirstBuySol(), 1);
+    process.env.LINK_MAX_FIRST_BUY_SOL = '0.5';
+    assert.equal(maxFirstBuySol(), 0.5);
+    for (const bad of ['0', '-1', 'abc', '1000']) {
+      process.env.LINK_MAX_FIRST_BUY_SOL = bad;
+      assert.equal(maxFirstBuySol(), 1, bad);
+    }
+  } finally {
+    if (saved === undefined) delete process.env.LINK_MAX_FIRST_BUY_SOL;
+    else process.env.LINK_MAX_FIRST_BUY_SOL = saved;
+  }
 });

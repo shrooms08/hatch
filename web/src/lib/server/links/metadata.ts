@@ -14,9 +14,30 @@ export type LinkMetadata = {
   snippet: string | null;
   imageUrl: string | null;
   owner: { platform: 'x' | 'youtube' | 'github' | 'web'; handle: string | null; name: string | null; id: string | null; url: string | null };
+  /** GitHub only: the repository's numeric id, which survives renames and transfers. */
+  githubRepoId?: number | null;
 };
 
-export class LinkMetadataError extends Error {}
+export class LinkMetadataError extends Error {
+  constructor(
+    message: string,
+    /** True when trying again later may work (rate limits, timeouts, 5xx). */
+    readonly retryable = false
+  ) {
+    super(message);
+  }
+}
+
+/** How a failed metadata fetch is reported. GitHub's unauthenticated API answers 403/429 when rate limited. */
+export function classifyFetchError(e: unknown, platform: 'x' | 'youtube' | 'github' | 'web'): LinkMetadataError {
+  const msg = e instanceof Error ? e.message : '';
+  const status = Number(msg.match(/HTTP (\d{3})/)?.[1] ?? 0);
+  if (platform === 'github' && (status === 403 || status === 429)) return new LinkMetadataError('GitHub is limiting requests right now. Try again in a few minutes.', true);
+  if (status === 404 || status === 401 || (status === 403 && platform !== 'github')) return new LinkMetadataError('That link is private, deleted, or not found');
+  if (status >= 500 || /timed out|Could not download/i.test(msg)) return new LinkMetadataError(`${platform === 'github' ? 'GitHub' : 'The site'} is not answering right now. Try again in a few minutes.`, true);
+  if (e instanceof SafeFetchError) return new LinkMetadataError(`Could not read the link (${msg})`);
+  return new LinkMetadataError('Could not read the link', true);
+}
 
 const TTL_MS = 60 * 60_000;
 const JSON_MAX = 512 * 1024;
@@ -37,19 +58,17 @@ const clean = (s: string | null | undefined, max: number) => {
   return t ? [...t].slice(0, max).join('') : null;
 };
 
-async function getJson(url: string): Promise<Record<string, unknown>> {
+async function getJson(url: string, platform: 'x' | 'youtube' | 'github'): Promise<Record<string, unknown>> {
   try {
     return JSON.parse((await safeFetchBytes(url, JSON_MAX)).toString('utf8')) as Record<string, unknown>;
   } catch (e) {
-    if (e instanceof SafeFetchError && /HTTP 404|HTTP 403|HTTP 401/.test(e.message)) throw new LinkMetadataError('That link is private, deleted, or not found');
-    if (e instanceof SafeFetchError) throw new LinkMetadataError(`Could not read the link (${e.message})`);
-    throw new LinkMetadataError('Could not read the link');
+    throw classifyFetchError(e, platform);
   }
 }
 
 async function xPost(link: CanonicalLink): Promise<LinkMetadata> {
   const id = link.canonicalId.split(':')[2];
-  const j = await getJson(`https://publish.twitter.com/oembed?url=${encodeURIComponent(`https://twitter.com/i/status/${id}`)}&omit_script=true&dnt=true&hide_thread=true`);
+  const j = await getJson(`https://publish.twitter.com/oembed?url=${encodeURIComponent(`https://twitter.com/i/status/${id}`)}&omit_script=true&dnt=true&hide_thread=true`, 'x');
   const authorUrl = typeof j.author_url === 'string' ? j.author_url : null;
   const handle = authorUrl?.match(/(?:twitter|x)\.com\/([A-Za-z0-9_]{1,15})\/?$/)?.[1] ?? null;
   // The oEmbed html is a <blockquote><p>text</p>— author (@handle) date</blockquote>: keep the <p> text.
@@ -64,7 +83,7 @@ async function xPost(link: CanonicalLink): Promise<LinkMetadata> {
 }
 
 async function ytVideo(link: CanonicalLink): Promise<LinkMetadata> {
-  const j = await getJson(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(link.displayUrl)}`);
+  const j = await getJson(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(link.displayUrl)}`, 'youtube');
   const authorUrl = typeof j.author_url === 'string' ? j.author_url : null;
   const handle = authorUrl?.match(/youtube\.com\/(@[A-Za-z0-9._-]{1,100})/)?.[1] ?? null;
   const channelId = authorUrl?.match(/youtube\.com\/channel\/(UC[A-Za-z0-9_-]{22})/)?.[1] ?? null;
@@ -78,14 +97,17 @@ async function ytVideo(link: CanonicalLink): Promise<LinkMetadata> {
 
 async function ghRepo(link: CanonicalLink): Promise<LinkMetadata> {
   const [owner, repo] = link.canonicalId.slice('gh:repo:'.length).split('/');
-  const j = await getJson(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`);
+  const j = await getJson(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`, 'github');
   const o = (j.owner ?? {}) as Record<string, unknown>;
+  const repoId = typeof j.id === 'number' && Number.isSafeInteger(j.id) && j.id > 0 ? j.id : null;
+  if (!repoId) throw new LinkMetadataError('GitHub did not return the repository id. Try again in a few minutes.', true);
   const fullName = typeof j.full_name === 'string' ? j.full_name : `${owner}/${repo}`;
   return {
     title: fullName,
     snippet: clean(typeof j.description === 'string' ? j.description : null, 280),
     imageUrl: typeof o.avatar_url === 'string' ? o.avatar_url : null,
     owner: { platform: 'github', handle: typeof o.login === 'string' ? o.login : owner, name: null, id: o.id != null ? String(o.id) : null, url: typeof o.html_url === 'string' ? o.html_url : null },
+    githubRepoId: repoId,
   };
 }
 
@@ -100,7 +122,7 @@ async function webPage(link: CanonicalLink): Promise<LinkMetadata> {
   try {
     html = (await safeFetchBytes(link.displayUrl, HTML_MAX)).toString('utf8').slice(0, 400_000);
   } catch (e) {
-    throw new LinkMetadataError(e instanceof SafeFetchError ? `Could not read the page (${e.message})` : 'Could not read the page');
+    throw classifyFetchError(e, 'web');
   }
   const title = clean(metaContent(html, 'property', 'og:title') ?? html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? null, 150);
   const rawImage = metaContent(html, 'property', 'og:image') ?? metaContent(html, 'name', 'twitter:image');

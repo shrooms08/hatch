@@ -40,6 +40,7 @@ async function row(canonicalId: string, mint: string) {
     config: null,
     hatched_by: 'tester',
     first_buy_lamports: 0,
+    github_repo_id: null as number | null,
   };
 }
 const fresh = () => {
@@ -96,4 +97,23 @@ test('prefix lookup returns every link sharing the 8-hex prefix (and only those)
   assert.ok(hits.some((h) => h.canonical_id === id));
   assert.ok(hits.every((h) => h.id_hash.startsWith(r.id_hash.slice(0, 8))));
   assert.rejects(() => store!.linksByPrefix('devnet', "abc'; drop"), /bad prefix/);
+});
+
+test('GitHub rename: the old name is hatched, the new name for the same repo id is refused', { skip: !configured && 'Supabase not configured' }, async () => {
+  const repoId = 900_000_000_000 + Math.floor(Math.random() * 1e9); // far outside real GitHub ids
+  const oldId = `gh:repo:race-old-${randomBytes(4).toString('hex')}/repo`;
+  const newId = `gh:repo:race-new-${randomBytes(4).toString('hex')}/repo`;
+  ids.push(oldId, newId);
+  const oldMint = mint();
+  const old = await store!.reserveLink({ ...(await row(oldId, oldMint)), kind: 'github_repo' as const, github_repo_id: repoId }, { prevMint: null });
+  assert.ok(old, 'old name reserved');
+  assert.ok(await store!.markHatched('devnet', oldId, oldMint));
+  // Same numeric id under the new name: the unique (network, github_repo_id) index refuses it.
+  const attempt = store!.reserveLink({ ...(await row(newId, mint())), kind: 'github_repo' as const, github_repo_id: repoId }, { prevMint: null });
+  await assert.rejects(attempt, (e: unknown) => e instanceof store!.LinkConflictError);
+  assert.equal(await store!.getLink('devnet', newId), null, 'no row for the new name');
+  const holder = await store!.getLinkByGithubRepoId('devnet', repoId);
+  assert.equal(holder?.canonical_id, oldId);
+  assert.equal(holder?.status, 'hatched');
+  assert.equal(holder?.mint, oldMint, 'the 409 can point at this coin');
 });

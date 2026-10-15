@@ -10,8 +10,8 @@ import { renderFallbackPng } from '@/lib/server/fallbackImage';
 import { isR2Configured, publicR2Url, uploadToR2 } from '@/lib/server/r2';
 import { swr } from '@/lib/server/swrCache';
 import { LinkMetadataError, linkMetadata, type LinkMetadata } from './metadata';
-import { MAX_FIRST_BUY_LAMPORTS, assertLinkConfig, buildLinkHatchTx, checkLinkPool, linkKeys, linkNetwork } from './chain';
-import { dropOwnReservation, getLink, getLinkByMint, isExpired, linksByPrefix, markHatched, releaseExpired, reserveLink, type LinkNetwork, type LinkRow } from './store';
+import { assertLinkConfig, buildLinkHatchTx, checkLinkPool, linkKeys, linkNetwork, maxFirstBuyLamports, maxFirstBuySol } from './chain';
+import { LinkConflictError, dropOwnReservation, getLink, getLinkByGithubRepoId, getLinkByMint, isExpired, linksByPrefix, markHatched, releaseExpired, reserveLink, type LinkNetwork, type LinkRow } from './store';
 
 /** A failure with an HTTP status and a message safe to show users. */
 export class LinkApiError extends Error {
@@ -56,7 +56,7 @@ async function settle(network: LinkNetwork, row: LinkRow | null): Promise<LinkRo
     return null;
   }
   const { config, vault } = linkKeys();
-  const check = await checkLinkPool(connection(), { pool: row.pool, mint: row.mint, config, vault });
+  const check = await checkLinkPool(connection(), { pool: row.pool, mint: row.mint, config: row.config ? new PublicKey(row.config) : config, vault });
   if (check.exists && check.ok) return (await markHatched(network, row.canonical_id, row.mint)) ?? (await getLink(network, row.canonical_id));
   if (!check.exists) {
     await releaseExpired(network, row.canonical_id, row.mint);
@@ -83,40 +83,47 @@ function blockedMeta(meta: LinkMetadata) {
  */
 async function resolveLink(url: unknown): Promise<{ link: CanonicalLink; meta: LinkMetadata }> {
   const link = canonical(url);
-  const meta = await metadataOrFail(link);
-  if (link.kind === 'github_repo' && meta.title && `gh:repo:${meta.title.toLowerCase()}` !== link.canonicalId && /^[^/\s]+\/[^/\s]+$/.test(meta.title)) {
-    const current = canonical(`https://github.com/${meta.title}`);
-    return { link: current, meta: await metadataOrFail(current) };
-  }
-  return { link, meta };
+  return { link, meta: await metadataOrFail(link) };
+}
+
+/** GitHub hatches need the numeric repo id (never hatched without it). */
+export function githubRepoIdOrThrow(meta: Pick<LinkMetadata, 'githubRepoId'>): number {
+  if (!meta.githubRepoId) throw new LinkApiError(503, 'Could not confirm the repository with GitHub right now. Try again in a few minutes.');
+  return meta.githubRepoId;
+}
+
+/** Another row already holds this GitHub repo (same id, possibly under an older or newer name). */
+async function githubTaken(network: LinkNetwork, link: CanonicalLink, meta: LinkMetadata): Promise<LinkRow | null> {
+  if (link.kind !== 'github_repo') return null;
+  const other = await settle(network, await getLinkByGithubRepoId(network, githubRepoIdOrThrow(meta)));
+  return other && other.canonical_id !== link.canonicalId ? other : null;
 }
 
 async function metadataOrFail(link: CanonicalLink): Promise<LinkMetadata> {
   try {
     return await linkMetadata(link);
   } catch (e) {
-    if (e instanceof LinkMetadataError) throw new LinkApiError(422, e.message);
+    if (e instanceof LinkMetadataError) throw new LinkApiError(e.retryable ? 503 : 422, e.message);
     throw e;
   }
 }
 
 // ---------- prepare ----------
 
-export async function prepareLink(url: unknown) {
+export async function prepareLink(body: { url?: unknown; firstBuySol?: unknown }) {
   const network = requireNetwork();
-  const first = canonical(url);
-  // Already taken? Answer from the database without fetching anything (except GitHub, whose name may have moved).
-  const early = first.kind === 'github_repo' ? null : await settle(network, await getLink(network, first.canonicalId));
-  if (early) {
-    const base = { canonicalId: first.canonicalId, idHash: await linkIdHash(first.canonicalId), kind: first.kind, displayUrl: first.displayUrl };
-    return early.status === 'reserved' ? { ...base, reserved: { retryInSeconds: reservedFor(early) } } : { ...base, exists: takenInfo(early) };
-  }
-  const { link, meta } = await resolveLink(url);
+  const link = canonical(body.url);
+  if (body.firstBuySol !== undefined && body.firstBuySol !== '') parseFirstBuy(body.firstBuySol); // reject over the cap early
   const idHash = await linkIdHash(link.canonicalId);
-  const base = { canonicalId: link.canonicalId, idHash, kind: link.kind, displayUrl: link.displayUrl };
-  const row = link.canonicalId === first.canonicalId && first.kind !== 'github_repo' ? null : await settle(network, await getLink(network, link.canonicalId));
+  const base = { canonicalId: link.canonicalId, idHash, kind: link.kind, displayUrl: link.displayUrl, maxFirstBuySol: maxFirstBuySol() };
+  // Already taken under this exact link? Answer from the database without fetching anything.
+  const row = await settle(network, await getLink(network, link.canonicalId));
   if (row && row.status !== 'reserved') return { ...base, exists: takenInfo(row) };
   if (row && row.status === 'reserved') return { ...base, reserved: { retryInSeconds: reservedFor(row) } };
+  const { meta } = await resolveLink(body.url);
+  // GitHub: the same repo under another name (renamed / transferred) already has its coin.
+  const other = await githubTaken(network, link, meta);
+  if (other) return other.status === 'reserved' ? { ...base, reserved: { retryInSeconds: reservedFor(other) } } : { ...base, exists: takenInfo(other) };
   blockedMeta(meta);
   const suggested = suggestCoin({ title: link.kind === 'github_repo' ? link.canonicalId.split('/')[1] : meta.title, fallback: meta.owner.handle ?? link.host });
   return { ...base, available: true as const, metadata: meta, suggested: { ...suggested, imageUrl: meta.imageUrl } };
@@ -139,7 +146,7 @@ function parseFirstBuy(v: unknown): number {
   if (!/^\d*\.?\d+$/.test(s) || (s.split('.')[1]?.length ?? 0) > 9) throw new LinkApiError(400, 'firstBuySol must be a SOL amount like 0.05');
   const [int, frac = ''] = s.split('.');
   const lamports = Number(BigInt(int || '0') * 1_000_000_000n + BigInt((frac + '000000000').slice(0, 9)));
-  if (lamports > MAX_FIRST_BUY_LAMPORTS) throw new LinkApiError(400, `The first buy is capped at ${MAX_FIRST_BUY_LAMPORTS / 1e9} SOL`);
+  if (lamports > maxFirstBuyLamports()) throw new LinkApiError(400, `The first buy is capped at ${maxFirstBuySol()} SOL`);
   return lamports;
 }
 
@@ -165,6 +172,10 @@ export async function hatchLink(body: { url?: unknown; wallet?: unknown; name?: 
   const row = await settle(network, await getLink(network, link.canonicalId));
   if (row && row.status !== 'reserved') throw new LinkApiError(409, 'This link already has its coin', { exists: takenInfo(row) });
   if (row && row.status === 'reserved') throw new LinkApiError(409, 'Someone is hatching this link right now. Try again shortly.', { retryInSeconds: reservedFor(row) });
+  const other = await githubTaken(network, link, meta);
+  if (other && other.status !== 'reserved') throw new LinkApiError(409, 'This link already has its coin', { exists: takenInfo(other) });
+  if (other) throw new LinkApiError(409, 'Someone is hatching this repository right now. Try again shortly.', { retryInSeconds: reservedFor(other) });
+  const githubRepoId = link.kind === 'github_repo' ? githubRepoIdOrThrow(meta) : null;
 
   blockedMeta(meta);
   const idHash = await linkIdHash(link.canonicalId);
@@ -191,9 +202,15 @@ export async function hatchLink(body: { url?: unknown; wallet?: unknown; name?: 
       config: config.toBase58(),
       hatched_by: payer.toBase58(),
       first_buy_lamports: firstBuyLamports,
+      github_repo_id: githubRepoId,
     },
     { prevMint: null }
-  );
+  ).catch(async (e: unknown) => {
+    if (!(e instanceof LinkConflictError)) throw e;
+    // Same GitHub repo id under another name won the race.
+    const winner = githubRepoId ? await getLinkByGithubRepoId(network, githubRepoId) : null;
+    throw new LinkApiError(409, 'This link already has its coin', winner && winner.status !== 'reserved' ? { exists: takenInfo(winner) } : {});
+  });
   if (!reserved) throw new LinkApiError(409, 'Someone else just started hatching this link. Try again shortly.');
 
   try {
@@ -239,7 +256,7 @@ export async function confirmLink(body: { canonicalId?: unknown; signature?: unk
   const keys = tx.transaction.message.getAccountKeys().staticAccountKeys.map((k) => k.toBase58());
   if (!keys.includes(row.pool)) throw new LinkApiError(409, 'That transaction is not this link’s hatch');
   // ...and the pool must really be ours: LINK config, this mint, creator = the vault.
-  const check = await checkLinkPool(conn, { pool: row.pool, mint: row.mint, config, vault });
+  const check = await checkLinkPool(conn, { pool: row.pool, mint: row.mint, config: row.config ? new PublicKey(row.config) : config, vault });
   if (!check.ok) throw new LinkApiError(409, `The pool does not check out: ${check.reason}`);
   const hatched = await markHatched(network, canonicalId, row.mint);
   if (!hatched) {
@@ -265,7 +282,7 @@ export async function lookupPrefix(prefix: string): Promise<LookupEntry[]> {
       const r = await settle(network, r0);
       if (!r) continue;
       const live = r.status === 'hatched' || r.status === 'claimed';
-      const check = live && r.pool && r.mint ? await checkLinkPool(conn, { pool: r.pool, mint: r.mint, config, vault, claimedWallet: r.claimed_wallet }).catch((): null => null) : null;
+      const check = live && r.pool && r.mint ? await checkLinkPool(conn, { pool: r.pool, mint: r.mint, config: r.config ? new PublicKey(r.config) : config, vault, claimedWallet: r.claimed_wallet }).catch((): null => null) : null;
       out.push({ h: r.id_hash, status: r.status, mint: live ? r.mint : null, ticker: live ? r.coin_ticker : null, name: live ? r.coin_name : null, progress: check?.progress ?? null, claimed: r.status === 'claimed' });
     }
     return out;

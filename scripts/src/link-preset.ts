@@ -3,6 +3,10 @@
 //     (the MEME-v2 curve shape), fees collected in the quote token, creator/partner trading fees 50/50,
 //     no migration fee, no pool creation fee.
 //   - v2 "Sniper shield" fee scheduler: 50% at launch, exponential over 12 steps of 5 s, 1% from 60 s.
+//   - First swap with min fee ON: the hatcher's buy bundled in the pool-creation transaction pays the minimum
+//     (1%) fee, not the shield. The program only grants it to the pool's very first swap AND only when that
+//     transaction contains the pool's initialize instruction at top level (process_swap.rs
+//     validate_contain_initialize_pool_ix_and_no_cpi), so no later swap can use it.
 //   - Liquidity at migration is 100% PERMANENTLY LOCKED: creator 50% locked, partner 50% locked, nothing
 //     withdrawable by either. Whoever holds a position can only claim its trading fees.
 // Launch model: a fresh one-time keypair signs as poolCreator and the SAME transaction transfers the creator
@@ -20,7 +24,7 @@ export function linkCurveV1(thresholdSol: number = LINK_THRESHOLD_SOL): ConfigPa
   return buildCurve({
     ...b,
     token: { ...b.token, tokenType: TokenType.Token2022 },
-    fee: { ...b.fee, baseFeeParams: { baseFeeMode: BaseFeeMode.FeeSchedulerExponential, feeSchedulerParam: { ...LINK_SHIELD } } },
+    fee: { ...b.fee, enableFirstSwapWithMinFee: true, baseFeeParams: { baseFeeMode: BaseFeeMode.FeeSchedulerExponential, feeSchedulerParam: { ...LINK_SHIELD } } },
     liquidityDistribution: {
       partnerLiquidityPercentage: 0,
       partnerPermanentLockedLiquidityPercentage: 50,
@@ -41,6 +45,7 @@ export function linkV1Spec(thresholdSol: number = LINK_THRESHOLD_SOL) {
     'poolFees.baseFee.secondFactor': '5', // seconds per period
     'poolFees.baseFee.thirdFactor': '2781', // reduction per period, bps (ends at 1%)
     dynamicFeeEnabled: true,
+    enableFirstSwapWithMinFee: true, // only the swap bundled in the creation transaction
     collectFeeMode: 0, // quote token
     creatorTradingFeePercentage: 50,
     'migrationFee.feePercentage': 0,

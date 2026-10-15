@@ -4,6 +4,7 @@
 // LINK-v1 (link-preset.ts): SOL quote, 10 SOL threshold, Token-2022 base, the MEME-v2 curve shape, fees in the
 // quote token, 50/50 creator/partner trading fees, no migration fee, sniper shield 50% -> 1% over 60 s, and
 // liquidity at migration 100% permanently locked (creator 50%, partner 50%, nothing withdrawable).
+// The hatcher's buy bundled in the creation transaction pays the minimum fee (first swap with min fee ON).
 // Pools under it are created by a one-time key and handed to the Squads vault in the same transaction
 // (create-squads-vault-mainnet.ts); there is no standing "Nest" key.
 import { isDeepStrictEqual } from 'node:util'
@@ -35,7 +36,7 @@ export async function createLinkConfig() {
   if (!isDeepStrictEqual(plain({ s: curve.sqrtStartPrice, c: curve.curve }), plain({ s: meme.sqrtStartPrice, c: meme.curve }))) throw new StepError(STEP, 'LINK-v1 curve points differ from MEME-v2; refusing to continue.')
   const thresholdRaw = String(LINK_THRESHOLD_SOL * 1e9)
 
-  const { kp: config } = loadOrCreateKeypair('mainnet-config-link-v1')
+  const { kp: config } = loadOrCreateKeypair('mainnet-config-link-v1b') // v1b: first swap with min fee ON
   console.log(`  config ${config.publicKey.toBase58()}  (SOL quote, ${LINK_THRESHOLD_SOL} SOL threshold, Token-2022 base, DAMM v2 on graduation, MEME-v2 curve shape)`)
   console.log(`  spec check passed (${Object.keys(spec).length} fields): fees in the quote token (collectFeeMode ${curve.collectFeeMode}); creator ${curve.creatorTradingFeePercentage}% / partner ${100 - curve.creatorTradingFeePercentage}% of curve fees; migration fee ${curve.migrationFee.feePercentage}% (creator share ${curve.migrationFee.creatorFeePercentage}%)`)
   console.log(`  graduated LP: partner ${curve.partnerLiquidityPercentage}% withdrawable + ${curve.partnerPermanentLockedLiquidityPercentage}% permanently locked / creator ${curve.creatorLiquidityPercentage}% withdrawable + ${curve.creatorPermanentLockedLiquidityPercentage}% permanently locked`)

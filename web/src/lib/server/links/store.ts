@@ -31,7 +31,12 @@ export type LinkRow = {
   hatched_at: string | null;
   claimed_wallet: string | null;
   claimed_at: string | null;
+  /** GitHub repos: the numeric repo id (unique per network). */
+  github_repo_id: number | null;
 };
+
+/** The reservation collided with another row's unique key (e.g. the same GitHub repo under another name). */
+export class LinkConflictError extends Error {}
 
 /** How long a hatch reservation lasts. Longer than a blockhash lives (~60-90 s), so an expired one cannot still land. */
 export const RESERVATION_SECONDS = 120;
@@ -64,6 +69,12 @@ export async function linksByPrefix(network: LinkNetwork, prefix: string): Promi
   return (data as LinkRow[]) ?? [];
 }
 
+export async function getLinkByGithubRepoId(network: LinkNetwork, repoId: number): Promise<LinkRow | null> {
+  const { data, error } = await supabaseAdmin().from('links').select('*').eq('network', network).eq('github_repo_id', repoId).maybeSingle();
+  if (error) fail('get by github repo id', error);
+  return (data as LinkRow) ?? null;
+}
+
 export type ReserveInput = Omit<LinkRow, 'status' | 'reserved_until' | 'created_at' | 'hatched_at' | 'claimed_wallet' | 'claimed_at'>;
 
 /** Atomic: returns the new reservation, or null when the link is taken (hatched, or reserved by someone else). */
@@ -89,7 +100,9 @@ export async function reserveLink(row: ReserveInput, opts: { prevMint: string | 
     p_first_buy_lamports: row.first_buy_lamports,
     p_ttl_seconds: opts.ttlSeconds ?? RESERVATION_SECONDS,
     p_prev_mint: opts.prevMint,
+    p_github_repo_id: row.github_repo_id,
   });
+  if (error?.code === '23505') throw new LinkConflictError('unique key already taken');
   if (error) fail('reserve', error);
   const rows = (data as LinkRow[]) ?? [];
   return rows[0] ?? null;

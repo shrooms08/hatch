@@ -97,7 +97,7 @@ export type HatchConfigs = {
    * Link coins ("one official coin per link"): the LINK-v1 config and the Squads vault PDA that is the pool
    * creator until the link's owner claims. Not part of allConfigKeys: link coins are not listed with launches.
    */
-  link?: { config: string; vault: string } | null;
+  link?: { config: string; vault: string; legacyConfigs?: string[] } | null;
 };
 
 export type LegacyConfig = { config: string; preset: PresetId; stock?: string };
@@ -105,7 +105,7 @@ export type LegacyConfig = { config: string; preset: PresetId; stock?: string };
 export const EMPTY_HATCH_CONFIGS: HatchConfigs = { network: '', configs: {}, stocks: {}, hiddenMints: [], testMints: [], legacy: [], link: null };
 
 /** True when `configKey` is the link-coin config. */
-export const isLinkConfig = (hc: HatchConfigs, configKey: string) => !!hc.link && hc.link.config === configKey;
+export const isLinkConfig = (hc: HatchConfigs, configKey: string) => !!hc.link && (hc.link.config === configKey || (hc.link.legacyConfigs ?? []).includes(configKey));
 
 /** Every config key whose pools are Hatch pools: current ones (launches) and legacy ones (still listed). */
 export function allConfigKeys(hc: HatchConfigs): string[] {

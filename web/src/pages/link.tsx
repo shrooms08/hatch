@@ -17,6 +17,7 @@ type Prepared = {
   idHash: string;
   kind: string;
   displayUrl: string;
+  maxFirstBuySol: number;
   exists?: { mint: string | null; status: string; name: string | null; ticker: string | null };
   reserved?: { retryInSeconds: number };
   available?: true;
@@ -66,6 +67,7 @@ export default function LinkPage() {
   const hatch = async () => {
     if (!wallet.publicKey || !wallet.signTransaction || !prep) return;
     setError(null);
+    if (!(Number(firstBuy || '0') <= prep.maxFirstBuySol)) return setError(`The first buy is capped at ${prep.maxFirstBuySol} SOL`);
     try {
       setBusy('Preparing the transaction…');
       const h = await post<{ transaction: string; mint: string; pool: string; canonicalId: string }>('/api/links/hatch', {
@@ -152,8 +154,10 @@ export default function LinkPage() {
                   Ticker <input value={ticker} onChange={(e) => setTicker(e.target.value.toUpperCase())} maxLength={10} className="ml-2 h-9 rounded-md border border-line bg-inset px-2 font-mono text-ink" />
                 </label>
                 <label>
-                  First buy (SOL) <input value={firstBuy} onChange={(e) => setFirstBuy(e.target.value)} className="ml-2 h-9 w-28 rounded-md border border-line bg-inset px-2 font-mono text-ink" />
+                  First buy (SOL, max {prep.maxFirstBuySol}){' '}
+                  <input value={firstBuy} onChange={(e) => setFirstBuy(e.target.value)} inputMode="decimal" className="ml-2 h-9 w-28 rounded-md border border-line bg-inset px-2 font-mono text-ink" />
                 </label>
+                <span className="text-xs text-ink-muted">Your first buy is in the same transaction as the launch, so it pays the normal 1% fee, not the sniper shield.</span>
                 <Button onClick={hatch} disabled={!wallet.publicKey || !!busy}>
                   {wallet.publicKey ? 'Hatch it' : 'Connect a wallet to hatch'}
                 </Button>

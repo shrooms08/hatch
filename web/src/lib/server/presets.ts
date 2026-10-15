@@ -122,11 +122,13 @@ export function loadHatchConfigs(): HatchConfigs {
 }
 
 /** LINK_CONFIG + LINK_VAULT (both public keys): link coins are enabled only when both are set. */
-function loadLinkConfig(): { config: string; vault: string } | null {
+function loadLinkConfig(): { config: string; vault: string; legacyConfigs: string[] } | null {
   const config = process.env.LINK_CONFIG?.trim();
   const vault = process.env.LINK_VAULT?.trim();
   if (!config || !vault) return null;
-  return { config: pubkey(config, 'LINK_CONFIG'), vault: pubkey(vault, 'LINK_VAULT') };
+  // Earlier link configs: their coins keep working (token pages, lookups); new hatches use LINK_CONFIG.
+  const legacyConfigs = (process.env.LINK_LEGACY_CONFIGS ?? '').split(',').map((s) => s.trim()).filter(Boolean).map((k, i) => pubkey(k, `LINK_LEGACY_CONFIGS[${i}]`));
+  return { config: pubkey(config, 'LINK_CONFIG'), vault: pubkey(vault, 'LINK_VAULT'), legacyConfigs };
 }
 
 /** Config for a launch. STOCK needs a ticker that exists in STOCK_CONFIGS on this network. */

@@ -14,8 +14,13 @@ import { isSupabaseConfigured } from '@/lib/server/supabase';
 import type { LinkNetwork } from './store';
 
 export const WSOL = new PublicKey('So11111111111111111111111111111111111111112');
-/** Most a hatcher may spend on the first buy (devnet testing; mainnet will get its own rule). */
-export const MAX_FIRST_BUY_LAMPORTS = 1_000_000_000;
+/** Most a hatcher may spend on the first buy, in SOL. LINK_MAX_FIRST_BUY_SOL overrides (0 < x <= 100). */
+export const LINK_MAX_FIRST_BUY_SOL = 1;
+export function maxFirstBuySol(): number {
+  const v = Number(process.env.LINK_MAX_FIRST_BUY_SOL);
+  return Number.isFinite(v) && v > 0 && v <= 100 ? v : LINK_MAX_FIRST_BUY_SOL;
+}
+export const maxFirstBuyLamports = () => Math.round(maxFirstBuySol() * 1e9);
 const CU_LIMIT = 300_000;
 
 /** The network link coins run on here, or null when they are off. P2: devnet only. */
@@ -50,6 +55,8 @@ export function assertLinkConfig(connection: Connection, config: PublicKey): Pro
       if (c.creatorLiquidityPercentage !== 0 || c.partnerLiquidityPercentage !== 0) bad.push('some liquidity is withdrawable');
       if (c.creatorPermanentLockedLiquidityPercentage !== 50 || c.partnerPermanentLockedLiquidityPercentage !== 50) bad.push('liquidity is not 50/50 permanently locked');
       if (c.migrationOption !== 1) bad.push('does not migrate to DAMM v2');
+      // The hatcher's buy in the creation transaction pays the minimum fee, not the sniper shield.
+      if ((c as unknown as { enableFirstSwapWithMinFee?: number }).enableFirstSwapWithMinFee !== 1) bad.push('first swap with min fee is off');
     }
     if (bad.length) throw new Error(`LINK_CONFIG does not match LINK-v1: ${bad.join(', ')}`);
   })().catch((e) => {
@@ -102,8 +109,18 @@ export async function buildLinkHatchTx(p: {
 
 export type PoolCheck = { exists: boolean; ok: boolean; reason?: string; progress?: number };
 
-/** The pool for a link: under the LINK config, for this mint, and its creator is the vault (or, once claimed, the owner). */
+/** The link configs pools may sit under: the current one and earlier ones (their coins keep working). */
+export function linkConfigKeys(): string[] {
+  const link = loadHatchConfigs().link;
+  return link ? [link.config, ...(link.legacyConfigs ?? [])] : [];
+}
+
+/**
+ * The pool for a link: under `config` (the config recorded when it was hatched, which must be one of ours), for this
+ * mint, and its creator is the vault (or, once claimed, the owner).
+ */
 export async function checkLinkPool(connection: Connection, p: { pool: string; mint: string; config: PublicKey; vault: PublicKey; claimedWallet?: string | null }): Promise<PoolCheck> {
+  if (!linkConfigKeys().includes(p.config.toBase58())) return { exists: false, ok: false, reason: 'not a link config' };
   const client = dbc(connection);
   const vp = await client.state.getPool(new PublicKey(p.pool)).catch((): null => null);
   if (!vp) return { exists: false, ok: false, reason: 'pool not found on chain' };
