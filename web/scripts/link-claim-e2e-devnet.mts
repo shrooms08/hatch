@@ -21,7 +21,8 @@ const CLAIM_URL = arg('--claim-url', 'https://github.com/octocat/Hello-World');
 const DISOWN_URL = arg('--disown-url', 'https://github.com/octocat/Spoon-Knife');
 const TIMELOCK_URL = arg('--timelock-url', 'https://github.com/octocat/octocat.github.io');
 const YOUTUBE_URL = arg('--youtube-url', 'https://www.youtube.com/watch?v=9bZkp7q19f0');
-const ONLY = arg('--only', 'all'); // all | timelock | youtube
+const X_URL = arg('--x-url', 'https://x.com/jack/status/20');
+const ONLY = arg('--only', 'all'); // all | timelock | youtube | x
 const sol = (l: bigint | number | BN | string) => (Number(l.toString()) / 1e9).toFixed(9);
 const short = (k: PublicKey | string) => `${k.toString().slice(0, 4)}…${k.toString().slice(-4)}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -117,7 +118,27 @@ async function octocatTrust(repoPath: string) {
   return { platform: 'github' as const, accountCreatedAt: (u.created_at as string) ?? null, followers: (u.followers as number) ?? null, stars: (r.stargazers_count as number) ?? null, platformVerified: null, renamedOrTransferred: false, checkedAt: new Date().toISOString() };
 }
 
-async function run(action: 'claim' | 'disown', url: string, destKp: Keypair, opts: { timelock?: boolean; youtube?: boolean } = {}) {
+async function xVerified(coin: { mint: string; canonicalId: string }) {
+  // Real oEmbed for the ORIGINAL post; the code post is stubbed (a script cannot post on X). Same check as production.
+  const { issueXCode, verifyXClaim, realOembed, handleOf } = await import('../src/lib/server/links/x.ts');
+  const { snowflakeAt } = await import('../src/lib/links/claimRules.ts');
+  const session = 'e2e-session-' + Date.now();
+  const original = await realOembed(`https://twitter.com/i/status/${coin.canonicalId.replace('x:status:', '')}`);
+  const handle = handleOf(original?.author_url);
+  console.log(`  [x] real oEmbed: original post by @${handle}`);
+  const { code } = await issueXCode(coin.mint, session);
+  const pid = snowflakeAt(Date.now() + 3_000);
+  const stubbed = async (url: string) => (url.endsWith(`/${pid}`) ? { author_url: `https://x.com/${handle}`, html: `<p>verifying ${code} on hatch</p>` } : realOembed(url));
+  const wrong = await verifyXClaim({ mint: coin.mint, code, postUrl: `https://x.com/someone_else/status/${snowflakeAt(Date.now() + 4_000)}`, sessionId: session }, async (url) => (url.includes('/status/20') || url.endsWith('/20') ? realOembed(url) : { author_url: 'https://x.com/someone_else', html: `<p>${code}</p>` })).then(() => 'ACCEPTED', (e: Error) => `REJECTED "${e.message}"`);
+  console.log(`  [negative check] code posted by another account: ${wrong}`);
+  const v = await verifyXClaim({ mint: coin.mint, code, postUrl: `https://x.com/${handle}/status/${pid}`, sessionId: session }, stubbed);
+  console.log(`  [x] verified ${v.login} (X handle at claim time) | evidence ${v.evidence} | code ${code}`);
+  const reuse = await verifyXClaim({ mint: coin.mint, code, postUrl: `https://x.com/${handle}/status/${pid}`, sessionId: session }, stubbed).then(() => 'ACCEPTED', (e: Error) => `REJECTED "${e.message}"`);
+  console.log(`  [negative check] same code again: ${reuse}`);
+  return v;
+}
+
+async function run(action: 'claim' | 'disown', url: string, destKp: Keypair, opts: { timelock?: boolean; youtube?: boolean; x?: boolean } = {}) {
   const destination = destKp.publicKey;
   console.log(`\n--- ${action}: ${url} -> ${destination.toBase58()} ---`);
   const coin = await hatch(url);
@@ -131,11 +152,21 @@ async function run(action: 'claim' | 'disown', url: string, destKp: Keypair, opt
   // SIMULATED verification: what the GitHub callback produces for the repo's owner (octocat, id 583231).
   // STUBBED sign-in (a browser OAuth step cannot run in a script). GitHub: octocat's real public data. YouTube: a
   // stub channel identity in exactly the shape the YouTube callback produces (owner rule + API paths are unit-tested).
-  const verified = opts.youtube
+  const verified = opts.x
+    ? await xVerified(coin)
+    : opts.youtube
     ? { mint: coin.mint, canonicalId: coin.canonicalId, platform: 'youtube' as const, accountId: 'UC_STUB_E2E_CHANNEL_000000', login: '@stub-e2e-channel', verifiedAt: new Date().toISOString(), exp: Date.now() + 30 * 60_000, trust: { platform: 'youtube' as const, accountCreatedAt: '2012-07-15T00:00:00Z', followers: 12000, followersHidden: false, stars: null, platformVerified: null, renamedOrTransferred: false, checkedAt: new Date().toISOString() } }
     : { mint: coin.mint, canonicalId: coin.canonicalId, platform: 'github' as const, accountId: '583231', login: 'octocat', verifiedAt: new Date().toISOString(), exp: Date.now() + 30 * 60_000, trust: await octocatTrust(coin.canonicalId.replace('gh:repo:', '')) };
   const destBefore = await connection.getBalance(destination);
   const serverBefore = await connection.getBalance(v.server.publicKey);
+  if (opts.x) {
+    // The minimum claim: at the default 0.02 SOL this coin (a few test trades) is refused, then this run lowers it.
+    delete process.env.MIN_CLAIM_SOL;
+    const gate = await issueNonce(verified, { mint: coin.mint, wallet: destination.toBase58() }).then(() => 'ALLOWED', (e: Error) => `REFUSED "${e.message}"`);
+    console.log(`  [min claim] default MIN_CLAIM_SOL (0.02), ${sol(before.fee)} SOL held: ${gate}`);
+    process.env.MIN_CLAIM_SOL = '0.001';
+    console.log('  [min claim] MIN_CLAIM_SOL=0.001 for the rest of this devnet run');
+  }
   // The destination wallet signs the one-time claim message (what the claim page has the wallet do).
   const n = await issueNonce(verified, { mint: coin.mint, wallet: destination.toBase58() });
   console.log(`  [sign] destination signs: "${n.message}"`);
@@ -205,6 +236,14 @@ await topUp(approver.publicKey, 10_000_000, 20_000_000, 'approver');
 if (ONLY === 'all') {
   await run('claim', CLAIM_URL, ownerA);
   await run('disown', DISOWN_URL, ownerB);
+}
+if (ONLY === 'hatch') {
+  // Just hatch a coin (no claim), e.g. to look at its claim page: --only hatch --url <link>
+  const c = await hatch(arg('--url', X_URL));
+  console.log(`  hatched: ${BASE}/claim/${c.mint}`);
+}
+if (ONLY === 'all' || ONLY === 'x') {
+  await run('claim', X_URL, ownerA, { x: true });
 }
 if (ONLY === 'all' || ONLY === 'youtube') {
   await run('claim', YOUTUBE_URL, ownerB, { youtube: true });

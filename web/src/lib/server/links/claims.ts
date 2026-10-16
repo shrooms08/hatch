@@ -44,21 +44,21 @@ import {
 import type { VerifiedId } from './claimCookie';
 import { ADMIN_MESSAGE } from '@/lib/links/claimShared';
 import { randomBytes } from 'node:crypto';
-import { CLAIM_PLATFORM_NAME, DEFAULT_CLAIM_TIMELOCK_SOL, NONCE_TTL_MS, destinationMessage, needsTimelock, timelockRemainingMs, timelockUntil, trustLabel, validateDispute, type OwnerTrust } from '@/lib/links/claimRules';
+import { CLAIM_PLATFORM_NAME, DEFAULT_CLAIM_TIMELOCK_SOL, DEFAULT_MIN_CLAIM_SOL, meetsMinClaim, minClaimMessage, NONCE_TTL_MS, destinationMessage, needsTimelock, timelockRemainingMs, timelockUntil, trustLabel, validateDispute, type OwnerTrust } from '@/lib/links/claimRules';
 
 const connection = () => new Connection(serverRpcUrl(), 'confirmed');
 const OPEN: ClaimRow['status'][] = ['pending', 'proposed', 'approved'];
 
 /** Platforms whose owners can verify in this build. */
-export const CLAIM_PLATFORMS = { github_repo: 'github', youtube_video: 'youtube' } as const;
+export const CLAIM_PLATFORMS = { github_repo: 'github', youtube_video: 'youtube', x_post: 'x' } as const;
 
-function claimNetwork(): LinkNetwork {
+export function claimNetwork(): LinkNetwork {
   const n = linkNetwork();
   if (!n || !isVaultConfigured()) throw new LinkApiError(404, 'Link coin claims are not available on this network yet');
   return n;
 }
 
-function parseMint(mint: unknown): string {
+export function parseMint(mint: unknown): string {
   try {
     return new PublicKey(String(mint ?? '')).toBase58();
   } catch {
@@ -79,13 +79,13 @@ export function validDestination(raw: unknown): PublicKey {
   return k;
 }
 
-async function linkForClaim(network: LinkNetwork, mint: string): Promise<LinkRow> {
+export async function linkForClaim(network: LinkNetwork, mint: string): Promise<LinkRow> {
   const link = await getLinkByMint(network, mint);
   if (!link || !link.pool || !['hatched', 'claimed', 'disowned'].includes(link.status)) throw new LinkApiError(404, 'No link coin with this mint');
   return link;
 }
 
-async function poolOnChain(pool: string) {
+export async function poolOnChain(pool: string) {
   const client = new DynamicBondingCurveClient(connection(), 'confirmed');
   const vp = await client.state.getPool(new PublicKey(pool));
   if (!vp) throw new LinkApiError(502, 'Could not read the pool on chain. Try again.');
@@ -98,6 +98,13 @@ const publicClaim = (c: ClaimRow | undefined) =>
   c
     ? { id: c.id, status: c.status, action: c.action, destination: c.destination, createdAt: c.created_at, executeSignature: c.execute_signature, receivedLamports: c.received_lamports, timelockUntil: c.timelock_until }
     : null;
+
+/** A claim or disown can only be submitted once the coin holds at least this much (SOL). MIN_CLAIM_SOL overrides. */
+export function minClaimSol(): number {
+  const raw = process.env.MIN_CLAIM_SOL;
+  const v = Number(raw);
+  return raw !== undefined && raw !== '' && Number.isFinite(v) && v >= 0 ? v : DEFAULT_MIN_CLAIM_SOL;
+}
 
 /** Claims holding at least this much (SOL, at proposal time) wait 48 h before they can execute. CLAIM_TIMELOCK_SOL overrides. */
 export function claimTimelockSol(): number {
@@ -155,6 +162,9 @@ export async function claimInfo(mintRaw: unknown, verified: VerifiedId | null) {
     ownerTrust: link.owner_trust ?? null,
     ownerTrustLabel: trustLabel(link.owner_trust),
     timelockSol: claimTimelockSol(),
+    /** Claims open once the coin holds this much; below it the claim page explains and disables the button. */
+    minClaimSol: minClaimSol(),
+    meetsMinClaim: meetsMinClaim(state.creatorQuoteFee.toString(), minClaimSol()),
     openClaim: publicClaim(open),
     lastClaim: publicClaim(done),
   };
@@ -163,7 +173,7 @@ export async function claimInfo(mintRaw: unknown, verified: VerifiedId | null) {
 /** Called right after a successful verification: logs who verified, when, for which link. */
 export async function logVerified(v: VerifiedId) {
   const network = claimNetwork();
-  await appendClaimLog({ network, claim_id: null, canonical_id: v.canonicalId, event: 'verified', platform: v.platform, account_id: v.accountId, account_login: v.login, detail: { mint: v.mint, verifiedAt: v.verifiedAt, trust: v.trust ?? null } });
+  await appendClaimLog({ network, claim_id: null, canonical_id: v.canonicalId, event: 'verified', platform: v.platform, account_id: v.accountId, account_login: v.login, detail: { mint: v.mint, verifiedAt: v.verifiedAt, trust: v.trust ?? null, evidence: v.evidence ?? null, identity: v.platform === 'x' ? 'X handle at claim time' : 'account id' } });
   if (v.trust) await setOwnerTrust(network, v.canonicalId, v.trust);
 }
 
@@ -180,6 +190,8 @@ export async function issueNonce(verified: VerifiedId | null, body: { mint?: unk
   const link = await linkForClaim(network, mint);
   if (link.canonical_id !== verified.canonicalId) throw new LinkApiError(401, 'Verify that you own this link first');
   if (link.status !== 'hatched') throw new LinkApiError(409, 'This coin was already claimed or disowned');
+  const { state } = await poolOnChain(link.pool!);
+  if (!meetsMinClaim(state.creatorQuoteFee.toString(), minClaimSol())) throw new LinkApiError(409, minClaimMessage(minClaimSol()));
   const nonce = randomBytes(16).toString('hex');
   const message = destinationMessage({ ticker: link.coin_ticker, mint, platform: CLAIM_PLATFORM_NAME[verified.platform] ?? verified.platform, login: verified.login, accountId: verified.accountId, wallet, nonce, date: new Date().toISOString().slice(0, 10) });
   const expiresAt = new Date(Date.now() + NONCE_TTL_MS).toISOString();
@@ -206,8 +218,9 @@ export async function submitClaim(verified: VerifiedId | null, body: { mint?: un
   if (destination.equals(vault)) throw new LinkApiError(400, 'That is the Hatch vault. Use your own wallet.');
 
   // The gap: refuse BEFORE recording anything (a proposal made now could not execute until migration).
-  const { phase } = await poolOnChain(link.pool!);
+  const { phase, state: held } = await poolOnChain(link.pool!);
   if (phase === 'gap') throw new LinkApiError(409, new GapError().message);
+  if (!meetsMinClaim(held.creatorQuoteFee.toString(), minClaimSol())) throw new LinkApiError(409, minClaimMessage(minClaimSol()));
 
   // The destination wallet signed the one-time message for exactly this coin, account and wallet.
   const nonceId = String(body.nonce ?? '');
@@ -235,13 +248,14 @@ export async function submitClaim(verified: VerifiedId | null, body: { mint?: un
       destination_signature: signature,
       nonce: nonceId,
       trust: (verified.trust ?? null) as OwnerTrust | null,
+      evidence_url: verified.evidence ?? null,
     });
   } catch (e) {
     if (e instanceof ClaimOpenError) throw new LinkApiError(409, 'A claim for this coin is already waiting for approval. To change the wallet, it has to be rejected first.');
     throw e;
   }
   const log = { network, claim_id: claim.id, canonical_id: link.canonical_id, platform: verified.platform, account_id: verified.accountId, account_login: verified.login, destination: claim.destination };
-  await appendClaimLog({ ...log, event: 'submitted', detail: { action, mint, destinationMessage: issued.message, destinationSignature: signature, nonce: nonceId, trust: verified.trust ?? null } });
+  await appendClaimLog({ ...log, event: 'submitted', detail: { action, mint, destinationMessage: issued.message, destinationSignature: signature, nonce: nonceId, trust: verified.trust ?? null, evidence: verified.evidence ?? null } });
 
   const v = vaultEnv();
   try {
@@ -334,6 +348,7 @@ export async function adminClaims() {
         createdAt: c.created_at,
         trust: c.trust,
         destinationSigned: !!c.destination_signature,
+        evidenceUrl: c.evidence_url,
         timelockUntil: c.timelock_until,
         timelockSol,
         disputes: disputes.filter((d) => d.claim_id === c.id).map((d) => ({ contact: d.contact, reason: d.reason, at: d.created_at })),

@@ -194,3 +194,50 @@ test('disputes are stored against the open claim and listed for the approver', {
   await assert.rejects(() => store!.insertDispute({ network: 'devnet', claim_id: c.id, canonical_id: id, contact: 'me@example.com', reason: 'short' }));
   await store!.updateClaim(c.id, { status: 'rejected' }, ['pending']);
 });
+
+test('X post-a-code verification (stubbed oEmbed): matches, refusals, single use, expiry, deleted original, session binding', { skip: !configured && 'Supabase not configured' }, async () => {
+  const { issueXCode, verifyXClaim, NOT_PUBLIC } = await import('../src/lib/server/links/x.ts');
+  const { snowflakeAt } = await import('../src/lib/links/claimRules.ts');
+  const origId = `9${randomBytes(6).readUIntBE(0, 6)}`;
+  const id = `x:status:${origId}`;
+  ids.push(id);
+  const { Keypair } = await import('@solana/web3.js');
+  const r = { ...(await row(id, Keypair.generate().publicKey.toBase58())), kind: 'x_post' as const, display_url: `https://x.com/i/status/${origId}`, pool: `pool-${randomBytes(6).toString('hex')}` };
+  assert.ok(await store!.reserveLink(r, { prevMint: null }));
+  assert.ok(await store!.markHatched('devnet', id, r.mint));
+
+  const session = randomBytes(16).toString('hex');
+  // A fake oEmbed: the original by @ShroomsGotSol; code posts by whoever / with whatever text each case sets.
+  const posts = new Map<string, { author_url?: string; html?: string } | null>();
+  posts.set(origId, { author_url: 'https://x.com/ShroomsGotSol', html: '<p>original</p>' });
+  const oembed = async (url: string) => posts.get(url.split('/').pop()!) ?? null;
+  const codePost = (handle: string, text: string, at = Date.now() + 5_000) => {
+    const pid = snowflakeAt(at);
+    posts.set(pid, { author_url: `https://x.com/${handle}`, html: `<p>${text}</p>` });
+    return `https://x.com/${handle}/status/${pid}`;
+  };
+  const verify = (code: string, postUrl: string, s = session) => verifyXClaim({ mint: r.mint, code, postUrl, sessionId: s }, oembed);
+
+  const a = await issueXCode(r.mint, session);
+  await assert.rejects(() => verify(a.code, codePost('someone_else', a.code)), /isn't from the X account that posted the original/);
+  await assert.rejects(() => verify(a.code, codePost('shroomsgotsol', 'hatch-ZZZZ-ZZ')), /doesn't contain your code/);
+  await assert.rejects(() => verify('not-a-code', codePost('shroomsgotsol', a.code)), /Get a code first/);
+  await assert.rejects(() => verify(a.code, codePost('shroomsgotsol', a.code, Date.now() - 10 * 60_000)), /made before this code was issued/);
+  await assert.rejects(() => verify(a.code, codePost('shroomsgotsol', a.code), randomBytes(16).toString('hex')), /not for this coin or this browser/);
+  const ok = await verify(a.code, codePost('shroomsgotsol', `verifying ${a.code} for hatch`));
+  assert.equal(ok.platform, 'x');
+  assert.equal(ok.login, '@ShroomsGotSol');
+  assert.equal(ok.accountId, 'shroomsgotsol');
+  assert.match(ok.evidence!, /^https:\/\/x\.com\/ShroomsGotSol\/status\/\d+$/);
+  // Reusing the same code is refused.
+  await assert.rejects(() => verify(a.code, codePost('shroomsgotsol', a.code)), /already used/);
+  // An expired code is refused.
+  const b = await issueXCode(r.mint, session);
+  await supabaseAdmin!().from('x_claim_codes').update({ expires_at: new Date(Date.now() - 1000).toISOString() }).eq('code', b.code);
+  await assert.rejects(() => verify(b.code, codePost('shroomsgotsol', b.code)), /expired/);
+  // The original deleted or made private: refused with the exact copy.
+  const c = await issueXCode(r.mint, session);
+  posts.set(origId, null);
+  await assert.rejects(() => verify(c.code, codePost('shroomsgotsol', c.code)), { message: NOT_PUBLIC });
+  await supabaseAdmin!().from('x_claim_codes').delete().eq('mint', r.mint);
+});

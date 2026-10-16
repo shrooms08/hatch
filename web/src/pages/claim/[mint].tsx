@@ -13,7 +13,7 @@ import { HELD_BY_VAULT, formatSol, lamportsToSol, shortWallet } from '@/lib/link
 import { explorerTxUrl } from '@/lib/config/network';
 import { PLATFORM_NAME } from '@/lib/links/listing';
 import bs58 from 'bs58';
-import { CLAIM_TIMELOCK_HOURS, formatRemaining, timelockRemainingMs, trustSummary, type OwnerTrust } from '@/lib/links/claimRules';
+import { CLAIM_TIMELOCK_HOURS, X_DETAILS_UNAVAILABLE, formatRemaining, minClaimMessage, timelockRemainingMs, trustSummary, type OwnerTrust } from '@/lib/links/claimRules';
 
 type Info = {
   mint: string;
@@ -28,7 +28,9 @@ type Info = {
   heldLamports: string;
   phase: 'curve' | 'gap' | 'migrated';
   canVerify: boolean;
-  platform: 'github' | 'youtube' | null;
+  platform: 'github' | 'youtube' | 'x' | null;
+  minClaimSol: number;
+  meetsMinClaim: boolean;
   kind: string;
   verified: { platform: string; login: string; accountId: string; verifiedAt: string; trust: OwnerTrust | null; trustLabel: string | null } | null;
   openClaim: { id: string; status: string; action: 'claim' | 'disown'; destination: string; createdAt: string; timelockUntil: string | null } | null;
@@ -62,6 +64,35 @@ export default function ClaimPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const urlError = typeof router.query.error === 'string' ? router.query.error : null;
+  const [xCode, setXCode] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [xPost, setXPost] = useState('');
+  const [xBusy, setXBusy] = useState(false);
+  const [xError, setXError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const post = (url: string, body: object) => getJson(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  const getXCode = async () => {
+    setXBusy(true);
+    setXError(null);
+    try {
+      setXCode((await post('/api/links/claim/x/code', { mint })) as { code: string; expiresAt: string });
+    } catch (e) {
+      setXError((e as Error).message);
+    } finally {
+      setXBusy(false);
+    }
+  };
+  const verifyX = async () => {
+    setXBusy(true);
+    setXError(null);
+    try {
+      await post('/api/links/claim/x/verify', { mint, code: xCode?.code, postUrl: xPost.trim() });
+      await qc.invalidateQueries(['claim', mint]);
+    } catch (e) {
+      setXError((e as Error).message);
+    } finally {
+      setXBusy(false);
+    }
+  };
 
   const d = info.data;
   const connected = wallet.publicKey?.toBase58() ?? '';
@@ -151,8 +182,39 @@ export default function ClaimPage() {
                 <span className="text-xs text-ink-muted">The wallet can&apos;t be changed now. To use another one, ask Hatch to reject this request, then start again.</span>
               </Card>
             ) : !d.canVerify ? (
-              <Card className="rounded-[20px] p-5 text-sm text-ink-2">
-                {d.kind === 'x_post' ? 'Claims for X posts are coming later.' : 'Claims for this kind of link are coming soon.'} GitHub repos and YouTube videos can be claimed now.
+              <Card className="rounded-[20px] p-5 text-sm text-ink-2">Claims for this kind of link are coming soon. GitHub repos, YouTube videos and X posts can be claimed now.</Card>
+            ) : !d.verified && d.platform === 'x' ? (
+              <Card className="flex flex-col gap-3 rounded-[20px] p-5 text-sm">
+                <span className="text-ink-2">Post this code from the X account that posted the original, then paste the link to your post. You can delete it after you&apos;re verified.</span>
+                {!xCode ? (
+                  <Button className="self-start" loading={xBusy} onClick={() => void getXCode()}>
+                    Verify with X: get a code
+                  </Button>
+                ) : (
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="rounded-md border border-line bg-inset px-3 py-2 font-mono text-lg text-ink">{xCode.code}</span>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => {
+                          void navigator.clipboard?.writeText(xCode.code).then(() => setCopied(true));
+                        }}
+                      >
+                        {copied ? 'Copied' : 'Copy'}
+                      </Button>
+                      <a className="text-ink-accent" href={`https://x.com/intent/post?text=${encodeURIComponent(xCode.code)}`} target="_blank" rel="noreferrer noopener">
+                        Post it on X
+                      </a>
+                    </div>
+                    <span className="text-xs text-ink-muted">Works for 30 minutes, once, in this browser. A reply to the original works too.</span>
+                    <input value={xPost} onChange={(e) => setXPost(e.target.value)} placeholder="https://x.com/you/status/…" className="h-11 rounded-md border border-line bg-inset px-3 font-mono text-sm text-ink" />
+                    <Button className="self-start" loading={xBusy} disabled={!xPost.trim()} onClick={() => void verifyX()}>
+                      Verify my post
+                    </Button>
+                  </>
+                )}
+                {xError && <span className="text-danger">{xError}</span>}
               </Card>
             ) : !d.verified ? (
               <Card className="flex flex-col gap-3 rounded-[20px] p-5 text-sm">
@@ -174,11 +236,28 @@ export default function ClaimPage() {
               </Card>
             ) : (
               <Card className="flex flex-col gap-3 rounded-[20px] p-5 text-sm">
-                <span className="text-ink">
-                  Signed in as <span className="font-semibold">{d.verified.login}</span> <span className="text-ink-muted">({d.verified.platform === 'youtube' ? 'YouTube channel' : 'GitHub account'} {d.verified.accountId})</span>
-                </span>
-                {d.verified.trust && <span className="text-xs text-ink-2">{trustSummary(d.verified.trust)}</span>}
+                {d.verified.platform === 'x' ? (
+                  <>
+                    <span className="text-ink">
+                      Verified as <span className="font-semibold">{d.verified.login}</span> <span className="text-ink-muted">(X handle at claim time)</span>
+                    </span>
+                    <span className="text-xs text-ink-2">
+                      {X_DETAILS_UNAVAILABLE}:{' '}
+                      <a className="text-ink-accent" href={`https://x.com/${d.verified.login.replace(/^@/, '')}`} target="_blank" rel="noreferrer noopener">
+                        x.com/{d.verified.login.replace(/^@/, '')}
+                      </a>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-ink">
+                      Signed in as <span className="font-semibold">{d.verified.login}</span> <span className="text-ink-muted">({d.verified.platform === 'youtube' ? 'YouTube channel' : 'GitHub account'} {d.verified.accountId})</span>
+                    </span>
+                    {d.verified.trust && <span className="text-xs text-ink-2">{trustSummary(d.verified.trust)}</span>}
+                  </>
+                )}
                 {d.verified.trustLabel && <span className="self-start rounded-pill border border-warning/40 px-2 py-0.5 text-[11px] font-semibold text-warning">{d.verified.trustLabel}</span>}
+                {!d.meetsMinClaim && <span className="font-semibold text-ink">{minClaimMessage(d.minClaimSol)}</span>}
                 {d.phase === 'gap' ? (
                   <span className="font-semibold text-ink">This coin is moving to its new pool, try again in a few minutes.</span>
                 ) : (
@@ -219,7 +298,7 @@ export default function ClaimPage() {
                       </div>
                     )}
                     {!confirming ? (
-                      <Button disabled={!destinationConnected} onClick={() => setConfirming(true)}>
+                      <Button disabled={!destinationConnected || !d.meetsMinClaim} onClick={() => setConfirming(true)}>
                         Continue
                       </Button>
                     ) : (
@@ -232,7 +311,7 @@ export default function ClaimPage() {
                           {held != null && held >= d.timelockSol && ` Because more than ${d.timelockSol} SOL is held, it runs ${CLAIM_TIMELOCK_HOURS} hours after you confirm.`}
                         </span>
                         <div className="flex gap-2">
-                          <Button loading={busy} disabled={!destinationConnected} onClick={() => void submit()}>
+                          <Button loading={busy} disabled={!destinationConnected || !d.meetsMinClaim} onClick={() => void submit()}>
                             Sign and confirm
                           </Button>
                           <Button variant="ghost" onClick={() => setConfirming(false)}>

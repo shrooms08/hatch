@@ -14,7 +14,7 @@ import { getConnection } from '@/lib/solana/connection';
 import { confirmByPolling } from '@/lib/dbc/transactions';
 import { explorerTxUrl } from '@/lib/config/network';
 import { ADMIN_MESSAGE, formatSol, lamportsToSol, shortWallet } from '@/lib/links/claimShared';
-import { formatRemaining, timelockRemainingMs, trustFlags, type OwnerTrust } from '@/lib/links/claimRules';
+import { X_DETAILS_UNAVAILABLE, formatRemaining, timelockRemainingMs, trustFlags, type OwnerTrust } from '@/lib/links/claimRules';
 
 /** One checklist line; red when it is a risk signal. */
 function Check({ label, value, risk }: { label: string; value: React.ReactNode; risk?: boolean }) {
@@ -44,6 +44,7 @@ type AdminClaim = {
   createdAt: string;
   trust: OwnerTrust | null;
   destinationSigned: boolean;
+  evidenceUrl: string | null;
   timelockUntil: string | null;
   timelockSol: number;
   disputes: { contact: string; reason: string; at: string }[];
@@ -183,8 +184,35 @@ export default function AdminClaims() {
                 return (
                   <div className="my-1 flex flex-col gap-0.5 rounded-md border border-line p-2">
                     <span className="mb-1 font-mono text-[11px] uppercase tracking-[0.1em] text-ink-muted">Checklist</span>
+                    {c.verified.platform === 'x' ? (
+                      <>
+                        <Check
+                          label="X handle at claim time"
+                          value={
+                            <a className="text-ink-accent" href={`https://x.com/${(c.verified.login ?? '').replace(/^@/, '')}`} target="_blank" rel="noreferrer noopener">
+                              {c.verified.login}
+                            </a>
+                          }
+                        />
+                        <Check label="Account age / followers" value={X_DETAILS_UNAVAILABLE} risk />
+                        <Check
+                          label="Post with the code"
+                          value={
+                            c.evidenceUrl ? (
+                              <a className="text-ink-accent" href={c.evidenceUrl} target="_blank" rel="noreferrer noopener">
+                                open
+                              </a>
+                            ) : (
+                              'missing'
+                            )
+                          }
+                          risk={!c.evidenceUrl}
+                        />
+                      </>
+                    ) : (
                     <Check label={c.verified.platform === 'youtube' ? 'Channel age' : 'Account age'} value={f?.ageDays != null ? `${f.ageDays} days` : 'unknown'} risk={!f || f.newAccount} />
-                    {c.verified.platform === 'youtube' ? (
+                    )}
+                    {c.verified.platform === 'x' ? null : c.verified.platform === 'youtube' ? (
                       <Check label="Subscribers" value={!c.trust ? 'unknown' : c.trust.followersHidden ? 'hidden' : (c.trust.followers ?? 0)} risk={!f || f.smallAudience} />
                     ) : (
                       <>

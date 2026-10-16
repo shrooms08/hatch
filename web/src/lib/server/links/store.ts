@@ -179,13 +179,14 @@ export type ClaimRow = {
   nonce: string | null;
   trust: import('@/lib/links/claimRules').OwnerTrust | null;
   timelock_until: string | null;
+  evidence_url: string | null;
 };
 
 /** Another claim for this link is already open (pending, proposed or approved). */
 export class ClaimOpenError extends Error {}
 
 export type NewClaim = Pick<ClaimRow, 'network' | 'canonical_id' | 'mint' | 'platform' | 'action' | 'account_id' | 'account_login' | 'verified_at' | 'destination'> &
-  Partial<Pick<ClaimRow, 'destination_message' | 'destination_signature' | 'nonce' | 'trust'>>;
+  Partial<Pick<ClaimRow, 'destination_message' | 'destination_signature' | 'nonce' | 'trust' | 'evidence_url'>>;
 
 export async function insertClaim(c: NewClaim): Promise<ClaimRow> {
   const { data, error } = await supabaseAdmin()
@@ -317,4 +318,27 @@ export async function disputesFor(claimIds: string[]): Promise<DisputeRow[]> {
   const { data, error } = await supabaseAdmin().from('claim_disputes').select('*').in('claim_id', claimIds).order('created_at');
   if (error) fail('disputes', error);
   return (data as DisputeRow[]) ?? [];
+}
+
+// ---------- X post-a-code (P4c) ----------
+
+export type XCodeRow = { code: string; network: LinkNetwork; mint: string; session_hash: string; issued_at: string; expires_at: string; used_at: string | null; used_post_url: string | null };
+
+export async function insertXCode(r: Pick<XCodeRow, 'code' | 'network' | 'mint' | 'session_hash' | 'expires_at'>): Promise<XCodeRow> {
+  const { data, error } = await supabaseAdmin().from('x_claim_codes').insert(r).select('*').single();
+  if (error) fail('insert x code', error);
+  return data as XCodeRow;
+}
+
+export async function getXCode(code: string): Promise<XCodeRow | null> {
+  const { data, error } = await supabaseAdmin().from('x_claim_codes').select('*').eq('code', code).maybeSingle();
+  if (error) fail('get x code', error);
+  return (data as XCodeRow) ?? null;
+}
+
+/** Uses a code exactly once (unexpired, same network, coin and session). Null when it cannot be used. */
+export async function consumeXCode(p: { code: string; network: LinkNetwork; mint: string; sessionHash: string; postUrl: string }): Promise<XCodeRow | null> {
+  const { data, error } = await supabaseAdmin().rpc('use_x_claim_code', { p_code: p.code, p_network: p.network, p_mint: p.mint, p_session_hash: p.sessionHash, p_post_url: p.postUrl });
+  if (error) fail('use x code', error);
+  return ((data as XCodeRow[]) ?? [])[0] ?? null;
 }

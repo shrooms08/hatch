@@ -77,7 +77,7 @@ test('verified-id cookie: signed, tamper-proof, expires', () => {
   const [body, mac] = v.split('.');
   const forged = Buffer.from(JSON.stringify({ mint: 'M', accountId: '43', exp: Date.now() + 60_000 })).toString('base64url');
   assert.equal(verify(`${forged}.${mac}`), null);
-  assert.equal(verify(`${body}.${mac!.slice(0, -2)}xx`), null);
+  assert.equal(verify(`${body}.${mac![0] === 'A' ? 'B' : 'A'}${mac!.slice(1)}`), null);
   assert.equal(verify(sign({ exp: Date.now() - 1 })), null);
   assert.equal(verify(undefined), null);
 });
@@ -260,4 +260,68 @@ test('YouTube trust: hidden subscriber counts say "hidden" and get the amber lab
   const tiny = channelTrust(ch('UC_y', { statistics: { subscriberCount: '3', hiddenSubscriberCount: false } }) as never);
   assert.equal(trustLabel(tiny), TRUST_LABEL);
   assert.match(ytSummary(channelTrust(ch('UC_z') as never))!, /^channel \d+ years old · 52000 subscribers$/);
+});
+
+// ---------- P4c: X post-a-code + minimum claim ----------
+const { xCodeFrom, isXCode, snowflakeMs, snowflakeAt, xOwnerCheck, X_REFUSAL, X_DETAILS_UNAVAILABLE, meetsMinClaim, minClaimMessage } = await import('../src/lib/links/claimRules.ts');
+const { handleOf, textOf } = await import('../src/lib/server/links/x.ts');
+const { minClaimSol } = await import('../src/lib/server/links/claims.ts');
+
+test('X code: "hatch-XXXX-XX", unambiguous characters, random', () => {
+  const c = xCodeFrom(new Uint8Array([0, 1, 2, 3, 4, 5]));
+  assert.equal(c, 'hatch-ABCD-EF');
+  assert.ok(isXCode(c));
+  assert.ok(isXCode(xCodeFrom(new Uint8Array([255, 200, 150, 99, 33, 7]))));
+  for (const bad of ['hatch-ABCD-E', 'hatch-abcd-ef', 'HATCH-ABCD-EF', 'hatch-AB0D-EF', 'x']) assert.equal(isXCode(bad), false, bad);
+});
+
+test('X snowflake: the post time comes from its status id', () => {
+  assert.equal(snowflakeMs('20'), 1288834974657); // pre-snowflake ids read as the epoch: always "older"
+  const t = Date.parse('2026-10-16T10:00:00Z');
+  assert.equal(snowflakeMs(snowflakeAt(t)), t);
+  assert.equal(new Date(snowflakeMs('1588478209447866368')).toISOString().slice(0, 7), '2022-11'); // a real Nov 2022 post id
+});
+
+test('X oEmbed parsing: handle from author_url (x.com or twitter.com), text from the post', () => {
+  assert.equal(handleOf('https://x.com/shroomsgotsol'), 'shroomsgotsol');
+  assert.equal(handleOf('https://twitter.com/Jack/'), 'Jack');
+  assert.equal(handleOf('https://evil.com/jack'), null);
+  assert.equal(handleOf(undefined), null);
+  assert.equal(textOf('<blockquote><p lang="en" dir="ltr">verifying hatch-ABCD-EF &amp; more <a href="x">pic</a></p>&mdash; me</blockquote>'), 'verifying hatch-ABCD-EF & more  pic ');
+});
+
+test('X owner check: same handle (any case), exact code, post newer than the code', () => {
+  const issued = Date.parse('2026-10-16T10:00:00Z');
+  const base = { originalHandle: 'ShroomsGotSol', codeHandle: 'shroomsgotsol', codeText: 'hatch-ABCD-EF', code: 'hatch-ABCD-EF', codePostId: snowflakeAt(issued + 60_000), issuedAtMs: issued };
+  assert.deepEqual(xOwnerCheck(base), { ok: true, handle: 'ShroomsGotSol' });
+  assert.deepEqual(xOwnerCheck({ ...base, codeHandle: 'someone_else' }), { ok: false, reason: 'handle-mismatch' });
+  assert.deepEqual(xOwnerCheck({ ...base, codeText: 'hatch-ABCD-EG' }), { ok: false, reason: 'code-missing' });
+  assert.deepEqual(xOwnerCheck({ ...base, codeText: 'no code here' }), { ok: false, reason: 'code-missing' });
+  assert.deepEqual(xOwnerCheck({ ...base, codePostId: snowflakeAt(issued - 10 * 60_000) }), { ok: false, reason: 'post-too-old' });
+  assert.deepEqual(xOwnerCheck({ ...base, originalHandle: null }), { ok: false, reason: 'no-handle' });
+  assert.match(X_REFUSAL['handle-mismatch'], /isn't from the X account that posted the original/);
+});
+
+test('X trust: no details from oEmbed, so X claims always carry the amber label', () => {
+  const t = { platform: 'x' as const, accountCreatedAt: null, followers: null, stars: null, platformVerified: null, renamedOrTransferred: false, checkedAt: '' };
+  assert.equal(trustLabel(t), TRUST_LABEL);
+  assert.equal(ytSummary(t), X_DETAILS_UNAVAILABLE);
+});
+
+test('minimum claim: 0.02 SOL by default (MIN_CLAIM_SOL overrides); below it the claim cannot be submitted', () => {
+  const saved = process.env.MIN_CLAIM_SOL;
+  try {
+    delete process.env.MIN_CLAIM_SOL;
+    assert.equal(minClaimSol(), 0.02);
+    process.env.MIN_CLAIM_SOL = '0.05';
+    assert.equal(minClaimSol(), 0.05);
+    process.env.MIN_CLAIM_SOL = 'x';
+    assert.equal(minClaimSol(), 0.02);
+  } finally {
+    if (saved === undefined) delete process.env.MIN_CLAIM_SOL;
+    else process.env.MIN_CLAIM_SOL = saved;
+  }
+  assert.equal(meetsMinClaim(19_999_999, 0.02), false);
+  assert.equal(meetsMinClaim('20000000', 0.02), true);
+  assert.equal(minClaimMessage(0.02), 'Fees are still building up. Claims open at 0.02 SOL held.');
 });

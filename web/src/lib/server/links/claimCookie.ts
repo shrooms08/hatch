@@ -7,9 +7,11 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 
 export const OAUTH_COOKIE = 'hatch_claim_oauth';
 export const ID_COOKIE = 'hatch_claim_id';
+/** X post-a-code: the browser session a code is bound to. */
+export const X_SESSION_COOKIE = 'hatch_x_session';
 
 export type OAuthCookie = { state: string; verifier: string; mint: string; exp: number; platform?: import('@/lib/links/claimRules').ClaimPlatform };
-export type VerifiedId = { mint: string; canonicalId: string; platform: import('@/lib/links/claimRules').ClaimPlatform; accountId: string; login: string; verifiedAt: string; exp: number; trust?: import('@/lib/links/claimRules').OwnerTrust };
+export type VerifiedId = { mint: string; canonicalId: string; platform: import('@/lib/links/claimRules').ClaimPlatform; accountId: string; login: string; verifiedAt: string; exp: number; trust?: import('@/lib/links/claimRules').OwnerTrust; /** X: the post that carried the code. */ evidence?: string };
 
 function secret(): string {
   const s = process.env.LINK_CLAIM_SECRET?.trim();
