@@ -23,8 +23,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const link = await getLinkByMint(network, saved.mint);
   if (!link || link.kind !== 'github_repo' || !link.github_repo_id) return back(saved.mint, `error=${encodeURIComponent('This coin is not for a GitHub repo')}`);
   try {
-    const who = await verifyGithubOwner({ code: req.query.code, verifier: saved.verifier, redirectUri: `${siteOrigin(req)}/api/links/claim/github/callback`, githubRepoId: link.github_repo_id });
-    const id: VerifiedId = { mint: saved.mint, canonicalId: link.canonical_id, platform: 'github', accountId: who.accountId, login: who.login, verifiedAt: new Date().toISOString(), exp: Date.now() + 30 * 60_000 };
+    const who = await verifyGithubOwner({ code: req.query.code, verifier: saved.verifier, redirectUri: `${siteOrigin(req)}/api/links/claim/github/callback`, githubRepoId: link.github_repo_id, canonicalId: link.canonical_id, hatchedOwnerId: link.owner_id });
+    const id: VerifiedId = { mint: saved.mint, canonicalId: link.canonical_id, platform: 'github', accountId: who.accountId, login: who.login, verifiedAt: new Date().toISOString(), exp: Date.now() + 30 * 60_000, trust: who.trust };
     setCookie(req, res, ID_COOKIE, sign(id), 1800);
     await logVerified(id);
     return back(saved.mint, 'verified=1');

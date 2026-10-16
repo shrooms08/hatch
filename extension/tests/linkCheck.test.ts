@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { canonicalize, linkIdHash, lookupPrefix } from "../lib/linkCanonical";
-import { LINK_CACHE_MS, LINK_DEBOUNCE_MS, createLinkLookup, createUrlWatcher, httpFetchPrefix, linkStatusOf, linkTarget, type LookupEntry } from "../lib/linkCheck";
+import { OWNER_RISK_LABEL, LINK_CACHE_MS, LINK_DEBOUNCE_MS, createLinkLookup, createUrlWatcher, httpFetchPrefix, linkStatusOf, linkTarget, type LookupEntry } from "../lib/linkCheck";
 import { DEFAULT_SETTINGS } from "../lib/storage";
 import { pickLinkBase } from "../lib/config";
 
@@ -99,7 +99,7 @@ describe("private lookup", () => {
       return new Response(JSON.stringify([entry(hash)]), { status: 200 });
     }) as unknown as typeof fetch;
     const lookup = createLinkLookup({ fetchPrefix: httpFetchPrefix("http://localhost:3200", fakeFetch) });
-    expect(await lookup(id)).toEqual({ state: "coin", mint: entry(hash).mint, ticker: "MZ", name: "Me at the zoo", claimed: false });
+    expect(await lookup(id)).toEqual({ state: "coin", mint: entry(hash).mint, ticker: "MZ", name: "Me at the zoo", claimed: false, ownerRisk: false });
 
     expect(calls).toHaveLength(1);
     const sent = calls[0]!;
@@ -151,6 +151,13 @@ describe("private lookup", () => {
       expect(await lookup("yt:video:jNQXAC9IVRw")).toBeNull();
       expect(spy).toHaveBeenCalledTimes(1);
     }
+  });
+
+  it("claimed by a new or small account: the chick carries the amber label (unclaimed coins never do)", () => {
+    expect(linkStatusOf(entry("a", { status: "claimed", claimed: true, ownerRisk: true }))).toMatchObject({ claimed: true, ownerRisk: true });
+    expect(linkStatusOf(entry("a", { status: "claimed", claimed: true }))).toMatchObject({ ownerRisk: false });
+    expect(linkStatusOf(entry("a", { ownerRisk: true }))).toMatchObject({ claimed: false, ownerRisk: false });
+    expect(OWNER_RISK_LABEL).toBe("New or small account, check the source");
   });
 
   it("states: no entry = no coin yet; hatched/claimed = coin; being hatched or disowned = nothing", () => {

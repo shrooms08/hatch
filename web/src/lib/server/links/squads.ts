@@ -212,6 +212,10 @@ export function approveInstruction(v: Pick<VaultEnv, 'multisigPda'>, member: Pub
 export function rejectInstruction(v: Pick<VaultEnv, 'multisigPda'>, member: PublicKey, transactionIndex: bigint) {
   return multisig.instructions.proposalReject({ multisigPda: v.multisigPda, transactionIndex, member });
 }
+/** An approver cancels an APPROVED proposal (e.g. a dispute arrived during the timelock). Approver-signed only. */
+export function cancelInstruction(v: Pick<VaultEnv, 'multisigPda'>, member: PublicKey, transactionIndex: bigint) {
+  return multisig.instructions.proposalCancel({ multisigPda: v.multisigPda, transactionIndex, member });
+}
 
 /** The instructions a vault transaction will run (for verifying a proposal's contents). */
 export async function vaultTransactionInstructions(connection: Connection, v: VaultEnv, transactionIndex: bigint) {

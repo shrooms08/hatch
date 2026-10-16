@@ -9,13 +9,14 @@ import { ImageError, loadLaunchImage } from '@/lib/server/image';
 import { renderFallbackPng } from '@/lib/server/fallbackImage';
 import { isR2Configured, publicR2Url, uploadToR2 } from '@/lib/server/r2';
 import { forgetSwr, swr } from '@/lib/server/swrCache';
+import { trustLabel, trustSummary } from '@/lib/links/claimRules';
 import { toPoolLink as toPoolLinkRow, verifyListedLinks } from '@/lib/links/listing';
 import { fetchPoolsByAddress, type HatchPool, type PoolLink } from '@/lib/dbc/pool';
 import { linkConfigKeys } from '@/lib/presets';
 import { loadHatchConfigs } from '@/lib/server/presets';
 import { LinkMetadataError, linkMetadata, type LinkMetadata } from './metadata';
 import { assertLinkConfig, buildLinkHatchTx, checkLinkPool, linkKeys, linkNetwork, maxFirstBuyLamports, maxFirstBuySol } from './chain';
-import { LinkConflictError, dropOwnReservation, getLink, getLinkByGithubRepoId, getLinkByMint, isExpired, linksByPrefix, linksHatchedBy, listedLinks, markHatched, releaseExpired, reserveLink, type LinkNetwork, type LinkRow } from './store';
+import { LinkConflictError, claimsForLink, dropOwnReservation, getLink, getLinkByGithubRepoId, getLinkByMint, isExpired, linksByPrefix, linksHatchedBy, listedLinks, markHatched, releaseExpired, reserveLink, type LinkNetwork, type LinkRow } from './store';
 
 /** A failure with an HTTP status and a message safe to show users. */
 export class LinkApiError extends Error {
@@ -275,7 +276,7 @@ export async function confirmLink(body: { canonicalId?: unknown; signature?: unk
 
 // ---------- lookup (private: prefix only) ----------
 
-export type LookupEntry = { h: string; status: LinkRow['status']; mint: string | null; ticker: string | null; name: string | null; progress: number | null; claimed: boolean };
+export type LookupEntry = { h: string; status: LinkRow['status']; mint: string | null; ticker: string | null; name: string | null; progress: number | null; claimed: boolean; /** Claimed by a new or small account (amber label). */ ownerRisk?: boolean };
 
 export async function lookupPrefix(prefix: string): Promise<LookupEntry[]> {
   const network = requireNetwork();
@@ -289,7 +290,7 @@ export async function lookupPrefix(prefix: string): Promise<LookupEntry[]> {
       if (!r) continue;
       const live = r.status === 'hatched' || r.status === 'claimed';
       const check = live && r.pool && r.mint ? await checkLinkPool(conn, { pool: r.pool, mint: r.mint, config: r.config ? new PublicKey(r.config) : config, vault, claimedWallet: r.claimed_wallet }).catch((): null => null) : null;
-      out.push({ h: r.id_hash, status: r.status, mint: live ? r.mint : null, ticker: live ? r.coin_ticker : null, name: live ? r.coin_name : null, progress: check?.progress ?? null, claimed: r.status === 'claimed' });
+      out.push({ h: r.id_hash, status: r.status, mint: live ? r.mint : null, ticker: live ? r.coin_ticker : null, name: live ? r.coin_name : null, progress: check?.progress ?? null, claimed: r.status === 'claimed', ownerRisk: r.status === 'claimed' && !!trustLabel(r.owner_trust) });
     }
     return out;
   });
@@ -344,6 +345,7 @@ export async function linkForMint(mint: string) {
   const { value } = await swr(`links:mint:${network}:${mint}`, 30_000, async () => {
     const r = await getLinkByMint(network, mint);
     if (!r || (r.status !== 'hatched' && r.status !== 'claimed' && r.status !== 'disowned')) return null;
+    const open = r.status === 'hatched' ? (await claimsForLink(network, r.canonical_id)).find((c) => ['pending', 'proposed', 'approved'].includes(c.status)) : undefined;
     return {
       canonicalId: r.canonical_id,
       kind: r.kind,
@@ -360,6 +362,11 @@ export async function linkForMint(mint: string) {
       hatchedBy: r.hatched_by,
       /** The first buy inside the creation transaction (the exact amount built into it; the pool only exists if it landed). */
       firstBuyLamports: r.first_buy_lamports,
+      /** The amber "New or small account, check the source" label for the account that verified ownership, if any. */
+      ownerTrustLabel: trustLabel(r.owner_trust),
+      ownerTrustSummary: trustSummary(r.owner_trust),
+      /** An open claim waiting out its timelock (the coin shows it, with a link to dispute). */
+      pendingClaim: open && open.timelock_until ? { destination: open.destination, action: open.action, timelockUntil: open.timelock_until } : null,
     };
   });
   return value;

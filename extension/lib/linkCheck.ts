@@ -62,14 +62,17 @@ export function createUrlWatcher(opts: {
   };
 }
 
-export type LookupEntry = { h: string; status: string; mint: string | null; ticker: string | null; name: string | null; progress: number | null; claimed: boolean };
+export type LookupEntry = { h: string; status: string; mint: string | null; ticker: string | null; name: string | null; progress: number | null; claimed: boolean; ownerRisk?: boolean };
 /** none: no coin for this link yet. coin: hatched (or claimed by the owner). */
-export type LinkStatus = { state: "none" } | { state: "coin"; mint: string; ticker: string | null; name: string | null; claimed: boolean };
+export type LinkStatus = { state: "none" } | { state: "coin"; mint: string; ticker: string | null; name: string | null; claimed: boolean; ownerRisk: boolean };
+
+/** Shown on the chick when a new or small account claimed the coin (never "verified by Hatch"). */
+export const OWNER_RISK_LABEL = "New or small account, check the source";
 
 /** What one entry (or its absence) means for the buddy. Reserved (being hatched right now) or disowned: nothing (null). */
 export function linkStatusOf(entry: LookupEntry | null): LinkStatus | null {
   if (!entry) return { state: "none" };
-  if ((entry.status === "hatched" || entry.status === "claimed") && entry.mint) return { state: "coin", mint: entry.mint, ticker: entry.ticker, name: entry.name, claimed: entry.claimed };
+  if ((entry.status === "hatched" || entry.status === "claimed") && entry.mint) return { state: "coin", mint: entry.mint, ticker: entry.ticker, name: entry.name, claimed: entry.claimed, ownerRisk: entry.claimed && entry.ownerRisk === true };
   return null;
 }
 

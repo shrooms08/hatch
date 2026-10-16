@@ -17,7 +17,9 @@ const { supabaseAdmin } = configured ? await import('../src/lib/server/supabase.
 
 const ids: string[] = [];
 after(async () => {
-  if (configured && ids.length) await supabaseAdmin!().from('links').delete().eq('network', 'devnet').in('canonical_id', ids);
+  if (!configured || !ids.length) return;
+  await supabaseAdmin!().from('claim_disputes').delete().in('canonical_id', ids);
+  await supabaseAdmin!().from('links').delete().eq('network', 'devnet').in('canonical_id', ids);
 });
 
 async function row(canonicalId: string, mint: string) {
@@ -161,4 +163,34 @@ test('claims: one open claim per link, the destination and action can never chan
   assert.ok(logged.data?.id);
   assert.match(String((await sb.from('claim_log').update({ event: 'tampered' }).eq('id', logged.data!.id)).error?.message), /append-only/);
   assert.match(String((await sb.from('claim_log').delete().eq('id', logged.data!.id)).error?.message), /append-only/);
+});
+
+test('claim nonces: used once, only for the same mint / account / wallet, and only before they expire', { skip: !configured && 'Supabase not configured' }, async () => {
+  const nonce = randomBytes(16).toString('hex');
+  const n = { nonce, network: 'devnet' as const, mint: 'MintAAA', platform: 'github', account_id: '42', wallet: 'WalletA', message: 'Hatch claim: test', expires_at: new Date(Date.now() + 60_000).toISOString() };
+  await store!.insertNonce(n);
+  assert.equal(await store!.consumeNonce({ nonce, network: 'devnet', mint: 'MintBBB', accountId: '42', wallet: 'WalletA' }), null); // another mint
+  assert.equal(await store!.consumeNonce({ nonce, network: 'devnet', mint: 'MintAAA', accountId: '43', wallet: 'WalletA' }), null); // another account
+  assert.equal(await store!.consumeNonce({ nonce, network: 'devnet', mint: 'MintAAA', accountId: '42', wallet: 'WalletB' }), null); // another wallet
+  assert.equal((await store!.consumeNonce({ nonce, network: 'devnet', mint: 'MintAAA', accountId: '42', wallet: 'WalletA' }))?.nonce, nonce);
+  assert.equal(await store!.consumeNonce({ nonce, network: 'devnet', mint: 'MintAAA', accountId: '42', wallet: 'WalletA' }), null); // replay
+  const expired = randomBytes(16).toString('hex');
+  await store!.insertNonce({ ...n, nonce: expired, expires_at: new Date(Date.now() - 1000).toISOString() });
+  assert.equal(await store!.consumeNonce({ nonce: expired, network: 'devnet', mint: 'MintAAA', accountId: '42', wallet: 'WalletA' }), null);
+  await supabaseAdmin!().from('claim_nonces').delete().in('nonce', [nonce, expired]);
+});
+
+test('disputes are stored against the open claim and listed for the approver', { skip: !configured && 'Supabase not configured' }, async () => {
+  const id = fresh();
+  const r = { ...(await row(id, mint())), pool: `pool-${randomBytes(6).toString('hex')}` };
+  assert.ok(await store!.reserveLink(r, { prevMint: null }));
+  assert.ok(await store!.markHatched('devnet', id, r.mint));
+  const c = await store!.insertClaim({ network: 'devnet', canonical_id: id, mint: r.mint, platform: 'github', action: 'claim', account_id: '42', account_login: 'tester', verified_at: new Date().toISOString(), destination: 'DestOne1111111111111111111111111111111111111' });
+  await store!.insertDispute({ network: 'devnet', claim_id: c.id, canonical_id: id, contact: 'me@example.com', reason: 'I run this repo, not them.' });
+  const ds = await store!.disputesFor([c.id]);
+  assert.equal(ds.length, 1);
+  assert.equal(ds[0]!.contact, 'me@example.com');
+  // Too-short reasons are refused by the database too.
+  await assert.rejects(() => store!.insertDispute({ network: 'devnet', claim_id: c.id, canonical_id: id, contact: 'me@example.com', reason: 'short' }));
+  await store!.updateClaim(c.id, { status: 'rejected' }, ['pending']);
 });

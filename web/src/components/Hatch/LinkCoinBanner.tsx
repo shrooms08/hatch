@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/ds';
+import { formatRemaining, timelockRemainingMs } from '@/lib/links/claimRules';
 
 type LinkInfo = {
   canonicalId: string;
@@ -16,6 +17,9 @@ type LinkInfo = {
   claimedWallet?: string | null;
   hatchedBy?: string | null;
   firstBuyLamports?: number | null;
+  ownerTrustLabel?: string | null;
+  ownerTrustSummary?: string | null;
+  pendingClaim?: { destination: string; action: 'claim' | 'disown'; timelockUntil: string } | null;
 };
 
 const PLATFORM: Record<string, string> = { x: 'on X', youtube: 'on YouTube', github: 'on GitHub', web: 'site' };
@@ -66,6 +70,23 @@ export function LinkCoinBanner({ mint }: { mint: string }) {
           )}
         </span>
       )}
+      {(link.claimed || link.disowned) && (link.ownerTrustSummary || link.ownerTrustLabel) && (
+        <span className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
+          {link.ownerTrustSummary && <span>Owner&apos;s GitHub: {link.ownerTrustSummary}</span>}
+          {link.ownerTrustLabel && <span className="rounded-pill border border-warning/40 px-2 py-0.5 text-[11px] font-semibold text-warning">{link.ownerTrustLabel}</span>}
+        </span>
+      )}
+      {link.pendingClaim && !link.claimed && !link.disowned && (
+        <span className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border border-warning/30 bg-warning/[0.06] px-3 py-2 text-sm text-ink">
+          <span>
+            {link.pendingClaim.action === 'disown' ? 'Disown' : 'Claim'} pending to <span className="font-mono">{short(link.pendingClaim.destination)}</span> · executes in{' '}
+            {formatRemaining(timelockRemainingMs(link.pendingClaim.timelockUntil))}
+          </span>
+          <Link href={`/dispute/${mint}`} className="font-medium text-ink-accent hover:underline">
+            Dispute this claim
+          </Link>
+        </span>
+      )}
       {(link.hatchedBy || firstBuy != null) && (
         <span className="text-xs text-ink-muted">
           {link.hatchedBy && <>Hatched by <span className="font-mono">{short(link.hatchedBy)}</span></>}
@@ -73,7 +94,7 @@ export function LinkCoinBanner({ mint }: { mint: string }) {
           {firstBuy != null && <>Hatcher bought {firstBuy.toLocaleString('en-US', { maximumFractionDigits: 4 })} SOL</>}
         </span>
       )}
-      {!link.claimed && !link.disowned && link.kind === 'github_repo' && (
+      {!link.claimed && !link.disowned && !link.pendingClaim && link.kind === 'github_repo' && (
         <Link href={`/claim/${mint}`} className="self-start text-sm font-medium text-ink-accent hover:underline">
           Own this repo? Claim it
         </Link>

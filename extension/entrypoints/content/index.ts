@@ -6,7 +6,7 @@ import { DEV_WEB_URLS, HATCH_WEB_ORIGINS } from "../../lib/config";
 import { canAutoNotice, detectFromDom } from "../../lib/detect";
 import { clean, collectPageContext } from "../../lib/page";
 import { sendToBackground, type LinkLookupResponse, type NoticeResponse, type TabMessage } from "../../lib/messages";
-import { createUrlWatcher, linkTarget } from "../../lib/linkCheck";
+import { OWNER_RISK_LABEL, createUrlWatcher, linkTarget } from "../../lib/linkCheck";
 import { DEFAULT_EGG_POS, KEYS, getLocal, getSettings, incubatingCount, isHiddenOn, setLocal, updateSettings, type EggPos, type HatchesCache, type Settings } from "../../lib/storage";
 import { BuddyView } from "./buddy";
 import { collectHeadlines, localHint, matchHeadlines } from "../../lib/newsMatch";
@@ -185,11 +185,11 @@ export default defineContentScript({
       } else {
         const s = r.status;
         egg.setState("idle");
-        egg.showBubble(`Coin for this link: ${s.ticker ? `$${s.ticker}` : (s.name ?? "a coin")}`, {
+        egg.showBubble(`Coin for this link: ${s.ticker ? `$${s.ticker}` : (s.name ?? "a coin")}${s.ownerRisk ? `. ${OWNER_RISK_LABEL}` : ""}`, {
           url: `${r.base}/token/${encodeURIComponent(s.mint)}`,
           linkText: "View coin",
           timeoutMs: 15_000,
-          badge: s.claimed ? { text: "Claimed", tone: "ok" } : { text: "Unclaimed", tone: "warn" },
+          badge: s.claimed ? (s.ownerRisk ? { text: "Claimed", tone: "warn" } : { text: "Claimed", tone: "ok" }) : { text: "Unclaimed", tone: "warn" },
         });
       }
     }

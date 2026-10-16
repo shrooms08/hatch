@@ -12,6 +12,8 @@ import { Button, Card } from '@/components/ds';
 import { HELD_BY_VAULT, formatSol, lamportsToSol, shortWallet } from '@/lib/links/claimShared';
 import { explorerTxUrl } from '@/lib/config/network';
 import { PLATFORM_NAME } from '@/lib/links/listing';
+import bs58 from 'bs58';
+import { CLAIM_TIMELOCK_HOURS, formatRemaining, timelockRemainingMs, trustSummary, type OwnerTrust } from '@/lib/links/claimRules';
 
 type Info = {
   mint: string;
@@ -27,8 +29,9 @@ type Info = {
   phase: 'curve' | 'gap' | 'migrated';
   canVerify: boolean;
   platform: 'github' | null;
-  verified: { platform: string; login: string; accountId: string; verifiedAt: string } | null;
-  openClaim: { id: string; status: string; action: 'claim' | 'disown'; destination: string; createdAt: string } | null;
+  verified: { platform: string; login: string; accountId: string; verifiedAt: string; trust: OwnerTrust | null; trustLabel: string | null } | null;
+  openClaim: { id: string; status: string; action: 'claim' | 'disown'; destination: string; createdAt: string; timelockUntil: string | null } | null;
+  timelockSol: number;
   lastClaim: { action: 'claim' | 'disown'; destination: string; executeSignature: string | null; receivedLamports: number | null } | null;
 };
 
@@ -60,14 +63,20 @@ export default function ClaimPage() {
   const urlError = typeof router.query.error === 'string' ? router.query.error : null;
 
   const d = info.data;
-  const destination = action === 'claim' ? wallet.publicKey?.toBase58() ?? '' : other.trim();
+  const connected = wallet.publicKey?.toBase58() ?? '';
+  const destination = action === 'claim' ? connected : other.trim();
+  // The destination must sign, so it has to be the connected wallet (for a disown this also catches typos).
+  const destinationConnected = !!destination && destination === connected;
   const held = lamportsToSol(d?.heldLamports);
 
   const submit = async () => {
+    if (!wallet.signMessage) return setError('This wallet cannot sign messages. Use Phantom or Solflare.');
     setBusy(true);
     setError(null);
     try {
-      await getJson('/api/links/claim/submit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mint, action, destination }) });
+      const n = await getJson<{ nonce: string; message: string }>('/api/links/claim/nonce', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mint, wallet: destination }) });
+      const signature = bs58.encode(await wallet.signMessage(new TextEncoder().encode(n.message)));
+      await getJson('/api/links/claim/submit', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mint, action, destination, nonce: n.nonce, signature }) });
       setConfirming(false);
       await qc.invalidateQueries(['claim', mint]);
     } catch (e) {
@@ -130,6 +139,11 @@ export default function ClaimPage() {
             ) : d.openClaim ? (
               <Card className="flex flex-col gap-2 rounded-[20px] p-5 text-sm">
                 <span className="font-semibold text-ink">Waiting for Hatch&apos;s approval</span>
+                {timelockRemainingMs(d.openClaim.timelockUntil) > 0 && (
+                  <span className="text-ink-2">
+                    Larger claims wait {CLAIM_TIMELOCK_HOURS} hours after they are requested before they can run. This one can run in {formatRemaining(timelockRemainingMs(d.openClaim.timelockUntil))}.
+                  </span>
+                )}
                 <span className="text-ink-2">
                   {d.openClaim.action === 'claim' ? 'Claim to' : 'Disown, held fees to'} <span className="font-mono">{d.openClaim.destination}</span>
                 </span>
@@ -139,7 +153,8 @@ export default function ClaimPage() {
               <Card className="rounded-[20px] p-5 text-sm text-ink-2">Claims for this kind of link are coming soon (GitHub repos first).</Card>
             ) : !d.verified ? (
               <Card className="flex flex-col gap-3 rounded-[20px] p-5 text-sm">
-                <span className="text-ink-2">Sign in with the GitHub account that owns this repo (or an admin of the organization that owns it). Hatch only reads your account id and organization role, once.</span>
+                <span className="text-ink-2">Sign in with the GitHub account that owns this repo. Any admin of the organization that owns this repo can claim it.</span>
+                <span className="text-xs text-ink-muted">Hatch reads your account id, account age, followers and organization role once, then forgets the sign-in.</span>
                 {urlError && <span className="text-danger">{urlError}</span>}
                 <Button asChild>
                   <a href={`/api/links/claim/github/start?mint=${encodeURIComponent(d.mint)}`}>Verify with GitHub</a>
@@ -148,8 +163,10 @@ export default function ClaimPage() {
             ) : (
               <Card className="flex flex-col gap-3 rounded-[20px] p-5 text-sm">
                 <span className="text-ink">
-                  Verified as <span className="font-semibold">{d.verified.login}</span> <span className="text-ink-muted">(GitHub account {d.verified.accountId})</span>
+                  Signed in as <span className="font-semibold">{d.verified.login}</span> <span className="text-ink-muted">(GitHub account {d.verified.accountId})</span>
                 </span>
+                {d.verified.trust && <span className="text-xs text-ink-2">{trustSummary(d.verified.trust)}</span>}
+                {d.verified.trustLabel && <span className="self-start rounded-pill border border-warning/40 px-2 py-0.5 text-[11px] font-semibold text-warning">{d.verified.trustLabel}</span>}
                 {d.phase === 'gap' ? (
                   <span className="font-semibold text-ink">This coin is moving to its new pool, try again in a few minutes.</span>
                 ) : (
@@ -179,10 +196,18 @@ export default function ClaimPage() {
                         </Button>
                       )
                     ) : (
-                      <input value={other} onChange={(e) => setOther(e.target.value)} placeholder="Solana wallet address" className="h-11 rounded-md border border-line bg-inset px-3 font-mono text-sm text-ink" />
+                      <div className="flex flex-col gap-2">
+                        <input value={other} onChange={(e) => setOther(e.target.value)} placeholder="Solana wallet address" className="h-11 rounded-md border border-line bg-inset px-3 font-mono text-sm text-ink" />
+                        <span className="text-xs text-ink-muted">That wallet signs a free message to prove it is right, so connect it here (switch accounts in your wallet if needed).</span>
+                        {destination && !destinationConnected && (
+                          <Button variant="secondary" onClick={() => setShowModal(true)}>
+                            {connected ? `Connected: ${connected.slice(0, 4)}…${connected.slice(-4)}. Connect ${destination.slice(0, 4)}…${destination.slice(-4)} instead` : 'Connect that wallet'}
+                          </Button>
+                        )}
+                      </div>
                     )}
                     {!confirming ? (
-                      <Button disabled={!destination} onClick={() => setConfirming(true)}>
+                      <Button disabled={!destinationConnected} onClick={() => setConfirming(true)}>
                         Continue
                       </Button>
                     ) : (
@@ -190,10 +215,13 @@ export default function ClaimPage() {
                         <span className="text-ink">
                           {action === 'claim' ? 'Claim' : 'Disown'} {d.ticker ? `$${d.ticker}` : 'this coin'}: about {formatSol(held)} now, then the creator role, go to <span className="break-all font-mono">{destination}</span>.
                         </span>
-                        <span className="text-xs text-ink-muted">Hatch reviews every request and pays every network fee. The wallet can&apos;t be changed after you confirm.</span>
+                        <span className="text-xs text-ink-muted">
+                          Your wallet asks you to sign a free message (no transaction, no fee). Hatch reviews every request and pays every network fee. The wallet can&apos;t be changed after you confirm.
+                          {held != null && held >= d.timelockSol && ` Because more than ${d.timelockSol} SOL is held, it runs ${CLAIM_TIMELOCK_HOURS} hours after you confirm.`}
+                        </span>
                         <div className="flex gap-2">
-                          <Button loading={busy} onClick={() => void submit()}>
-                            Confirm
+                          <Button loading={busy} disabled={!destinationConnected} onClick={() => void submit()}>
+                            Sign and confirm
                           </Button>
                           <Button variant="ghost" onClick={() => setConfirming(false)}>
                             Back

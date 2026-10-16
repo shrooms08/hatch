@@ -35,6 +35,7 @@ export type LinkRow = {
   github_repo_id: number | null;
   owner_verified_id?: string | null;
   owner_verified_at?: string | null;
+  owner_trust?: import('@/lib/links/claimRules').OwnerTrust | null;
 };
 
 /** The reservation collided with another row's unique key (e.g. the same GitHub repo under another name). */
@@ -173,12 +174,18 @@ export type ClaimRow = {
   error: string | null;
   created_at: string;
   executed_at: string | null;
+  destination_message: string | null;
+  destination_signature: string | null;
+  nonce: string | null;
+  trust: import('@/lib/links/claimRules').OwnerTrust | null;
+  timelock_until: string | null;
 };
 
 /** Another claim for this link is already open (pending, proposed or approved). */
 export class ClaimOpenError extends Error {}
 
-export type NewClaim = Pick<ClaimRow, 'network' | 'canonical_id' | 'mint' | 'platform' | 'action' | 'account_id' | 'account_login' | 'verified_at' | 'destination'>;
+export type NewClaim = Pick<ClaimRow, 'network' | 'canonical_id' | 'mint' | 'platform' | 'action' | 'account_id' | 'account_login' | 'verified_at' | 'destination'> &
+  Partial<Pick<ClaimRow, 'destination_message' | 'destination_signature' | 'nonce' | 'trust'>>;
 
 export async function insertClaim(c: NewClaim): Promise<ClaimRow> {
   const { data, error } = await supabaseAdmin()
@@ -266,4 +273,48 @@ export async function hatchersOfLiveLinks(network: LinkNetwork) {
   const { data, error } = await supabaseAdmin().from('links').select('hatched_by, mint, pool, status').eq('network', network).in('status', ['hatched', 'claimed', 'disowned']).not('hatched_by', 'is', null).limit(5000);
   if (error) fail('scouts', error);
   return (data as Pick<LinkRow, 'hatched_by' | 'mint' | 'pool' | 'status'>[]) ?? [];
+}
+
+// ---------- claim hardening (P4a.1) ----------
+
+/** The trust signals of the account that just verified ownership of this link. */
+export async function setOwnerTrust(network: LinkNetwork, canonicalId: string, trust: unknown): Promise<void> {
+  const { error } = await supabaseAdmin().from('links').update({ owner_trust: trust }).eq('network', network).eq('canonical_id', canonicalId);
+  if (error) fail('owner trust', error);
+}
+
+export type NonceRow = { nonce: string; network: LinkNetwork; mint: string; platform: string; account_id: string; wallet: string; message: string; issued_at: string; expires_at: string; used_at: string | null };
+
+export async function insertNonce(r: Omit<NonceRow, 'issued_at' | 'used_at'>): Promise<void> {
+  const { error } = await supabaseAdmin().from('claim_nonces').insert(r);
+  if (error) fail('insert nonce', error);
+}
+
+export async function getNonce(nonce: string): Promise<NonceRow | null> {
+  if (!/^[0-9a-f]{32}$/.test(nonce)) return null;
+  const { data, error } = await supabaseAdmin().from('claim_nonces').select('*').eq('nonce', nonce).maybeSingle();
+  if (error) fail('get nonce', error);
+  return (data as NonceRow) ?? null;
+}
+
+/** Uses a nonce exactly once (unexpired, same network, mint, account and wallet). Null when it cannot be used. */
+export async function consumeNonce(p: { nonce: string; network: LinkNetwork; mint: string; accountId: string; wallet: string }): Promise<NonceRow | null> {
+  const { data, error } = await supabaseAdmin().rpc('use_claim_nonce', { p_nonce: p.nonce, p_network: p.network, p_mint: p.mint, p_account_id: p.accountId, p_wallet: p.wallet });
+  if (error) fail('use nonce', error);
+  return ((data as NonceRow[]) ?? [])[0] ?? null;
+}
+
+export type DisputeRow = { id: string; network: LinkNetwork; claim_id: string; canonical_id: string; contact: string; reason: string; created_at: string };
+
+export async function insertDispute(d: Omit<DisputeRow, 'id' | 'created_at'>): Promise<DisputeRow> {
+  const { data, error } = await supabaseAdmin().from('claim_disputes').insert(d).select('*').single();
+  if (error) fail('insert dispute', error);
+  return data as DisputeRow;
+}
+
+export async function disputesFor(claimIds: string[]): Promise<DisputeRow[]> {
+  if (!claimIds.length) return [];
+  const { data, error } = await supabaseAdmin().from('claim_disputes').select('*').in('claim_id', claimIds).order('created_at');
+  if (error) fail('disputes', error);
+  return (data as DisputeRow[]) ?? [];
 }

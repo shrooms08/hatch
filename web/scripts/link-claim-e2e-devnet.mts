@@ -19,6 +19,8 @@ const arg = (name: string, fallback: string) => {
 const BASE = arg('--base', 'http://localhost:3200');
 const CLAIM_URL = arg('--claim-url', 'https://github.com/octocat/Hello-World');
 const DISOWN_URL = arg('--disown-url', 'https://github.com/octocat/Spoon-Knife');
+const TIMELOCK_URL = arg('--timelock-url', 'https://github.com/octocat/octocat.github.io');
+const ONLY = arg('--only', 'all'); // all | timelock
 const sol = (l: bigint | number | BN | string) => (Number(l.toString()) / 1e9).toFixed(9);
 const short = (k: PublicKey | string) => `${k.toString().slice(0, 4)}…${k.toString().slice(-4)}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -32,10 +34,17 @@ const dbc = new DynamicBondingCurveClient(connection, 'confirmed');
 const hatcher = key('creator');
 const trader = key('partner');
 const approver = key('devnet-squads-approver');
-const destA = key('devnet-link-owner-test').publicKey;
-const destB = key('devnet-link-owner2-test').publicKey;
+const ownerA = key('devnet-link-owner-test');
+const ownerB = key('devnet-link-owner2-test');
+const destA = ownerA.publicKey;
+const destB = ownerB.publicKey;
+const { createPrivateKey, sign: edSign } = await import('node:crypto');
+const bs58 = (await import('bs58')).default;
+/** What a wallet's signMessage does: ed25519 over the UTF-8 bytes. */
+const walletSign = (kp: Keypair, message: string) =>
+  bs58.encode(edSign(null, Buffer.from(message, 'utf8'), createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), Buffer.from(kp.secretKey.subarray(0, 32))]), format: 'der', type: 'pkcs8' })));
 
-const { submitClaim, adminVoteTx, syncClaim } = await import('../src/lib/server/links/claims.ts');
+const { submitClaim, adminVoteTx, syncClaim, issueNonce } = await import('../src/lib/server/links/claims.ts');
 const { vaultEnv, vaultTransactionInstructions, proposalState } = await import('../src/lib/server/links/squads.ts');
 const { getClaim } = await import('../src/lib/server/links/store.ts');
 const v = vaultEnv();
@@ -100,7 +109,15 @@ async function creatorFee(pool: PublicKey) {
   return { creator: s.creator, fee: BigInt(s.creatorQuoteFee.toString()) };
 }
 
-async function run(action: 'claim' | 'disown', url: string, destination: PublicKey) {
+/** octocat's real public GitHub data as the trust signals (the OAuth step itself needs a browser). */
+async function octocatTrust(repoPath: string) {
+  const gh = async (p: string) => (await fetch(`https://api.github.com${p}`, { headers: { 'user-agent': 'hatch-e2e' } })).json() as Promise<Record<string, unknown>>;
+  const [u, r] = await Promise.all([gh('/users/octocat'), gh(`/repos/${repoPath}`)]);
+  return { platform: 'github' as const, accountCreatedAt: (u.created_at as string) ?? null, followers: (u.followers as number) ?? null, stars: (r.stargazers_count as number) ?? null, platformVerified: null, renamedOrTransferred: false, checkedAt: new Date().toISOString() };
+}
+
+async function run(action: 'claim' | 'disown', url: string, destKp: Keypair, opts: { timelock?: boolean } = {}) {
+  const destination = destKp.publicKey;
   console.log(`\n--- ${action}: ${url} -> ${destination.toBase58()} ---`);
   const coin = await hatch(url);
   const pool = new PublicKey(coin.pool ?? (await (await fetch(`${BASE}/api/links/claim/info?mint=${coin.mint}`)).json()).pool);
@@ -111,10 +128,19 @@ async function run(action: 'claim' | 'disown', url: string, destination: PublicK
   console.log(`  [held] creator ${short(before.creator)} (the vault: ${before.creator.equals(v.vaultPda)}) | creator fees held: ${sol(before.fee)} SOL`);
 
   // SIMULATED verification: what the GitHub callback produces for the repo's owner (octocat, id 583231).
-  const verified = { mint: coin.mint, canonicalId: coin.canonicalId, platform: 'github' as const, accountId: '583231', login: 'octocat', verifiedAt: new Date().toISOString(), exp: Date.now() + 30 * 60_000 };
+  const trust = await octocatTrust(coin.canonicalId.replace('gh:repo:', ''));
+  const verified = { mint: coin.mint, canonicalId: coin.canonicalId, platform: 'github' as const, accountId: '583231', login: 'octocat', verifiedAt: new Date().toISOString(), exp: Date.now() + 30 * 60_000, trust };
   const destBefore = await connection.getBalance(destination);
   const serverBefore = await connection.getBalance(v.server.publicKey);
-  const { claim } = (await submitClaim(verified, { mint: coin.mint, action, destination: destination.toBase58() })) as { claim: { id: string } };
+  // The destination wallet signs the one-time claim message (what the claim page has the wallet do).
+  const n = await issueNonce(verified, { mint: coin.mint, wallet: destination.toBase58() });
+  console.log(`  [sign] destination signs: "${n.message}"`);
+  // Negative checks: a signature from another wallet, and a replayed nonce, are refused.
+  const wrong = await submitClaim(verified, { mint: coin.mint, action, destination: destination.toBase58(), nonce: n.nonce, signature: walletSign(Keypair.generate(), n.message) }).then(() => 'ACCEPTED', (e: Error) => `REJECTED "${e.message}"`);
+  console.log(`  [negative check] signature from another wallet: ${wrong}`);
+  const { claim } = (await submitClaim(verified, { mint: coin.mint, action, destination: destination.toBase58(), nonce: n.nonce, signature: walletSign(destKp, n.message) })) as { claim: { id: string } };
+  const replay = await submitClaim(verified, { mint: coin.mint, action, destination: destination.toBase58(), nonce: n.nonce, signature: walletSign(destKp, n.message) }).then(() => 'ACCEPTED', (e: Error) => `REJECTED "${e.message}"`);
+  console.log(`  [negative check] same signed message submitted again (replay): ${replay}`);
   const row = (await getClaim(claim.id))!;
   console.log(`  ✓ claim ${row.id} ${row.status} | proposal ${row.squads_proposal} (#${row.transaction_index}) | held at proposal ${sol(row.held_lamports ?? 0)} SOL`);
   for (const s of row.propose_signatures) console.log(`    server (Initiate) signature: ${s}`);
@@ -145,6 +171,17 @@ async function run(action: 'claim' | 'disown', url: string, destination: PublicK
   const voteTx = Transaction.from(Buffer.from(transaction, 'base64'));
   const voteSig = await send(voteTx, [approver], 'approver votes (approve)');
   const synced = await syncClaim(row.id, voteSig);
+  if (opts.timelock) {
+    const held = (await getClaim(row.id))!;
+    console.log(`  [timelock] held ${sol(held.held_lamports ?? 0)} SOL >= CLAIM_TIMELOCK_SOL ${process.env.CLAIM_TIMELOCK_SOL} -> timelock until ${held.timelock_until}`);
+    console.log(`  [timelock] after the approver's vote, sync -> ${JSON.stringify(synced)} (status ${held.status}; NOT executed)`);
+    const creatorNow = (await creatorFee(pool)).creator;
+    console.log(`  [timelock] on-chain creator still the vault: ${creatorNow.equals(v.vaultPda)}`);
+    const d = await fetch(`${BASE}/api/links/claim/dispute`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ mint: coin.mint, contact: 'e2e@hatch.test', reason: 'E2E test dispute: I run this repo and did not request this.' }) });
+    console.log(`  [dispute] POST /api/links/claim/dispute -> ${d.status}`);
+    console.log(`  token page: ${BASE}/token/${coin.mint}`);
+    return;
+  }
   const after = await creatorFee(pool);
   const done = (await getClaim(row.id))!;
   const destAfter = await connection.getBalance(destination);
@@ -161,5 +198,14 @@ async function run(action: 'claim' | 'disown', url: string, destination: PublicK
 console.log(`=== link claim e2e [devnet] vault ${v.vaultPda.toBase58()} | multisig ${v.multisigPda.toBase58()} ===`);
 await topUp(v.server.publicKey, 150_000_000, 200_000_000, 'server (Hatch pays fees)');
 await topUp(approver.publicKey, 10_000_000, 20_000_000, 'approver');
-await run('claim', CLAIM_URL, destA);
-await run('disown', DISOWN_URL, destB);
+if (ONLY === 'all') {
+  await run('claim', CLAIM_URL, ownerA);
+  await run('disown', DISOWN_URL, ownerB);
+}
+if (ONLY === 'all' || ONLY === 'timelock') {
+  process.env.CLAIM_TIMELOCK_SOL = '0'; // any amount is "large" for this run: shows the 48 h wait on devnet
+  await run('claim', TIMELOCK_URL, ownerA, { timelock: true });
+}
+
+// Open RPC sockets would keep the process alive after the last step.
+process.exit(0);

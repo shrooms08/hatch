@@ -5,6 +5,7 @@
 // claim log / claims row once a claim is submitted).
 import { createHash, randomBytes } from 'node:crypto';
 import { githubOwnsRepo, OWNER_REFUSAL } from '@/lib/links/ownerRule';
+import type { OwnerTrust } from '@/lib/links/claimRules';
 
 export const GITHUB_SCOPE = 'read:org';
 const UA = 'hatch-link-claims';
@@ -49,7 +50,15 @@ export class GithubVerifyError extends Error {}
  * Exchanges the code (with the PKCE verifier), then checks the owner rule for the repo by its PERMANENT numeric id.
  * Returns the verified account; throws GithubVerifyError with a user-facing message otherwise.
  */
-export async function verifyGithubOwner(p: { code: string; verifier: string; redirectUri: string; githubRepoId: number }): Promise<{ accountId: string; login: string; via: 'user' | 'org-admin' }> {
+export async function verifyGithubOwner(p: {
+  code: string;
+  verifier: string;
+  redirectUri: string;
+  githubRepoId: number;
+  /** "gh:repo:owner/repo" as hatched, and the owner's numeric id then: a different name or owner now = renamed / transferred. */
+  canonicalId: string;
+  hatchedOwnerId: string | null;
+}): Promise<{ accountId: string; login: string; via: 'user' | 'org-admin'; trust: OwnerTrust }> {
   const cfg = githubOAuthConfig();
   if (!cfg) throw new GithubVerifyError('GitHub sign-in is not set up on this server');
   const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
@@ -62,10 +71,10 @@ export async function verifyGithubOwner(p: { code: string; verifier: string; red
   let token: string | null = tok.access_token ?? null;
   if (!token) throw new GithubVerifyError('GitHub sign-in did not complete. Try again.');
   try {
-    const user = await gh<{ id: number; login: string }>('/user', token);
+    const user = await gh<{ id: number; login: string; created_at?: string; followers?: number }>('/user', token);
     if (!user.body || typeof user.body.id !== 'number') throw new GithubVerifyError('Could not read your GitHub account. Try again.');
     // The repo by its permanent id (survives renames and transfers).
-    const repo = await gh<{ owner: { id: number; type: string; login: string } }>(`/repositories/${p.githubRepoId}`, token);
+    const repo = await gh<{ full_name?: string; stargazers_count?: number; owner: { id: number; type: string; login: string } }>(`/repositories/${p.githubRepoId}`, token);
     if (!repo.body) throw new GithubVerifyError('Could not read this repo on GitHub. Try again in a few minutes.');
     const membership =
       repo.body.owner.type === 'Organization'
@@ -73,8 +82,25 @@ export async function verifyGithubOwner(p: { code: string; verifier: string; red
         : null;
     const rule = githubOwnsRepo({ user: user.body, repoOwner: repo.body.owner, membership });
     if ('reason' in rule) throw new GithubVerifyError(OWNER_REFUSAL[rule.reason]);
-    return { accountId: String(user.body.id), login: user.body.login, via: rule.via };
+    const org = repo.body.owner.type === 'Organization' ? (await gh<{ is_verified?: boolean }>(`/orgs/${encodeURIComponent(repo.body.owner.login)}`, token)).body : null;
+    const trust: OwnerTrust = {
+      platform: 'github',
+      accountCreatedAt: user.body.created_at ?? null,
+      followers: typeof user.body.followers === 'number' ? user.body.followers : null,
+      stars: typeof repo.body.stargazers_count === 'number' ? repo.body.stargazers_count : null,
+      platformVerified: org ? org.is_verified === true : null,
+      renamedOrTransferred: renamedSinceHatch({ canonicalId: p.canonicalId, hatchedOwnerId: p.hatchedOwnerId, fullName: repo.body.full_name ?? null, ownerId: repo.body.owner.id }),
+      checkedAt: new Date().toISOString(),
+    };
+    return { accountId: String(user.body.id), login: user.body.login, via: rule.via, trust };
   } finally {
     token = null; // used for verification only; dropped here
   }
+}
+
+/** The repo's current "owner/name" or owner id differs from when the coin was hatched (case-insensitive). */
+export function renamedSinceHatch(p: { canonicalId: string; hatchedOwnerId: string | null; fullName: string | null; ownerId: number }): boolean {
+  const hatched = p.canonicalId.replace(/^gh:repo:/, '').toLowerCase();
+  if (p.fullName && p.fullName.toLowerCase() !== hatched) return true;
+  return !!p.hatchedOwnerId && p.hatchedOwnerId !== String(p.ownerId);
 }

@@ -19,7 +19,7 @@ import { forgetSwr } from '@/lib/server/swrCache';
 import { addPriorityFee } from '@/lib/solana/priorityFee';
 import { linkKeys, linkNetwork } from './chain';
 import { LinkApiError } from './service';
-import { GapError, approveInstruction, executeHandover, isVaultConfigured, poolPhase, proposalState, proposeHandover, rejectInstruction, vaultEnv, type ProposalState } from './squads';
+import { GapError, approveInstruction, cancelInstruction, executeHandover, isVaultConfigured, poolPhase, proposalState, proposeHandover, rejectInstruction, vaultEnv, type ProposalState } from './squads';
 import {
   ClaimOpenError,
   appendClaimLog,
@@ -28,7 +28,13 @@ import {
   getClaim,
   getLink,
   getLinkByMint,
+  disputesFor,
+  getNonce,
   insertClaim,
+  insertDispute,
+  insertNonce,
+  setOwnerTrust,
+  consumeNonce,
   markLinkHandedOver,
   updateClaim,
   type ClaimRow,
@@ -37,6 +43,8 @@ import {
 } from './store';
 import type { VerifiedId } from './claimCookie';
 import { ADMIN_MESSAGE } from '@/lib/links/claimShared';
+import { randomBytes } from 'node:crypto';
+import { DEFAULT_CLAIM_TIMELOCK_SOL, NONCE_TTL_MS, destinationMessage, needsTimelock, timelockRemainingMs, timelockUntil, trustLabel, validateDispute, type OwnerTrust } from '@/lib/links/claimRules';
 
 const connection = () => new Connection(serverRpcUrl(), 'confirmed');
 const OPEN: ClaimRow['status'][] = ['pending', 'proposed', 'approved'];
@@ -87,7 +95,29 @@ async function poolOnChain(pool: string) {
 }
 
 const publicClaim = (c: ClaimRow | undefined) =>
-  c ? { id: c.id, status: c.status, action: c.action, destination: c.destination, createdAt: c.created_at, executeSignature: c.execute_signature, receivedLamports: c.received_lamports } : null;
+  c
+    ? { id: c.id, status: c.status, action: c.action, destination: c.destination, createdAt: c.created_at, executeSignature: c.execute_signature, receivedLamports: c.received_lamports, timelockUntil: c.timelock_until }
+    : null;
+
+/** Claims holding at least this much (SOL, at proposal time) wait 48 h before they can execute. CLAIM_TIMELOCK_SOL overrides. */
+export function claimTimelockSol(): number {
+  const v = Number(process.env.CLAIM_TIMELOCK_SOL);
+  return process.env.CLAIM_TIMELOCK_SOL !== undefined && process.env.CLAIM_TIMELOCK_SOL !== '' && Number.isFinite(v) && v >= 0 ? v : DEFAULT_CLAIM_TIMELOCK_SOL;
+}
+
+const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
+/** ed25519 check of a wallet's signature (base58) over a UTF-8 message. */
+export function walletSigned(message: string, signatureB58: unknown, wallet: PublicKey): boolean {
+  let sig: Uint8Array;
+  try {
+    sig = bs58.decode(String(signatureB58 ?? ''));
+  } catch {
+    return false;
+  }
+  if (sig.length !== 64) return false;
+  const key = createPublicKey({ key: Buffer.concat([ED25519_SPKI_PREFIX, wallet.toBuffer()]), format: 'der', type: 'spki' });
+  return edVerify(null, Buffer.from(message, 'utf8'), key, Buffer.from(sig));
+}
 
 // ---------- the claim page ----------
 
@@ -117,7 +147,14 @@ export async function claimInfo(mintRaw: unknown, verified: VerifiedId | null) {
     creator: state.creator.toBase58(),
     canVerify: link.kind in CLAIM_PLATFORMS,
     platform: CLAIM_PLATFORMS[link.kind as keyof typeof CLAIM_PLATFORMS] ?? null,
-    verified: verified && verified.mint === mint ? { platform: verified.platform, login: verified.login, accountId: verified.accountId, verifiedAt: verified.verifiedAt } : null,
+    verified:
+      verified && verified.mint === mint
+        ? { platform: verified.platform, login: verified.login, accountId: verified.accountId, verifiedAt: verified.verifiedAt, trust: verified.trust ?? null, trustLabel: trustLabel(verified.trust) }
+        : null,
+    /** Trust signals of the account that last verified ownership (shown on the coin). */
+    ownerTrust: link.owner_trust ?? null,
+    ownerTrustLabel: trustLabel(link.owner_trust),
+    timelockSol: claimTimelockSol(),
     openClaim: publicClaim(open),
     lastClaim: publicClaim(done),
   };
@@ -125,13 +162,35 @@ export async function claimInfo(mintRaw: unknown, verified: VerifiedId | null) {
 
 /** Called right after a successful verification: logs who verified, when, for which link. */
 export async function logVerified(v: VerifiedId) {
-  await appendClaimLog({ network: claimNetwork(), claim_id: null, canonical_id: v.canonicalId, event: 'verified', platform: v.platform, account_id: v.accountId, account_login: v.login, detail: { mint: v.mint, verifiedAt: v.verifiedAt } });
+  const network = claimNetwork();
+  await appendClaimLog({ network, claim_id: null, canonical_id: v.canonicalId, event: 'verified', platform: v.platform, account_id: v.accountId, account_login: v.login, detail: { mint: v.mint, verifiedAt: v.verifiedAt, trust: v.trust ?? null } });
+  if (v.trust) await setOwnerTrust(network, v.canonicalId, v.trust);
+}
+
+/**
+ * Step before submitting: a one-time message the DESTINATION wallet signs (free, no transaction). Bound to this coin,
+ * the verified account and that wallet; expires in 10 minutes; usable once.
+ */
+export async function issueNonce(verified: VerifiedId | null, body: { mint?: unknown; wallet?: unknown }) {
+  const network = claimNetwork();
+  const mint = parseMint(body.mint);
+  if (!verified || verified.mint !== mint) throw new LinkApiError(401, 'Verify that you own this link first');
+  if (keyLimited(`claim-nonce:${verified.platform}:${verified.accountId}`, 20, 60 * 60_000)) throw new LinkApiError(429, 'Too many attempts for this account. Try again in an hour.');
+  const wallet = validDestination(body.wallet).toBase58();
+  const link = await linkForClaim(network, mint);
+  if (link.canonical_id !== verified.canonicalId) throw new LinkApiError(401, 'Verify that you own this link first');
+  if (link.status !== 'hatched') throw new LinkApiError(409, 'This coin was already claimed or disowned');
+  const nonce = randomBytes(16).toString('hex');
+  const message = destinationMessage({ ticker: link.coin_ticker, mint, platform: verified.platform === 'github' ? 'GitHub' : verified.platform, login: verified.login, accountId: verified.accountId, wallet, nonce, date: new Date().toISOString().slice(0, 10) });
+  const expiresAt = new Date(Date.now() + NONCE_TTL_MS).toISOString();
+  await insertNonce({ nonce, network, mint, platform: verified.platform, account_id: verified.accountId, wallet, message, expires_at: expiresAt });
+  return { nonce, message, expiresAt };
 }
 export async function logRefused(p: { canonicalId: string; platform: string; reason: string }) {
   await appendClaimLog({ network: claimNetwork(), claim_id: null, canonical_id: p.canonicalId, event: 'verify-refused', platform: p.platform, detail: { reason: p.reason } });
 }
 
-export async function submitClaim(verified: VerifiedId | null, body: { mint?: unknown; action?: unknown; destination?: unknown }) {
+export async function submitClaim(verified: VerifiedId | null, body: { mint?: unknown; action?: unknown; destination?: unknown; nonce?: unknown; signature?: unknown }) {
   const network = claimNetwork();
   const mint = parseMint(body.mint);
   if (!verified || verified.mint !== mint) throw new LinkApiError(401, 'Verify that you own this link first');
@@ -150,21 +209,48 @@ export async function submitClaim(verified: VerifiedId | null, body: { mint?: un
   const { phase } = await poolOnChain(link.pool!);
   if (phase === 'gap') throw new LinkApiError(409, new GapError().message);
 
+  // The destination wallet signed the one-time message for exactly this coin, account and wallet.
+  const nonceId = String(body.nonce ?? '');
+  const issued = await getNonce(nonceId);
+  if (!issued || issued.network !== network || issued.mint !== mint || issued.account_id !== verified.accountId || issued.wallet !== destination.toBase58())
+    throw new LinkApiError(400, 'Sign the claim message with the destination wallet first');
+  if (!walletSigned(issued.message, body.signature, destination)) throw new LinkApiError(400, 'The signature is not from the destination wallet');
+  if (!(await consumeNonce({ nonce: nonceId, network, mint, accountId: verified.accountId, wallet: destination.toBase58() })))
+    throw new LinkApiError(400, 'That signature request expired or was already used. Sign again.');
+  const signature = String(body.signature);
+
   let claim: ClaimRow;
   try {
-    claim = await insertClaim({ network, canonical_id: link.canonical_id, mint, platform: verified.platform, action, account_id: verified.accountId, account_login: verified.login, verified_at: verified.verifiedAt, destination: destination.toBase58() });
+    claim = await insertClaim({
+      network,
+      canonical_id: link.canonical_id,
+      mint,
+      platform: verified.platform,
+      action,
+      account_id: verified.accountId,
+      account_login: verified.login,
+      verified_at: verified.verifiedAt,
+      destination: destination.toBase58(),
+      destination_message: issued.message,
+      destination_signature: signature,
+      nonce: nonceId,
+      trust: (verified.trust ?? null) as OwnerTrust | null,
+    });
   } catch (e) {
     if (e instanceof ClaimOpenError) throw new LinkApiError(409, 'A claim for this coin is already waiting for approval. To change the wallet, it has to be rejected first.');
     throw e;
   }
   const log = { network, claim_id: claim.id, canonical_id: link.canonical_id, platform: verified.platform, account_id: verified.accountId, account_login: verified.login, destination: claim.destination };
-  await appendClaimLog({ ...log, event: 'submitted', detail: { action, mint } });
+  await appendClaimLog({ ...log, event: 'submitted', detail: { action, mint, destinationMessage: issued.message, destinationSignature: signature, nonce: nonceId, trust: verified.trust ?? null } });
 
   const v = vaultEnv();
   try {
     const p = await proposeHandover(connection(), v, { pool: new PublicKey(link.pool!), destination, memo: `hatch ${action} ${link.canonical_id}` });
-    const updated = await updateClaim(claim.id, { status: 'proposed', squads_proposal: p.proposal.toBase58(), transaction_index: Number(p.transactionIndex), held_lamports: Number(p.heldLamports), propose_signatures: p.signatures }, ['pending']);
-    await appendClaimLog({ ...log, event: 'proposed', proposal: p.proposal.toBase58(), signatures: p.signatures, detail: { transactionIndex: Number(p.transactionIndex), heldLamports: p.heldLamports.toString(), phase: p.phase } });
+    // Large claims wait: the handover can only execute 48 h after the proposal (disputes can come in meanwhile).
+    const lock = needsTimelock(p.heldLamports, claimTimelockSol()) ? timelockUntil(Date.now()) : null;
+    const updated = await updateClaim(claim.id, { status: 'proposed', squads_proposal: p.proposal.toBase58(), transaction_index: Number(p.transactionIndex), held_lamports: Number(p.heldLamports), propose_signatures: p.signatures, timelock_until: lock }, ['pending']);
+    await appendClaimLog({ ...log, event: 'proposed', proposal: p.proposal.toBase58(), signatures: p.signatures, detail: { transactionIndex: Number(p.transactionIndex), heldLamports: p.heldLamports.toString(), phase: p.phase, timelockUntil: lock } });
+    forgetSwr(`links:mint:${network}:${mint}`);
     return { claim: publicClaim(updated ?? claim) };
   } catch (e) {
     const msg = e instanceof GapError ? e.message : 'Could not create the approval request. Try again in a few minutes.';
@@ -174,9 +260,25 @@ export async function submitClaim(verified: VerifiedId | null, body: { mint?: un
   }
 }
 
+// ---------- disputes ----------
+
+/** Anyone can dispute an open claim (contact + reason). Shown to the approver; it does not stop the claim by itself. */
+export async function disputeClaim(body: { mint?: unknown; contact?: unknown; reason?: unknown }) {
+  const network = claimNetwork();
+  const mint = parseMint(body.mint);
+  const v = validateDispute(body);
+  if ('error' in v) throw new LinkApiError(400, v.error);
+  const link = await linkForClaim(network, mint);
+  const open = (await claimsForLink(network, link.canonical_id)).find((c) => OPEN.includes(c.status));
+  if (!open) throw new LinkApiError(404, 'There is no open claim for this coin');
+  const d = await insertDispute({ network, claim_id: open.id, canonical_id: link.canonical_id, contact: v.contact, reason: v.reason });
+  await appendClaimLog({ network, claim_id: open.id, canonical_id: link.canonical_id, event: 'disputed', destination: open.destination, detail: { disputeId: d.id } });
+  forgetSwr(`links:mint:${network}:${mint}`);
+  return { ok: true };
+}
+
 // ---------- admin (the approver's wallet) ----------
 
-const ED25519_SPKI_PREFIX = Buffer.from('302a300506032b6570032100', 'hex');
 export { ADMIN_MESSAGE };
 
 /** The connected wallet must be the approver; it signs ADMIN_MESSAGE(ts) with ts within 10 minutes. */
@@ -207,6 +309,8 @@ export async function adminClaims() {
   const v = vaultEnv();
   const conn = connection();
   const rows = await claimsByStatus(network, ['pending', 'proposed', 'approved', 'executed', 'rejected', 'failed'], 50);
+  const disputes = await disputesFor(rows.map((r) => r.id));
+  const timelockSol = claimTimelockSol();
   return Promise.all(
     rows.map(async (c) => {
       const link = await getLink(network, c.canonical_id);
@@ -228,6 +332,11 @@ export async function adminClaims() {
         executeSignature: c.execute_signature,
         error: c.error,
         createdAt: c.created_at,
+        trust: c.trust,
+        destinationSigned: !!c.destination_signature,
+        timelockUntil: c.timelock_until,
+        timelockSol,
+        disputes: disputes.filter((d) => d.claim_id === c.id).map((d) => ({ contact: d.contact, reason: d.reason, at: d.created_at })),
       };
     })
   );
@@ -239,7 +348,9 @@ export async function adminVoteTx(approver: PublicKey, body: { claimId?: unknown
   const c = await getClaim(String(body.claimId ?? ''));
   if (!c || c.transaction_index == null || !['proposed', 'approved'].includes(c.status)) throw new LinkApiError(404, 'No claim waiting for a vote');
   const v = vaultEnv();
-  const ix = body.vote === 'reject' ? rejectInstruction(v, approver, BigInt(c.transaction_index)) : approveInstruction(v, approver, BigInt(c.transaction_index));
+  const index = BigInt(c.transaction_index);
+  if (body.vote === 'cancel' && c.status !== 'approved') throw new LinkApiError(409, 'Only an approved claim can be cancelled');
+  const ix = body.vote === 'reject' ? rejectInstruction(v, approver, index) : body.vote === 'cancel' ? cancelInstruction(v, approver, index) : approveInstruction(v, approver, index);
   const tx = new Transaction().add(ix);
   addPriorityFee(tx, 100_000);
   const bh = await connection().getLatestBlockhash('confirmed');
@@ -278,6 +389,9 @@ export async function syncClaim(claimIdRaw: unknown, voteSignature?: unknown) {
   }
   const link = await getLink(network, c.canonical_id);
   if (!link?.pool || !link.mint) throw new LinkApiError(404, 'Link not found');
+  // The timelock: approved, but large claims execute only once 48 h have passed since the proposal.
+  const wait = timelockRemainingMs(c.timelock_until);
+  if (ps.state === 'Approved' && wait > 0) return { status: 'approved' as const, executesAt: c.timelock_until, waitMs: wait };
 
   let executeSig = c.execute_signature;
   if (ps.state === 'Approved') {

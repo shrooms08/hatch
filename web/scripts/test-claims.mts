@@ -104,3 +104,77 @@ test('the server key never votes: votes are built for the approver wallet to sig
 test('first buy cap is 0.5 SOL', () => {
   assert.equal(LINK_MAX_FIRST_BUY_SOL, 0.5);
 });
+
+// ---------- P4a.1: claim hardening ----------
+const { destinationMessage, trustFlags, trustLabel, TRUST_LABEL, needsTimelock, timelockRemainingMs, timelockUntil, validateDispute, CLAIM_TIMELOCK_HOURS } = await import('../src/lib/links/claimRules.ts');
+const { walletSigned, claimTimelockSol } = await import('../src/lib/server/links/claims.ts');
+const { renamedSinceHatch } = await import('../src/lib/server/links/github.ts');
+const { createPrivateKey } = await import('node:crypto');
+
+/** Signs like a wallet's signMessage (ed25519 over the UTF-8 bytes), from a web3.js Keypair. */
+const walletSign = (kp: Keypair, message: string) =>
+  bs58.encode(edSign(null, Buffer.from(message, 'utf8'), createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), Buffer.from(kp.secretKey.subarray(0, 32))]), format: 'der', type: 'pkcs8' })));
+
+test('destination signature: exact message, only the destination wallet, only for this mint', () => {
+  const dest = Keypair.generate();
+  const other = Keypair.generate();
+  const base = { ticker: 'HELLO', mint: 'MintAAA', platform: 'GitHub', login: 'octocat', accountId: '583231', wallet: dest.publicKey.toBase58(), nonce: 'n1', date: '2026-10-16' };
+  const msg = destinationMessage(base);
+  assert.equal(msg, `Hatch claim: $HELLO MintAAA for GitHub account octocat (583231) to ${dest.publicKey.toBase58()}, nonce n1, 2026-10-16`);
+  const sig = walletSign(dest, msg);
+  assert.equal(walletSigned(msg, sig, dest.publicKey), true);
+  // Signed by another wallet (a typo'd or wrong destination) -> refused.
+  assert.equal(walletSigned(msg, walletSign(other, msg), dest.publicKey), false);
+  // The same signature for another mint (or another nonce) -> refused: the server rebuilds the message it issued.
+  assert.equal(walletSigned(destinationMessage({ ...base, mint: 'MintBBB' }), sig, dest.publicKey), false);
+  assert.equal(walletSigned(destinationMessage({ ...base, nonce: 'n2' }), sig, dest.publicKey), false);
+  for (const bad of ['', 'xyz', bs58.encode(Buffer.alloc(64))]) assert.equal(walletSigned(msg, bad, dest.publicKey), false);
+});
+
+test('trust labels: new (< 30 days) or tiny audience -> amber label; established accounts get none; never "verified by Hatch"', () => {
+  const now = Date.parse('2026-10-16T00:00:00Z');
+  const t = (o: Record<string, unknown>) => ({ platform: 'github' as const, accountCreatedAt: '2015-01-01T00:00:00Z', followers: 120, stars: 45, platformVerified: null, renamedOrTransferred: false, checkedAt: '2026-10-16T00:00:00Z', ...o });
+  assert.equal(trustLabel(t({}), now), null);
+  assert.equal(trustLabel(t({ accountCreatedAt: '2026-10-01T00:00:00Z' }), now), TRUST_LABEL);
+  assert.equal(trustLabel(t({ followers: 2, stars: 3 }), now), TRUST_LABEL);
+  assert.equal(trustLabel(t({ followers: 2, stars: 300 }), now), null); // a big repo is an audience
+  assert.equal(trustLabel(t({ accountCreatedAt: null }), now), TRUST_LABEL); // unknown age: treat as new
+  assert.deepEqual(trustFlags(t({ renamedOrTransferred: true }), now)?.risky, true);
+  assert.equal(TRUST_LABEL, 'New or small account, check the source');
+  assert.doesNotMatch(TRUST_LABEL, /verified/i);
+  // Renamed / transferred: name or owner id differs from the hatched link.
+  assert.equal(renamedSinceHatch({ canonicalId: 'gh:repo:octocat/hello-world', hatchedOwnerId: '583231', fullName: 'octocat/Hello-World', ownerId: 583231 }), false);
+  assert.equal(renamedSinceHatch({ canonicalId: 'gh:repo:octocat/hello-world', hatchedOwnerId: '583231', fullName: 'octocat/hello-world-2', ownerId: 583231 }), true);
+  assert.equal(renamedSinceHatch({ canonicalId: 'gh:repo:octocat/hello-world', hatchedOwnerId: '583231', fullName: 'octocat/hello-world', ownerId: 999 }), true);
+});
+
+test('timelock: claims holding >= CLAIM_TIMELOCK_SOL (default 0.5) execute only 48 h after the proposal', () => {
+  const saved = process.env.CLAIM_TIMELOCK_SOL;
+  try {
+    delete process.env.CLAIM_TIMELOCK_SOL;
+    assert.equal(claimTimelockSol(), 0.5);
+    process.env.CLAIM_TIMELOCK_SOL = '2';
+    assert.equal(claimTimelockSol(), 2);
+    process.env.CLAIM_TIMELOCK_SOL = 'abc';
+    assert.equal(claimTimelockSol(), 0.5);
+  } finally {
+    if (saved === undefined) delete process.env.CLAIM_TIMELOCK_SOL;
+    else process.env.CLAIM_TIMELOCK_SOL = saved;
+  }
+  assert.equal(needsTimelock(499_999_999n, 0.5), false);
+  assert.equal(needsTimelock(500_000_000n, 0.5), true);
+  const proposed = Date.parse('2026-10-16T00:00:00Z');
+  const until = timelockUntil(proposed);
+  assert.equal(until, '2026-10-18T00:00:00.000Z');
+  assert.equal(CLAIM_TIMELOCK_HOURS, 48);
+  assert.equal(timelockRemainingMs(until, proposed + 47 * 3_600_000), 3_600_000);
+  assert.equal(timelockRemainingMs(until, proposed + 48 * 3_600_000), 0);
+  assert.equal(timelockRemainingMs(null, proposed), 0); // under the threshold: no wait
+});
+
+test('disputes: contact and reason are required and bounded', () => {
+  assert.deepEqual(validateDispute({ contact: ' me@x.com ', reason: 'This repo belongs to my org, not them.' }), { contact: 'me@x.com', reason: 'This repo belongs to my org, not them.' });
+  assert.ok('error' in validateDispute({ contact: 'a', reason: 'long enough reason here' }));
+  assert.ok('error' in validateDispute({ contact: 'me@x.com', reason: 'short' }));
+  assert.ok('error' in validateDispute({ contact: 'me@x.com', reason: 'x'.repeat(2001) }));
+});

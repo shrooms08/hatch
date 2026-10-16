@@ -14,6 +14,17 @@ import { getConnection } from '@/lib/solana/connection';
 import { confirmByPolling } from '@/lib/dbc/transactions';
 import { explorerTxUrl } from '@/lib/config/network';
 import { ADMIN_MESSAGE, formatSol, lamportsToSol, shortWallet } from '@/lib/links/claimShared';
+import { formatRemaining, timelockRemainingMs, trustFlags, type OwnerTrust } from '@/lib/links/claimRules';
+
+/** One checklist line; red when it is a risk signal. */
+function Check({ label, value, risk }: { label: string; value: React.ReactNode; risk?: boolean }) {
+  return (
+    <div className={`flex items-baseline justify-between gap-3 rounded-md px-2 py-1 ${risk ? 'bg-danger/[0.08] text-danger' : ''}`}>
+      <span className={risk ? '' : 'text-ink-muted'}>{label}</span>
+      <span className={`text-right font-mono text-xs ${risk ? 'font-semibold' : 'text-ink'}`}>{value}</span>
+    </div>
+  );
+}
 
 type AdminClaim = {
   id: string;
@@ -31,6 +42,11 @@ type AdminClaim = {
   executeSignature: string | null;
   error: string | null;
   createdAt: string;
+  trust: OwnerTrust | null;
+  destinationSigned: boolean;
+  timelockUntil: string | null;
+  timelockSol: number;
+  disputes: { contact: string; reason: string; at: string }[];
 };
 
 export const getServerSideProps: GetServerSideProps = async () => {
@@ -73,11 +89,11 @@ export default function AdminClaims() {
 
   const refresh = async () => auth && setClaims((await call<{ claims: AdminClaim[] }>('GET', auth)).claims);
 
-  const vote = async (c: AdminClaim, v: 'approve' | 'reject') => {
+  const vote = async (c: AdminClaim, v: 'approve' | 'reject' | 'cancel') => {
     if (!auth || !wallet.signTransaction) return;
     setError(null);
     try {
-      setBusy(`${v === 'approve' ? 'Approving' : 'Rejecting'}… confirm in your wallet`);
+      setBusy(`${v === 'approve' ? 'Approving' : v === 'cancel' ? 'Cancelling' : 'Rejecting'}… confirm in your wallet`);
       const { transaction, lastValidBlockHeight } = await call<{ transaction: string; lastValidBlockHeight: number }>('POST', auth, { op: 'vote', claimId: c.id, vote: v });
       const signed = await wallet.signTransaction(Transaction.from(fromBase64(transaction)));
       const connection = getConnection();
@@ -160,6 +176,30 @@ export default function AdminClaims() {
                 Held now: <span className="font-mono text-ink">{formatSol(lamportsToSol(c.heldLamports))}</span>
                 {c.receivedLamports && <> · received {formatSol(lamportsToSol(c.receivedLamports))}</>}
               </span>
+              {(() => {
+                const f = trustFlags(c.trust);
+                const wait = timelockRemainingMs(c.timelockUntil);
+                const held = lamportsToSol(c.heldLamports);
+                return (
+                  <div className="my-1 flex flex-col gap-0.5 rounded-md border border-line p-2">
+                    <span className="mb-1 font-mono text-[11px] uppercase tracking-[0.1em] text-ink-muted">Checklist</span>
+                    <Check label="Account age" value={f?.ageDays != null ? `${f.ageDays} days` : 'unknown'} risk={!f || f.newAccount} />
+                    <Check label="Followers / repo stars" value={c.trust ? `${c.trust.followers ?? 0} / ${c.trust.stars ?? 0}` : 'unknown'} risk={!f || f.smallAudience} />
+                    <Check label="GitHub verified organization" value={c.trust?.platformVerified == null ? 'n/a (user repo)' : c.trust.platformVerified ? 'yes' : 'no'} />
+                    <Check label="Repo renamed or transferred since hatching" value={c.trust ? (c.trust.renamedOrTransferred ? 'YES' : 'no') : 'unknown'} risk={!c.trust || c.trust.renamedOrTransferred} />
+                    <Check label="Destination signed the claim message" value={c.destinationSigned ? 'yes' : 'NO'} risk={!c.destinationSigned} />
+                    <Check label="Held now" value={formatSol(held)} risk={held != null && held >= c.timelockSol} />
+                    <Check label="Timelock" value={c.timelockUntil ? (wait > 0 ? `runs in ${formatRemaining(wait)}` : 'passed') : `none (under ${c.timelockSol} SOL)`} risk={wait > 0} />
+                    <Check label="Disputes" value={c.disputes.length} risk={c.disputes.length > 0} />
+                    {c.disputes.map((d, i) => (
+                      <div key={i} className="mt-1 rounded-md bg-danger/[0.06] px-2 py-1 text-xs text-ink">
+                        <span className="font-semibold">{d.contact}</span> <span className="text-ink-muted">· {new Date(d.at).toLocaleString()}</span>
+                        <div className="whitespace-pre-wrap text-ink-2">{d.reason}</div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
               {c.proposal && <span className="font-mono text-xs text-ink-muted">Proposal {shortWallet(c.proposal)} (#{c.transactionIndex})</span>}
               {c.executeSignature && (
                 <a className="text-ink-accent" href={explorerTxUrl(c.executeSignature)} target="_blank" rel="noreferrer">
@@ -177,7 +217,7 @@ export default function AdminClaims() {
                   {c.status === 'proposed' && (
                     <>
                       <Button size="sm" disabled={!!busy} onClick={() => void vote(c, 'approve')}>
-                        Approve
+                        {timelockRemainingMs(c.timelockUntil) > 0 ? `Approve (runs in ${formatRemaining(timelockRemainingMs(c.timelockUntil))})` : 'Approve'}
                       </Button>
                       <Button size="sm" variant="secondary" disabled={!!busy} onClick={() => void vote(c, 'reject')}>
                         Reject
@@ -185,9 +225,14 @@ export default function AdminClaims() {
                     </>
                   )}
                   {c.status === 'approved' && (
-                    <Button size="sm" disabled={!!busy} onClick={() => void retry(c)}>
-                      Run the approved handover
-                    </Button>
+                    <>
+                      <Button size="sm" disabled={!!busy || timelockRemainingMs(c.timelockUntil) > 0} onClick={() => void retry(c)}>
+                        {timelockRemainingMs(c.timelockUntil) > 0 ? `Timelock: runs in ${formatRemaining(timelockRemainingMs(c.timelockUntil))}` : 'Run the approved handover'}
+                      </Button>
+                      <Button size="sm" variant="secondary" disabled={!!busy} onClick={() => void vote(c, 'cancel')}>
+                        Cancel (approved)
+                      </Button>
+                    </>
                   )}
                 </div>
               )}
