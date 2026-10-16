@@ -178,3 +178,86 @@ test('disputes: contact and reason are required and bounded', () => {
   assert.ok('error' in validateDispute({ contact: 'me@x.com', reason: 'short' }));
   assert.ok('error' in validateDispute({ contact: 'me@x.com', reason: 'x'.repeat(2001) }));
 });
+
+// ---------- P4b: YouTube claims ----------
+const { youtubeOwnsVideo, YOUTUBE_REFUSAL } = await import('../src/lib/links/ownerRule.ts');
+const { verifyYoutubeOwner, googleAuthorizeUrl, YOUTUBE_SCOPE, channelTrust } = await import('../src/lib/server/links/youtube.ts');
+const { trustSummary: ytSummary } = await import('../src/lib/links/claimRules.ts');
+
+process.env.GOOGLE_OAUTH_CLIENT_ID = 'test-client';
+process.env.GOOGLE_OAUTH_CLIENT_SECRET = 'test-secret';
+process.env.YOUTUBE_API_KEY = 'test-key';
+
+const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+/** A fake fetch for videos.list / token / channels.list, recording which URLs were called (never a real network). */
+function googleFake(o: { video?: Response | (() => never); token?: Response; channels?: Response }) {
+  const calls: string[] = [];
+  const f = (async (url: string) => {
+    calls.push(url.split('?')[0]!);
+    if (url.includes('/youtube/v3/videos')) return typeof o.video === 'function' ? o.video() : o.video ?? json(200, { items: [{ snippet: { channelId: 'UC_video_channel' } }] });
+    if (url.includes('oauth2.googleapis.com/token')) return o.token ?? json(200, { access_token: 'tok' });
+    if (url.includes('/youtube/v3/channels')) return o.channels ?? json(200, { items: [] });
+    throw new Error(`unexpected ${url}`);
+  }) as unknown as typeof fetch;
+  return { f, calls };
+}
+const ch = (id: string, extra: Record<string, unknown> = {}) => ({ id, snippet: { title: `Channel ${id}`, customUrl: `@${id.toLowerCase()}`, publishedAt: '2014-03-01T00:00:00Z' }, statistics: { subscriberCount: '52000', hiddenSubscriberCount: false }, ...extra });
+const ytArgs = { code: 'c', verifier: 'v', redirectUri: 'http://localhost:3200/api/links/claim/youtube/callback', videoId: 'jNQXAC9IVRw' };
+
+test('YouTube owner rule: any of the managed channels may match; another channel is refused', () => {
+  assert.deepEqual(youtubeOwnsVideo({ videoChannelId: 'UC_b', myChannels: [{ id: 'UC_a' }, { id: 'UC_b' }] }), { ok: true, channelId: 'UC_b' });
+  assert.deepEqual(youtubeOwnsVideo({ videoChannelId: 'UC_c', myChannels: [{ id: 'UC_a' }, { id: 'UC_b' }] }), { ok: false, reason: 'not-owner' });
+  assert.deepEqual(youtubeOwnsVideo({ videoChannelId: 'UC_a', myChannels: [] }), { ok: false, reason: 'no-channel' });
+});
+
+test('YouTube sign-in: state + PKCE S256, youtube.readonly only, account chooser for Brand Accounts, no refresh token', () => {
+  const u = new URL(googleAuthorizeUrl({ clientId: 'cid', redirectUri: ytArgs.redirectUri, state: 's', challenge: 'ch' }));
+  assert.equal(u.searchParams.get('scope'), 'https://www.googleapis.com/auth/youtube.readonly');
+  assert.equal(YOUTUBE_SCOPE, 'https://www.googleapis.com/auth/youtube.readonly');
+  assert.equal(u.searchParams.get('code_challenge_method'), 'S256');
+  assert.equal(u.searchParams.get('access_type'), 'online');
+  assert.equal(u.searchParams.get('prompt'), 'select_account');
+});
+
+test('YouTube verify: owner among several managed channels -> identity is the channel id, with trust signals', async () => {
+  const g = googleFake({ channels: json(200, { items: [ch('UC_other'), ch('UC_video_channel')] }) });
+  const who = await verifyYoutubeOwner(ytArgs, g.f);
+  assert.equal(who.accountId, 'UC_video_channel');
+  assert.equal(who.login, '@uc_video_channel');
+  assert.equal(who.trust.platform, 'youtube');
+  assert.equal(who.trust.followers, 52000);
+  assert.equal(trustLabel(who.trust), null);
+  assert.deepEqual(g.calls, ['https://www.googleapis.com/youtube/v3/videos', 'https://oauth2.googleapis.com/token', 'https://www.googleapis.com/youtube/v3/channels']);
+});
+
+test('YouTube verify: wrong channel and no channel are refused', async () => {
+  await assert.rejects(() => verifyYoutubeOwner(ytArgs, googleFake({ channels: json(200, { items: [ch('UC_someone_else')] }) }).f), { message: YOUTUBE_REFUSAL['not-owner'] });
+  await assert.rejects(() => verifyYoutubeOwner(ytArgs, googleFake({ channels: json(200, { items: [] }) }).f), { message: YOUTUBE_REFUSAL['no-channel'] });
+});
+
+test("YouTube verify: a private or deleted video is refused before the sign-in is used", async () => {
+  const g = googleFake({ video: json(200, { items: [] }) });
+  await assert.rejects(() => verifyYoutubeOwner(ytArgs, g.f), { message: "This video isn't public anymore, so it can't be verified right now" });
+  assert.deepEqual(g.calls, ['https://www.googleapis.com/youtube/v3/videos']); // no token exchange, no channels.list
+});
+
+test('YouTube verify: quota, key, outage, network and token failures give clear messages', async () => {
+  const quota = json(403, { error: { errors: [{ reason: 'quotaExceeded' }] } });
+  await assert.rejects(() => verifyYoutubeOwner(ytArgs, googleFake({ video: quota }).f), /API limit is used up/);
+  await assert.rejects(() => verifyYoutubeOwner(ytArgs, googleFake({ channels: json(403, { error: { errors: [{ reason: 'quotaExceeded' }] } }) }).f), /API limit is used up/);
+  await assert.rejects(() => verifyYoutubeOwner(ytArgs, googleFake({ video: json(400, { error: { errors: [{ reason: 'keyInvalid' }] } }) }).f), /not set up correctly/);
+  await assert.rejects(() => verifyYoutubeOwner(ytArgs, googleFake({ channels: json(500, {}) }).f), /not answering/);
+  await assert.rejects(() => verifyYoutubeOwner(ytArgs, googleFake({ video: () => { throw new TypeError('fetch failed'); } }).f), /not answering/);
+  await assert.rejects(() => verifyYoutubeOwner(ytArgs, googleFake({ token: json(400, { error: 'invalid_grant' }) }).f), /did not complete/);
+});
+
+test('YouTube trust: hidden subscriber counts say "hidden" and get the amber label', () => {
+  const hidden = channelTrust(ch('UC_x', { statistics: { hiddenSubscriberCount: true } }) as never);
+  assert.equal(hidden.followers, null);
+  assert.equal(hidden.followersHidden, true);
+  assert.equal(trustLabel(hidden), TRUST_LABEL);
+  assert.match(ytSummary(hidden)!, /subscribers hidden/);
+  const tiny = channelTrust(ch('UC_y', { statistics: { subscriberCount: '3', hiddenSubscriberCount: false } }) as never);
+  assert.equal(trustLabel(tiny), TRUST_LABEL);
+  assert.match(ytSummary(channelTrust(ch('UC_z') as never))!, /^channel \d+ years old · 52000 subscribers$/);
+});

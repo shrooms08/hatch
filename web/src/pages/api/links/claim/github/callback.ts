@@ -17,7 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const saved = verify<OAuthCookie>(req.cookies[OAUTH_COOKIE]);
   clearCookie(req, res, OAUTH_COOKIE);
   const back = (mint: string, q: string) => res.redirect(302, `/claim/${mint}?${q}`);
-  if (!saved || typeof req.query.state !== 'string' || req.query.state !== saved.state || typeof req.query.code !== 'string') {
+  if (!saved || (saved.platform ?? 'github') !== 'github' || typeof req.query.state !== 'string' || req.query.state !== saved.state || typeof req.query.code !== 'string') {
     return saved ? back(saved.mint, `error=${encodeURIComponent('GitHub sign-in expired. Try again.')}`) : res.redirect(302, '/');
   }
   const link = await getLinkByMint(network, saved.mint);

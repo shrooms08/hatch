@@ -13,11 +13,17 @@ export const NONCE_TTL_MS = 10 * 60_000;
 // ---------- owner trust signals ----------
 
 /** Recorded at verify time from the platform's public data. Never "verified by Hatch". */
+export type ClaimPlatform = 'github' | 'youtube';
+export const CLAIM_PLATFORM_NAME: Record<ClaimPlatform, string> = { github: 'GitHub', youtube: 'YouTube' };
+
 export type OwnerTrust = {
-  platform: 'github';
-  /** The signed-in account's creation date (ISO). */
+  platform: ClaimPlatform;
+  /** The signed-in account's creation date (ISO). YouTube: the channel's publishedAt. */
   accountCreatedAt: string | null;
+  /** GitHub followers; YouTube subscribers (null when the channel hides them, see followersHidden). */
   followers: number | null;
+  /** YouTube: the channel hides its subscriber count (treated as unknown, so the amber label shows). */
+  followersHidden?: boolean;
   /** GitHub: the repo's stars. */
   stars: number | null;
   /** The platform's own verified flag where it exists (GitHub: verified organization); null where there is none. */
@@ -39,7 +45,8 @@ export function trustFlags(t: OwnerTrust | null | undefined, now = Date.now()): 
   const created = t.accountCreatedAt ? Date.parse(t.accountCreatedAt) : NaN;
   const ageDays = Number.isFinite(created) ? Math.floor((now - created) / 86_400_000) : null;
   const newAccount = ageDays == null || ageDays < NEW_ACCOUNT_DAYS;
-  const smallAudience = (t.followers ?? 0) < SMALL_AUDIENCE && (t.stars ?? 0) < SMALL_AUDIENCE;
+  // A hidden subscriber count is unknown, not large: it gets the label too (hiding it must not avoid the check).
+  const smallAudience = t.followersHidden === true ? (t.stars ?? 0) < SMALL_AUDIENCE : (t.followers ?? 0) < SMALL_AUDIENCE && (t.stars ?? 0) < SMALL_AUDIENCE;
   return { newAccount, smallAudience, renamed: t.renamedOrTransferred, ageDays, risky: newAccount || smallAudience || t.renamedOrTransferred };
 }
 
@@ -53,8 +60,12 @@ export const trustLabel = (t: OwnerTrust | null | undefined, now = Date.now()) =
 export function trustSummary(t: OwnerTrust | null | undefined, now = Date.now()): string | null {
   const f = trustFlags(t, now);
   if (!t || !f) return null;
-  const age = f.ageDays == null ? 'account age unknown' : f.ageDays < 60 ? `account ${f.ageDays} days old` : f.ageDays < 730 ? `account ${Math.floor(f.ageDays / 30)} months old` : `account ${Math.floor(f.ageDays / 365)} years old`;
-  const parts = [age, `${t.followers ?? 0} followers`, `${t.stars ?? 0} stars`];
+  const what = t.platform === 'youtube' ? 'channel' : 'account';
+  const age = f.ageDays == null ? `${what} age unknown` : f.ageDays < 60 ? `${what} ${f.ageDays} days old` : f.ageDays < 730 ? `${what} ${Math.floor(f.ageDays / 30)} months old` : `${what} ${Math.floor(f.ageDays / 365)} years old`;
+  const parts =
+    t.platform === 'youtube'
+      ? [age, t.followersHidden ? 'subscribers hidden' : `${t.followers ?? 0} subscribers`]
+      : [age, `${t.followers ?? 0} followers`, `${t.stars ?? 0} stars`];
   if (t.platformVerified) parts.push('verified organization on GitHub');
   if (t.renamedOrTransferred) parts.push('repo renamed or transferred since hatching');
   return parts.join(' · ');

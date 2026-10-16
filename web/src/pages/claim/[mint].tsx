@@ -28,7 +28,8 @@ type Info = {
   heldLamports: string;
   phase: 'curve' | 'gap' | 'migrated';
   canVerify: boolean;
-  platform: 'github' | null;
+  platform: 'github' | 'youtube' | null;
+  kind: string;
   verified: { platform: string; login: string; accountId: string; verifiedAt: string; trust: OwnerTrust | null; trustLabel: string | null } | null;
   openClaim: { id: string; status: string; action: 'claim' | 'disown'; destination: string; createdAt: string; timelockUntil: string | null } | null;
   timelockSol: number;
@@ -150,20 +151,31 @@ export default function ClaimPage() {
                 <span className="text-xs text-ink-muted">The wallet can&apos;t be changed now. To use another one, ask Hatch to reject this request, then start again.</span>
               </Card>
             ) : !d.canVerify ? (
-              <Card className="rounded-[20px] p-5 text-sm text-ink-2">Claims for this kind of link are coming soon (GitHub repos first).</Card>
+              <Card className="rounded-[20px] p-5 text-sm text-ink-2">
+                {d.kind === 'x_post' ? 'Claims for X posts are coming later.' : 'Claims for this kind of link are coming soon.'} GitHub repos and YouTube videos can be claimed now.
+              </Card>
             ) : !d.verified ? (
               <Card className="flex flex-col gap-3 rounded-[20px] p-5 text-sm">
-                <span className="text-ink-2">Sign in with the GitHub account that owns this repo. Any admin of the organization that owns this repo can claim it.</span>
-                <span className="text-xs text-ink-muted">Hatch reads your account id, account age, followers and organization role once, then forgets the sign-in.</span>
+                {d.platform === 'youtube' ? (
+                  <>
+                    <span className="text-ink-2">Sign in with the Google account that manages the channel that posted this video. Anyone who manages this channel can claim it.</span>
+                    <span className="text-xs text-ink-muted">If the channel is a Brand Account, pick it when Google asks which account to use. Hatch reads your channel id, age and subscriber count once, then forgets the sign-in.</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-ink-2">Sign in with the GitHub account that owns this repo. Any admin of the organization that owns this repo can claim it.</span>
+                    <span className="text-xs text-ink-muted">Hatch reads your account id, account age, followers and organization role once, then forgets the sign-in.</span>
+                  </>
+                )}
                 {urlError && <span className="text-danger">{urlError}</span>}
                 <Button asChild>
-                  <a href={`/api/links/claim/github/start?mint=${encodeURIComponent(d.mint)}`}>Verify with GitHub</a>
+                  <a href={`/api/links/claim/${d.platform === 'youtube' ? 'youtube' : 'github'}/start?mint=${encodeURIComponent(d.mint)}`}>{d.platform === 'youtube' ? 'Verify with YouTube' : 'Verify with GitHub'}</a>
                 </Button>
               </Card>
             ) : (
               <Card className="flex flex-col gap-3 rounded-[20px] p-5 text-sm">
                 <span className="text-ink">
-                  Signed in as <span className="font-semibold">{d.verified.login}</span> <span className="text-ink-muted">(GitHub account {d.verified.accountId})</span>
+                  Signed in as <span className="font-semibold">{d.verified.login}</span> <span className="text-ink-muted">({d.verified.platform === 'youtube' ? 'YouTube channel' : 'GitHub account'} {d.verified.accountId})</span>
                 </span>
                 {d.verified.trust && <span className="text-xs text-ink-2">{trustSummary(d.verified.trust)}</span>}
                 {d.verified.trustLabel && <span className="self-start rounded-pill border border-warning/40 px-2 py-0.5 text-[11px] font-semibold text-warning">{d.verified.trustLabel}</span>}

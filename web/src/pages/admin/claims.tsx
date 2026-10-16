@@ -183,10 +183,16 @@ export default function AdminClaims() {
                 return (
                   <div className="my-1 flex flex-col gap-0.5 rounded-md border border-line p-2">
                     <span className="mb-1 font-mono text-[11px] uppercase tracking-[0.1em] text-ink-muted">Checklist</span>
-                    <Check label="Account age" value={f?.ageDays != null ? `${f.ageDays} days` : 'unknown'} risk={!f || f.newAccount} />
-                    <Check label="Followers / repo stars" value={c.trust ? `${c.trust.followers ?? 0} / ${c.trust.stars ?? 0}` : 'unknown'} risk={!f || f.smallAudience} />
-                    <Check label="GitHub verified organization" value={c.trust?.platformVerified == null ? 'n/a (user repo)' : c.trust.platformVerified ? 'yes' : 'no'} />
-                    <Check label="Repo renamed or transferred since hatching" value={c.trust ? (c.trust.renamedOrTransferred ? 'YES' : 'no') : 'unknown'} risk={!c.trust || c.trust.renamedOrTransferred} />
+                    <Check label={c.verified.platform === 'youtube' ? 'Channel age' : 'Account age'} value={f?.ageDays != null ? `${f.ageDays} days` : 'unknown'} risk={!f || f.newAccount} />
+                    {c.verified.platform === 'youtube' ? (
+                      <Check label="Subscribers" value={!c.trust ? 'unknown' : c.trust.followersHidden ? 'hidden' : (c.trust.followers ?? 0)} risk={!f || f.smallAudience} />
+                    ) : (
+                      <>
+                        <Check label="Followers / repo stars" value={c.trust ? `${c.trust.followers ?? 0} / ${c.trust.stars ?? 0}` : 'unknown'} risk={!f || f.smallAudience} />
+                        <Check label="GitHub verified organization" value={c.trust?.platformVerified == null ? 'n/a (user repo)' : c.trust.platformVerified ? 'yes' : 'no'} />
+                        <Check label="Repo renamed or transferred since hatching" value={c.trust ? (c.trust.renamedOrTransferred ? 'YES' : 'no') : 'unknown'} risk={!c.trust || c.trust.renamedOrTransferred} />
+                      </>
+                    )}
                     <Check label="Destination signed the claim message" value={c.destinationSigned ? 'yes' : 'NO'} risk={!c.destinationSigned} />
                     <Check label="Held now" value={formatSol(held)} risk={held != null && held >= c.timelockSol} />
                     <Check label="Timelock" value={c.timelockUntil ? (wait > 0 ? `runs in ${formatRemaining(wait)}` : 'passed') : `none (under ${c.timelockSol} SOL)`} risk={wait > 0} />

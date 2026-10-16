@@ -44,13 +44,13 @@ import {
 import type { VerifiedId } from './claimCookie';
 import { ADMIN_MESSAGE } from '@/lib/links/claimShared';
 import { randomBytes } from 'node:crypto';
-import { DEFAULT_CLAIM_TIMELOCK_SOL, NONCE_TTL_MS, destinationMessage, needsTimelock, timelockRemainingMs, timelockUntil, trustLabel, validateDispute, type OwnerTrust } from '@/lib/links/claimRules';
+import { CLAIM_PLATFORM_NAME, DEFAULT_CLAIM_TIMELOCK_SOL, NONCE_TTL_MS, destinationMessage, needsTimelock, timelockRemainingMs, timelockUntil, trustLabel, validateDispute, type OwnerTrust } from '@/lib/links/claimRules';
 
 const connection = () => new Connection(serverRpcUrl(), 'confirmed');
 const OPEN: ClaimRow['status'][] = ['pending', 'proposed', 'approved'];
 
 /** Platforms whose owners can verify in this build. */
-export const CLAIM_PLATFORMS = { github_repo: 'github' } as const;
+export const CLAIM_PLATFORMS = { github_repo: 'github', youtube_video: 'youtube' } as const;
 
 function claimNetwork(): LinkNetwork {
   const n = linkNetwork();
@@ -181,7 +181,7 @@ export async function issueNonce(verified: VerifiedId | null, body: { mint?: unk
   if (link.canonical_id !== verified.canonicalId) throw new LinkApiError(401, 'Verify that you own this link first');
   if (link.status !== 'hatched') throw new LinkApiError(409, 'This coin was already claimed or disowned');
   const nonce = randomBytes(16).toString('hex');
-  const message = destinationMessage({ ticker: link.coin_ticker, mint, platform: verified.platform === 'github' ? 'GitHub' : verified.platform, login: verified.login, accountId: verified.accountId, wallet, nonce, date: new Date().toISOString().slice(0, 10) });
+  const message = destinationMessage({ ticker: link.coin_ticker, mint, platform: CLAIM_PLATFORM_NAME[verified.platform] ?? verified.platform, login: verified.login, accountId: verified.accountId, wallet, nonce, date: new Date().toISOString().slice(0, 10) });
   const expiresAt = new Date(Date.now() + NONCE_TTL_MS).toISOString();
   await insertNonce({ nonce, network, mint, platform: verified.platform, account_id: verified.accountId, wallet, message, expires_at: expiresAt });
   return { nonce, message, expiresAt };

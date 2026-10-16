@@ -20,7 +20,8 @@ const BASE = arg('--base', 'http://localhost:3200');
 const CLAIM_URL = arg('--claim-url', 'https://github.com/octocat/Hello-World');
 const DISOWN_URL = arg('--disown-url', 'https://github.com/octocat/Spoon-Knife');
 const TIMELOCK_URL = arg('--timelock-url', 'https://github.com/octocat/octocat.github.io');
-const ONLY = arg('--only', 'all'); // all | timelock
+const YOUTUBE_URL = arg('--youtube-url', 'https://www.youtube.com/watch?v=9bZkp7q19f0');
+const ONLY = arg('--only', 'all'); // all | timelock | youtube
 const sol = (l: bigint | number | BN | string) => (Number(l.toString()) / 1e9).toFixed(9);
 const short = (k: PublicKey | string) => `${k.toString().slice(0, 4)}…${k.toString().slice(-4)}`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -116,7 +117,7 @@ async function octocatTrust(repoPath: string) {
   return { platform: 'github' as const, accountCreatedAt: (u.created_at as string) ?? null, followers: (u.followers as number) ?? null, stars: (r.stargazers_count as number) ?? null, platformVerified: null, renamedOrTransferred: false, checkedAt: new Date().toISOString() };
 }
 
-async function run(action: 'claim' | 'disown', url: string, destKp: Keypair, opts: { timelock?: boolean } = {}) {
+async function run(action: 'claim' | 'disown', url: string, destKp: Keypair, opts: { timelock?: boolean; youtube?: boolean } = {}) {
   const destination = destKp.publicKey;
   console.log(`\n--- ${action}: ${url} -> ${destination.toBase58()} ---`);
   const coin = await hatch(url);
@@ -128,8 +129,11 @@ async function run(action: 'claim' | 'disown', url: string, destKp: Keypair, opt
   console.log(`  [held] creator ${short(before.creator)} (the vault: ${before.creator.equals(v.vaultPda)}) | creator fees held: ${sol(before.fee)} SOL`);
 
   // SIMULATED verification: what the GitHub callback produces for the repo's owner (octocat, id 583231).
-  const trust = await octocatTrust(coin.canonicalId.replace('gh:repo:', ''));
-  const verified = { mint: coin.mint, canonicalId: coin.canonicalId, platform: 'github' as const, accountId: '583231', login: 'octocat', verifiedAt: new Date().toISOString(), exp: Date.now() + 30 * 60_000, trust };
+  // STUBBED sign-in (a browser OAuth step cannot run in a script). GitHub: octocat's real public data. YouTube: a
+  // stub channel identity in exactly the shape the YouTube callback produces (owner rule + API paths are unit-tested).
+  const verified = opts.youtube
+    ? { mint: coin.mint, canonicalId: coin.canonicalId, platform: 'youtube' as const, accountId: 'UC_STUB_E2E_CHANNEL_000000', login: '@stub-e2e-channel', verifiedAt: new Date().toISOString(), exp: Date.now() + 30 * 60_000, trust: { platform: 'youtube' as const, accountCreatedAt: '2012-07-15T00:00:00Z', followers: 12000, followersHidden: false, stars: null, platformVerified: null, renamedOrTransferred: false, checkedAt: new Date().toISOString() } }
+    : { mint: coin.mint, canonicalId: coin.canonicalId, platform: 'github' as const, accountId: '583231', login: 'octocat', verifiedAt: new Date().toISOString(), exp: Date.now() + 30 * 60_000, trust: await octocatTrust(coin.canonicalId.replace('gh:repo:', '')) };
   const destBefore = await connection.getBalance(destination);
   const serverBefore = await connection.getBalance(v.server.publicKey);
   // The destination wallet signs the one-time claim message (what the claim page has the wallet do).
@@ -201,6 +205,9 @@ await topUp(approver.publicKey, 10_000_000, 20_000_000, 'approver');
 if (ONLY === 'all') {
   await run('claim', CLAIM_URL, ownerA);
   await run('disown', DISOWN_URL, ownerB);
+}
+if (ONLY === 'all' || ONLY === 'youtube') {
+  await run('claim', YOUTUBE_URL, ownerB, { youtube: true });
 }
 if (ONLY === 'all' || ONLY === 'timelock') {
   process.env.CLAIM_TIMELOCK_SOL = '0'; // any amount is "large" for this run: shows the 48 h wait on devnet

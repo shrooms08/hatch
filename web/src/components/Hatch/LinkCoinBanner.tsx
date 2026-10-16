@@ -72,7 +72,7 @@ export function LinkCoinBanner({ mint }: { mint: string }) {
       )}
       {(link.claimed || link.disowned) && (link.ownerTrustSummary || link.ownerTrustLabel) && (
         <span className="flex flex-wrap items-center gap-2 text-xs text-ink-muted">
-          {link.ownerTrustSummary && <span>Owner&apos;s GitHub: {link.ownerTrustSummary}</span>}
+          {link.ownerTrustSummary && <span>Owner&apos;s {link.kind === 'youtube_video' ? 'channel' : 'GitHub'}: {link.ownerTrustSummary}</span>}
           {link.ownerTrustLabel && <span className="rounded-pill border border-warning/40 px-2 py-0.5 text-[11px] font-semibold text-warning">{link.ownerTrustLabel}</span>}
         </span>
       )}
@@ -94,13 +94,16 @@ export function LinkCoinBanner({ mint }: { mint: string }) {
           {firstBuy != null && <>Hatcher bought {firstBuy.toLocaleString('en-US', { maximumFractionDigits: 4 })} SOL</>}
         </span>
       )}
-      {!link.claimed && !link.disowned && !link.pendingClaim && link.kind === 'github_repo' && (
+      {!link.claimed && !link.disowned && !link.pendingClaim && CLAIM_PROMPT[link.kind] && (
         <Link href={`/claim/${mint}`} className="self-start text-sm font-medium text-ink-accent hover:underline">
-          Own this repo? Claim it
+          {CLAIM_PROMPT[link.kind]}
         </Link>
       )}
     </Card>
   );
 }
+
+/** Kinds that can be claimed now (X needs X's paid API: later). */
+const CLAIM_PROMPT: Record<string, string> = { github_repo: 'Own this repo? Claim it', youtube_video: 'Own this video? Claim it' };
 
 const short = (w: string | null | undefined) => (w ? `${w.slice(0, 4)}…${w.slice(-4)}` : '-');

@@ -20,7 +20,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   const cfg = githubOAuthConfig();
   if (!cfg) return res.redirect(302, `/claim/${mint}?error=${encodeURIComponent('GitHub sign-in is not set up on this server yet')}`);
   const { verifier, challenge, state } = newPkce();
-  setCookie(req, res, OAUTH_COOKIE, sign({ state, verifier, mint, exp: Date.now() + 10 * 60_000 }), 600);
+  setCookie(req, res, OAUTH_COOKIE, sign({ state, verifier, mint, platform: 'github', exp: Date.now() + 10 * 60_000 }), 600);
   res.setHeader('Cache-Control', 'no-store');
   return res.redirect(302, authorizeUrl({ clientId: cfg.clientId, redirectUri: `${siteOrigin(req)}/api/links/claim/github/callback`, state, challenge }));
 }

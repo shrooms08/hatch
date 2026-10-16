@@ -8,8 +8,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 export const OAUTH_COOKIE = 'hatch_claim_oauth';
 export const ID_COOKIE = 'hatch_claim_id';
 
-export type OAuthCookie = { state: string; verifier: string; mint: string; exp: number };
-export type VerifiedId = { mint: string; canonicalId: string; platform: 'github'; accountId: string; login: string; verifiedAt: string; exp: number; trust?: import('@/lib/links/claimRules').OwnerTrust };
+export type OAuthCookie = { state: string; verifier: string; mint: string; exp: number; platform?: import('@/lib/links/claimRules').ClaimPlatform };
+export type VerifiedId = { mint: string; canonicalId: string; platform: import('@/lib/links/claimRules').ClaimPlatform; accountId: string; login: string; verifiedAt: string; exp: number; trust?: import('@/lib/links/claimRules').OwnerTrust };
 
 function secret(): string {
   const s = process.env.LINK_CLAIM_SECRET?.trim();

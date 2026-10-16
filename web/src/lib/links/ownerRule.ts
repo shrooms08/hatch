@@ -20,3 +20,18 @@ export const OWNER_REFUSAL: Record<'not-owner' | 'org-not-admin', string> = {
   'not-owner': "This GitHub account doesn't own this repo",
   'org-not-admin': "This GitHub account doesn't own this repo (you are a member of the organization, but not an admin)",
 };
+
+/**
+ * YouTube: the video's channel (from videos.list) is one of the channels the signed-in Google account manages
+ * (channels.list mine=true; a Brand Account is picked in Google's account chooser). Matched by channel id only.
+ */
+export function youtubeOwnsVideo(p: { videoChannelId: string; myChannels: { id: string }[] }): { ok: true; channelId: string } | { ok: false; reason: 'no-channel' | 'not-owner' } {
+  if (!p.myChannels.length) return { ok: false, reason: 'no-channel' };
+  const hit = p.myChannels.find((c) => c.id === p.videoChannelId);
+  return hit ? { ok: true, channelId: hit.id } : { ok: false, reason: 'not-owner' };
+}
+
+export const YOUTUBE_REFUSAL: Record<'no-channel' | 'not-owner', string> = {
+  'no-channel': 'This Google account has no YouTube channel. If the channel is a Brand Account, pick it when Google asks which account to use.',
+  'not-owner': "This Google account doesn't manage the channel that posted this video. If the channel is a Brand Account, pick it when Google asks which account to use.",
+};
