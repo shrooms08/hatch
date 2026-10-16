@@ -11,6 +11,7 @@ import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter';
 import Page from '@/components/ui/Page/Page';
 import { Button, Card } from '@/components/ds';
 import { getConnection } from '@/lib/solana/connection';
+import { confirmByPolling } from '@/lib/dbc/transactions';
 import { explorerTxUrl } from '@/lib/config/network';
 import { ADMIN_MESSAGE, formatSol, lamportsToSol, shortWallet } from '@/lib/links/claimShared';
 
@@ -77,12 +78,11 @@ export default function AdminClaims() {
     setError(null);
     try {
       setBusy(`${v === 'approve' ? 'Approving' : 'Rejecting'}… confirm in your wallet`);
-      const { transaction } = await call<{ transaction: string }>('POST', auth, { op: 'vote', claimId: c.id, vote: v });
+      const { transaction, lastValidBlockHeight } = await call<{ transaction: string; lastValidBlockHeight: number }>('POST', auth, { op: 'vote', claimId: c.id, vote: v });
       const signed = await wallet.signTransaction(Transaction.from(fromBase64(transaction)));
       const connection = getConnection();
       const signature = await connection.sendRawTransaction(signed.serialize());
-      const bh = await connection.getLatestBlockhash('confirmed');
-      await connection.confirmTransaction({ signature, ...bh }, 'confirmed');
+      await confirmByPolling(connection, signature, lastValidBlockHeight);
       setBusy(v === 'approve' ? 'Vote recorded. Running the handover and checking it on chain…' : 'Rejected. Closing the request…');
       await call('POST', auth, { op: 'sync', claimId: c.id, signature });
       await refresh();

@@ -58,7 +58,7 @@ test('expired blockhash / not confirmed in time', () => {
 });
 
 test('rate limits and network errors', () => {
-  const msg = 'The network is busy right now. Try again in a moment.';
+  const msg = 'Network busy, try again in a few seconds.';
   assert.equal(friendlyTxError(new Error('429 Too Many Requests: {"error":"Too many requests, try again in 30 s"}')).message, msg);
   assert.equal(friendlyTxError(new Error('Jupiter is busy right now (rate limited). Try again in a few seconds.')).message, msg);
   assert.equal(friendlyTxError(new TypeError('Failed to fetch')).message, msg);
