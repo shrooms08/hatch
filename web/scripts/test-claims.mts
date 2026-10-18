@@ -325,3 +325,28 @@ test('minimum claim: 0.02 SOL by default (MIN_CLAIM_SOL overrides); below it the
   assert.equal(meetsMinClaim('20000000', 0.02), true);
   assert.equal(minClaimMessage(0.02), 'Fees are still building up. Claims open at 0.02 SOL held.');
 });
+
+// ---------- graduated pools + /link cancel ----------
+const { positionNftTransferIx } = await import('../src/lib/server/links/squads.ts');
+const { derivePositionNftAccount } = await import('@meteora-ag/cp-amm-sdk');
+const { sendRefusedBeforeBroadcast } = await import('../src/lib/links/hatchCancel.ts');
+
+test('graduated claim: the position NFT moves out of its cp-amm position-NFT account (not an associated token account)', async () => {
+  const { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID } = await import('@solana/spl-token');
+  const nft = Keypair.generate().publicKey;
+  const vault = Keypair.generate().publicKey;
+  const dest = Keypair.generate().publicKey;
+  const ix = positionNftTransferIx(nft, vault, dest);
+  assert.ok(ix.programId.equals(TOKEN_2022_PROGRAM_ID));
+  assert.ok(ix.keys[0]!.pubkey.equals(derivePositionNftAccount(nft)));
+  assert.ok(!ix.keys[0]!.pubkey.equals(getAssociatedTokenAddressSync(nft, vault, true, TOKEN_2022_PROGRAM_ID)));
+  assert.ok(ix.keys[2]!.pubkey.equals(dest));
+  assert.deepEqual(ix.keys.filter((k) => k.isSigner).map((k) => k.pubkey.toBase58()), [vault.toBase58()]); // only the vault signs
+});
+
+test('/link cancel: release only when the send cannot have gone out', () => {
+  assert.equal(sendRefusedBeforeBroadcast(new Error('Simulation failed. Message: Transaction simulation failed: Blockhash not found')), true);
+  assert.equal(sendRefusedBeforeBroadcast(new Error('failed to send transaction: 429 Too Many Requests')), true);
+  assert.equal(sendRefusedBeforeBroadcast(new TypeError('Failed to fetch')), false); // ambiguous: may have gone out
+  assert.equal(sendRefusedBeforeBroadcast(new Error('Request timed out')), false);
+});

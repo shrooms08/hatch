@@ -16,6 +16,7 @@ import { Connection, Keypair, PublicKey, Transaction, TransactionMessage, type T
 import { NATIVE_MINT, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, createAssociatedTokenAccountIdempotentInstruction, createCloseAccountInstruction, createTransferCheckedInstruction, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { DynamicBondingCurveClient, deriveDammV2PoolAddress, DAMM_V2_MIGRATION_FEE_ADDRESS } from '@meteora-ag/dynamic-bonding-curve-sdk';
 import { addPriorityFee } from '@/lib/solana/priorityFee';
+import { derivePositionNftAccount } from '@meteora-ag/cp-amm-sdk';
 
 export const U64_MAX = new BN('18446744073709551615');
 export const VAULT_INDEX = 0;
@@ -118,8 +119,7 @@ export async function handoverInstructions(
     if (positionNft) {
       const destAta = getAssociatedTokenAddressSync(positionNft, p.destination, true, TOKEN_2022_PROGRAM_ID);
       extraSetup.push(createAssociatedTokenAccountIdempotentInstruction(p.payer, destAta, p.destination, positionNft, TOKEN_2022_PROGRAM_ID));
-      const vaultNftAta = getAssociatedTokenAddressSync(positionNft, p.vaultPda, true, TOKEN_2022_PROGRAM_ID);
-      instructions.push(createTransferCheckedInstruction(vaultNftAta, positionNft, destAta, p.vaultPda, 1, 0, [], TOKEN_2022_PROGRAM_ID));
+      instructions.push(positionNftTransferIx(positionNft, p.vaultPda, destAta));
     }
   }
   return {
@@ -129,6 +129,14 @@ export async function handoverInstructions(
     phase,
     positionNft,
   };
+}
+
+/**
+ * Moves a DAMM v2 position NFT from the vault to `destAta`. The NFT sits in cp-amm's position-NFT account (a PDA of
+ * the NFT mint), NOT the vault's associated token account (the first graduated-claim proof failed on exactly that).
+ */
+export function positionNftTransferIx(positionNft: PublicKey, vaultPda: PublicKey, destAta: PublicKey): TransactionInstruction {
+  return createTransferCheckedInstruction(derivePositionNftAccount(positionNft), positionNft, destAta, vaultPda, 1, 0, [], TOKEN_2022_PROGRAM_ID);
 }
 
 /** The creator's locked DAMM v2 position NFT held by the vault (the NFT whose token account the vault owns). */

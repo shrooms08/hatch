@@ -241,3 +241,57 @@ test('X post-a-code verification (stubbed oEmbed): matches, refusals, single use
   await assert.rejects(() => verify(c.code, codePost('shroomsgotsol', c.code)), { message: NOT_PUBLIC });
   await supabaseAdmin!().from('x_claim_codes').delete().eq('mint', r.mint);
 });
+
+test('/link cancel: release frees the link at once, only with its token, never once the pool exists', { skip: !configured && 'Supabase not configured' }, async () => {
+  const { releaseReservation, tokenHashOf } = await import('../src/lib/server/links/service.ts');
+  const { Keypair } = await import('@solana/web3.js');
+  const reserveWithToken = async (id: string) => {
+    const m = Keypair.generate().publicKey.toBase58();
+    const token = randomBytes(24).toString('hex');
+    assert.ok(await store!.reserveLink({ ...(await row(id, m)), pool: Keypair.generate().publicKey.toBase58() }, { prevMint: null }));
+    await supabaseAdmin!().from('links').update({ reservation_token_hash: tokenHashOf(token) }).eq('network', 'devnet').eq('canonical_id', id);
+    return { mint: m, token };
+  };
+  const noPool = async () => false;
+
+  // Token mismatch: refused, the reservation stays.
+  const id = fresh();
+  const a = await reserveWithToken(id);
+  await assert.rejects(() => releaseReservation({ canonicalId: id, mint: a.mint, token: randomBytes(24).toString('hex') }, noPool), /Not your reservation/);
+  assert.equal((await store!.getLink('devnet', id))?.status, 'reserved');
+  // The pool exists on chain: refused, the reservation stays.
+  await assert.rejects(() => releaseReservation({ canonicalId: id, mint: a.mint, token: a.token }, async () => true), /already created on chain/);
+  assert.equal((await store!.getLink('devnet', id))?.status, 'reserved');
+  // A competing reservation for the same link is refused while it is held...
+  assert.equal(await store!.reserveLink(await row(id, mint()), { prevMint: null }), null);
+  // ...and right after a valid release, the link is free and can be reserved again immediately.
+  assert.deepEqual(await releaseReservation({ canonicalId: id, mint: a.mint, token: a.token }, noPool), { released: true });
+  assert.equal(await store!.getLink('devnet', id), null);
+  assert.ok(await store!.reserveLink(await row(id, mint()), { prevMint: null }));
+  // A hatched link can never be released.
+  const id2 = fresh();
+  const b = await reserveWithToken(id2);
+  assert.ok(await store!.markHatched('devnet', id2, b.mint));
+  await assert.rejects(() => releaseReservation({ canonicalId: id2, mint: b.mint, token: b.token }, noPool), /already has its coin/);
+});
+
+test('/link limits: 3 unfinished hatches per wallet and per IP in 10 minutes; hatched ones do not count', { skip: !configured && 'Supabase not configured' }, async () => {
+  const { assertHatchLimits, TOO_MANY_HATCHES } = await import('../src/lib/server/links/service.ts');
+  const wallet = `w-${randomBytes(6).toString('hex')}`;
+  const ip = `ip-${randomBytes(6).toString('hex')}`;
+  const ids2 = [fresh(), fresh(), fresh()];
+  const mints = [mint(), mint(), mint()];
+  await assertHatchLimits('devnet', wallet, ip); // none yet
+  for (let i = 0; i < 3; i++) await store!.recordHatchAttempt({ network: 'devnet', canonical_id: ids2[i]!, mint: mints[i]!, wallet, ip_hash: ip });
+  await assert.rejects(() => assertHatchLimits('devnet', wallet, ip), { message: TOO_MANY_HATCHES });
+  await assert.rejects(() => assertHatchLimits('devnet', `${wallet}-other`, ip), { message: TOO_MANY_HATCHES }); // same IP, other wallet
+  await assert.rejects(() => assertHatchLimits('devnet', wallet, `${ip}-other`), { message: TOO_MANY_HATCHES }); // same wallet, other IP
+  await assertHatchLimits('devnet', `${wallet}-other`, `${ip}-other`); // someone else entirely
+  // One of them finishes (its coin is hatched): back under the limit.
+  assert.ok(await store!.reserveLink(await row(ids2[0]!, mints[0]!), { prevMint: null }));
+  assert.ok(await store!.markHatched('devnet', ids2[0]!, mints[0]!));
+  await assertHatchLimits('devnet', wallet, ip);
+  // Attempts older than 10 minutes do not count.
+  await assertHatchLimits('devnet', wallet, ip, Date.now() + 11 * 60_000);
+  await supabaseAdmin!().from('link_hatch_attempts').delete().eq('wallet', wallet);
+});

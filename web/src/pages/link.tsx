@@ -12,6 +12,7 @@ import Page from '@/components/ui/Page/Page';
 import { Button, Card } from '@/components/ds';
 import { getConnection } from '@/lib/solana/connection';
 import { confirmByPolling } from '@/lib/dbc/transactions';
+import { CANCELLED_COPY, MAYBE_SENT_COPY, sendRefusedBeforeBroadcast } from '@/lib/links/hatchCancel';
 import { explorerTxUrl } from '@/lib/config/network';
 import { prefillUrl } from '@/lib/links/prefill';
 
@@ -86,7 +87,7 @@ export default function LinkPage() {
     if (!(Number(firstBuy || '0') <= prep.maxFirstBuySol)) return setError(`The first buy is capped at ${prep.maxFirstBuySol} SOL`);
     try {
       setBusy('Preparing the transaction…');
-      const h = await post<{ transaction: string; mint: string; pool: string; canonicalId: string; lastValidBlockHeight?: number }>('/api/links/hatch', {
+      const h = await post<{ transaction: string; mint: string; pool: string; canonicalId: string; lastValidBlockHeight?: number; reservationToken?: string }>('/api/links/hatch', {
         url,
         wallet: wallet.publicKey.toBase58(),
         name,
@@ -94,11 +95,29 @@ export default function LinkPage() {
         imageUrl: prep.suggested?.imageUrl ?? undefined,
         firstBuySol: firstBuy || '0',
       });
+      // Free the link right away when this hatch cannot land (see lib/links/hatchCancel).
+      const release = () => post('/api/links/release', { canonicalId: h.canonicalId, mint: h.mint, token: h.reservationToken }).catch((): null => null);
       setBusy('Confirm in your wallet…');
-      const signed = await wallet.signTransaction(Transaction.from(fromBase64(h.transaction)));
+      let signed: Transaction;
+      try {
+        signed = await wallet.signTransaction(Transaction.from(fromBase64(h.transaction)));
+      } catch {
+        // Rejected or the popup was closed: nothing was signed, so nothing can land.
+        await release();
+        throw new Error(CANCELLED_COPY);
+      }
       setBusy('Sending…');
       const connection = getConnection();
-      const signature = await connection.sendRawTransaction(signed.serialize());
+      let signature: string;
+      try {
+        signature = await connection.sendRawTransaction(signed.serialize());
+      } catch (e) {
+        if (sendRefusedBeforeBroadcast(e)) {
+          await release();
+          throw new Error(`${(e as Error).message.split('\n')[0]} ${CANCELLED_COPY}`);
+        }
+        throw new Error(MAYBE_SENT_COPY);
+      }
       await confirmByPolling(connection, signature, h.lastValidBlockHeight ?? (await connection.getBlockHeight('confirmed')) + 150);
       setBusy('Verifying…');
       await post('/api/links/confirm', { canonicalId: h.canonicalId, signature });

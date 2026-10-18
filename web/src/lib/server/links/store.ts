@@ -36,6 +36,7 @@ export type LinkRow = {
   owner_verified_id?: string | null;
   owner_verified_at?: string | null;
   owner_trust?: import('@/lib/links/claimRules').OwnerTrust | null;
+  reservation_token_hash?: string | null;
 };
 
 /** The reservation collided with another row's unique key (e.g. the same GitHub repo under another name). */
@@ -341,4 +342,26 @@ export async function consumeXCode(p: { code: string; network: LinkNetwork; mint
   const { data, error } = await supabaseAdmin().rpc('use_x_claim_code', { p_code: p.code, p_network: p.network, p_mint: p.mint, p_session_hash: p.sessionHash, p_post_url: p.postUrl });
   if (error) fail('use x code', error);
   return ((data as XCodeRow[]) ?? [])[0] ?? null;
+}
+
+// ---------- /link cancel release + unfinished-hatch limit ----------
+
+/** Expires a reservation now (only its own mint + token, only while reserved). Null when nothing matched. */
+export async function cancelReservation(network: LinkNetwork, canonicalId: string, mint: string, tokenHash: string): Promise<LinkRow | null> {
+  const { data, error } = await supabaseAdmin().rpc('cancel_link_reservation', { p_network: network, p_canonical_id: canonicalId, p_mint: mint, p_token_hash: tokenHash });
+  if (error) fail('cancel reservation', error);
+  return ((data as LinkRow[]) ?? [])[0] ?? null;
+}
+
+export async function recordHatchAttempt(a: { network: LinkNetwork; canonical_id: string; mint: string; wallet: string; ip_hash: string }): Promise<void> {
+  const { error } = await supabaseAdmin().from('link_hatch_attempts').insert(a);
+  if (error) fail('record hatch attempt', error);
+}
+
+/** Unfinished hatch attempts (their coin never got hatched) since `since`, for this wallet and for this IP hash. */
+export async function unfinishedHatchAttempts(network: LinkNetwork, wallet: string, ipHash: string, since: Date): Promise<{ byWallet: number; byIp: number }> {
+  const { data, error } = await supabaseAdmin().rpc('unfinished_hatch_attempts', { p_network: network, p_wallet: wallet, p_ip_hash: ipHash, p_since: since.toISOString() });
+  if (error) fail('unfinished hatch attempts', error);
+  const r = ((data as { by_wallet: number; by_ip: number }[]) ?? [])[0];
+  return { byWallet: Number(r?.by_wallet ?? 0), byIp: Number(r?.by_ip ?? 0) };
 }

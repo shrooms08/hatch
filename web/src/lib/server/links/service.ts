@@ -1,4 +1,5 @@
 // Server-only: link coins, end to end (prepare, hatch, confirm, lookup, by-mint). API routes are thin wrappers.
+import { createHash, randomBytes } from 'node:crypto';
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import { serverRpcUrl } from '@/lib/config/network';
 import { LinkError, canonicalize, linkIdHash, type CanonicalLink } from '@/lib/links/canonical';
@@ -16,7 +17,7 @@ import { linkConfigKeys } from '@/lib/presets';
 import { loadHatchConfigs } from '@/lib/server/presets';
 import { LinkMetadataError, linkMetadata, type LinkMetadata } from './metadata';
 import { assertLinkConfig, buildLinkHatchTx, checkLinkPool, linkKeys, linkNetwork, maxFirstBuyLamports, maxFirstBuySol } from './chain';
-import { LinkConflictError, claimsForLink, dropOwnReservation, getLink, getLinkByGithubRepoId, getLinkByMint, isExpired, linksByPrefix, linksHatchedBy, listedLinks, markHatched, releaseExpired, reserveLink, type LinkNetwork, type LinkRow } from './store';
+import { LinkConflictError, cancelReservation, claimsForLink, dropOwnReservation, recordHatchAttempt, unfinishedHatchAttempts, getLink, getLinkByGithubRepoId, getLinkByMint, isExpired, linksByPrefix, linksHatchedBy, listedLinks, markHatched, releaseExpired, reserveLink, type LinkNetwork, type LinkRow } from './store';
 
 /** A failure with an HTTP status and a message safe to show users. */
 export class LinkApiError extends Error {
@@ -155,10 +156,26 @@ function parseFirstBuy(v: unknown): number {
   return lamports;
 }
 
-export async function hatchLink(body: { url?: unknown; wallet?: unknown; name?: unknown; ticker?: unknown; imageUrl?: unknown; firstBuySol?: unknown }) {
+/** Unfinished hatches (a reservation handed out, coin never hatched) allowed per wallet and per IP in the window. */
+export const HATCH_ATTEMPT_LIMIT = 3;
+export const HATCH_ATTEMPT_WINDOW_MS = 10 * 60_000;
+export const TOO_MANY_HATCHES = 'Too many unfinished hatches, try again in a few minutes';
+
+/** Salted hash: the attempts table never stores an IP address. */
+export const ipHashOf = (ip: string) => createHash('sha256').update(`hatch-ip:${process.env.LINK_CLAIM_SECRET ?? ''}:${ip}`).digest('hex');
+export const tokenHashOf = (token: string) => createHash('sha256').update(`hatch-reservation:${token}`).digest('hex');
+
+export async function assertHatchLimits(network: LinkNetwork, wallet: string, ipHash: string, now = Date.now()): Promise<void> {
+  const u = await unfinishedHatchAttempts(network, wallet, ipHash, new Date(now - HATCH_ATTEMPT_WINDOW_MS));
+  if (u.byWallet >= HATCH_ATTEMPT_LIMIT || u.byIp >= HATCH_ATTEMPT_LIMIT) throw new LinkApiError(429, TOO_MANY_HATCHES);
+}
+
+export async function hatchLink(body: { url?: unknown; wallet?: unknown; name?: unknown; ticker?: unknown; imageUrl?: unknown; firstBuySol?: unknown }, ctx: { ip?: string } = {}) {
   const network = requireNetwork();
   canonical(body.url); // reject bad links before anything else
   const payer = parseWallet(body.wallet);
+  const ipHash = ipHashOf(ctx.ip ?? 'unknown');
+  await assertHatchLimits(network, payer.toBase58(), ipHash);
   const name = sanitizeName(body.name);
   const ticker = sanitizeTicker(body.ticker);
   if (!isValidName(name)) throw new LinkApiError(400, 'Name must be 1-32 characters (letters, numbers, spaces and . , \' & ! ? -)');
@@ -233,8 +250,11 @@ export async function hatchLink(body: { url?: unknown; wallet?: unknown; name?: 
     const built = await buildLinkHatchTx({ connection: conn, config, vault, payer, baseMint, name, symbol: ticker, uri: metadataUrl, firstBuyLamports });
     // Record the pool and image on the reservation (same mint, so it is this request's row).
     const { supabaseAdmin } = await import('@/lib/server/supabase');
-    await supabaseAdmin().from('links').update({ pool: built.pool, image_url: imageUrl }).eq('network', network).eq('canonical_id', link.canonicalId).eq('mint', mint).eq('status', 'reserved');
-    return { canonicalId: link.canonicalId, ...built, reservedUntil: reserved.reserved_until };
+    // The reservation token: only this client can cancel the reservation early (/api/links/release).
+    const reservationToken = randomBytes(24).toString('hex');
+    await supabaseAdmin().from('links').update({ pool: built.pool, image_url: imageUrl, reservation_token_hash: tokenHashOf(reservationToken) }).eq('network', network).eq('canonical_id', link.canonicalId).eq('mint', mint).eq('status', 'reserved');
+    await recordHatchAttempt({ network, canonical_id: link.canonicalId, mint, wallet: payer.toBase58(), ip_hash: ipHash });
+    return { canonicalId: link.canonicalId, ...built, reservedUntil: reserved.reserved_until, reservationToken };
   } catch (e) {
     await dropOwnReservation(network, link.canonicalId, mint).catch((): void => undefined);
     throw e;
@@ -295,6 +315,34 @@ export async function lookupPrefix(prefix: string): Promise<LookupEntry[]> {
     return out;
   });
   return value;
+}
+
+// ---------- cancel: release a reservation early ----------
+
+/**
+ * The client that reserved a link calls this when its hatch cannot land: the wallet rejected, the popup was closed, or
+ * the send was refused before broadcast. Only with the reservation's own token and mint, and only while no pool exists
+ * on chain; then the link is free immediately (otherwise it would wait out its 120 s reservation).
+ */
+export async function releaseReservation(body: { canonicalId?: unknown; mint?: unknown; token?: unknown }, poolExists: (pool: string) => Promise<boolean> = async (p) => !!(await connection().getAccountInfo(new PublicKey(p)))) {
+  const network = requireNetwork();
+  const canonicalId = String(body.canonicalId ?? '');
+  const token = String(body.token ?? '');
+  let mint: string;
+  try {
+    mint = new PublicKey(String(body.mint ?? '')).toBase58();
+  } catch {
+    throw new LinkApiError(400, 'mint is invalid');
+  }
+  if (!/^[0-9a-f]{48}$/.test(token)) throw new LinkApiError(403, 'Not your reservation');
+  const row = await getLink(network, canonicalId);
+  if (!row || row.mint !== mint) return { released: true }; // already free (or another reservation now): nothing of ours left
+  if (row.status !== 'reserved') throw new LinkApiError(409, 'This link already has its coin');
+  if (!row.reservation_token_hash || row.reservation_token_hash !== tokenHashOf(token)) throw new LinkApiError(403, 'Not your reservation');
+  if (row.pool && (await poolExists(row.pool))) throw new LinkApiError(409, 'The coin was already created on chain, so this hatch cannot be cancelled');
+  if (!(await cancelReservation(network, canonicalId, mint, tokenHashOf(token)))) throw new LinkApiError(409, 'This reservation changed. Reload and try again.');
+  await releaseExpired(network, canonicalId, mint);
+  return { released: true };
 }
 
 // ---------- lists (Hatches, My Hatches) ----------
