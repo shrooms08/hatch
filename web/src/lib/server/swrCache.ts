@@ -48,6 +48,11 @@ export async function swr<T>(
   }
 }
 
+/** Drop one key so the next call loads fresh (e.g. the pool list right after a new coin is confirmed). */
+export function forgetSwr(key: string) {
+  entries.delete(key);
+}
+
 /** For tests. */
 export function _resetSwr() {
   entries.clear();

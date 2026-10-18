@@ -141,6 +141,17 @@
 }
 .hatch-egg__bubble-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .hatch-egg__bubble-text { font: 600 15px/1.4 "Hatch Geist", system-ui, -apple-system, "Segoe UI", sans-serif; }
+.hatch-egg__bubble-badge {
+  display: inline-block;
+  margin-left: 2px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font: 600 11px/1.5 "Hatch Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  vertical-align: 2px;
+}
+.hatch-egg__bubble-badge[data-tone="warn"] { color: var(--hb-yolk); }
+.hatch-egg__bubble-badge[data-tone="ok"] { color: #8bd17c; }
 .hatch-egg__bubble-close {
   border: 0;
   background: none;

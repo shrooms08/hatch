@@ -113,8 +113,15 @@ export class BuddyView {
    * A hint ("This is about NVIDIA…"): Show me opens the side panel, Not now dismisses.
    * A milestone with a link: the link is the primary action.
    */
-  showBubble(text: string, opts: { url?: string; linkText?: string; timeoutMs?: number; onPrimary?: () => void } = {}) {
+  showBubble(text: string, opts: { url?: string; linkText?: string; timeoutMs?: number; onPrimary?: () => void; badge?: { text: string; tone: "warn" | "ok" } } = {}) {
     this.bubbleText.textContent = text;
+    if (opts.badge) {
+      const badge = document.createElement("span");
+      badge.className = "hatch-egg__bubble-badge";
+      badge.dataset.tone = opts.badge.tone;
+      badge.textContent = opts.badge.text;
+      this.bubbleText.append(" ", badge);
+    }
     this.bubbleActions.replaceChildren();
     let primary: HTMLElement;
     if (opts.url) {

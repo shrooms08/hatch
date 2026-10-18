@@ -2,21 +2,23 @@
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { useQueries } from '@tanstack/react-query';
-import { Amount, Button, ChevronRight, MiniEgg, PresetBadge, SearchIcon, Segmented, ShellBar, Skeleton, StatusPill, TestBadge, progressInk, presetLabel } from '@/components/ds';
-import type { HatchPool, HatchStatus } from '@/lib/dbc/pool';
+import { Amount, Button, ChevronRight, LinkBadge, MiniEgg, PresetBadge, SearchIcon, Segmented, ShellBar, Skeleton, StatusPill, TestBadge, progressInk, presetLabel } from '@/components/ds';
+import type { HatchPool } from '@/lib/dbc/pool';
+import { PLATFORM_NAME, matchesHatch, type HatchFilter } from '@/lib/links/listing';
 import { fetchTokenMetadata, type HatchTokenMetadata as TokenMetadata } from '@/lib/metadata/token';
 import { formatAmount, formatPercent } from '@/lib/format/amount';
 import { timeAgo } from '@/lib/format/time';
-import { useIsTestLaunch, useQuoteSymbol } from '@/hooks/useHatch';
+import { useIsTestLaunch, usePresetConfigs, useQuoteSymbol } from '@/hooks/useHatch';
 import { cn } from '@/lib/utils';
 import { TokenAvatar } from './TokenAvatar';
 
-type Filter = 'ALL' | HatchStatus;
+type Filter = HatchFilter;
 const FILTERS: { value: Filter; label: string }[] = [
   { value: 'ALL', label: 'All' },
   { value: 'INCUBATING', label: 'Incubating' },
   { value: 'ALMOST_HATCHED', label: 'Almost hatched' },
   { value: 'HATCHED', label: 'Hatched' },
+  { value: 'LINK', label: 'Link coins' },
 ];
 const PAGE = 10;
 const GRID = 'md:grid md:grid-cols-[minmax(0,2.2fr)_1.2fr_1.3fr_1.8fr_1fr_24px] md:gap-5';
@@ -48,7 +50,7 @@ function Row({ pool, md, created }: { pool: HatchPool; md?: TokenMetadata | null
             <span className="truncate font-mono text-[13px] font-medium text-ink-muted">
               {symbol && `$${symbol}`}
               {age && ` · ${age} ago`}
-              <span className="md:hidden"> · {presetLabel(pool.presetId)}</span>
+              <span className="md:hidden"> · {pool.isLink ? `Link${pool.link ? ` · ${PLATFORM_NAME[pool.link.platform]}` : ''}` : presetLabel(pool.presetId)}</span>
             </span>
             {isTest && <TestBadge size="sm" />}
           </span>
@@ -57,7 +59,7 @@ function Row({ pool, md, created }: { pool: HatchPool; md?: TokenMetadata | null
       </div>
       {/* Preset */}
       <div className="hidden md:block">
-        <PresetBadge preset={pool.presetId} variant="dot" />
+        {pool.isLink ? <LinkBadge platform={pool.link?.platform} /> : <PresetBadge preset={pool.presetId} variant="dot" />}
       </div>
       {/* Price */}
       <div className="mt-3 flex items-center justify-between md:mt-0 md:block">
@@ -120,25 +122,23 @@ export function HatchTable({
   createdAt?: Record<string, number>;
 }) {
   const [filter, setFilter] = useState<Filter>('ALL');
+  // The "Link coins" tab only where link coins exist (a LINK config is set; not on mainnet today).
+  const { data: hc } = usePresetConfigs();
+  const filters = hc?.link ? FILTERS : FILTERS.filter((f) => f.value !== 'LINK');
   const [query, setQuery] = useState('');
   const [shown, setShown] = useState(PAGE);
 
-  const list = pools ?? [];
+  const list = useMemo(() => pools ?? [], [pools]);
   const metas = useQueries({
     queries: list.map((p) => ({ queryKey: ['hatch', 'metadata', p.baseMint], queryFn: () => fetchTokenMetadata(p.baseMint), staleTime: 5 * 60_000 })),
   });
   const mdByMint = useMemo(() => new Map(list.map((p, i) => [p.baseMint, metas[i]?.data])), [list, metas]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase().replace(/^\$/, '');
     // Newest first when creation times are known; the chain order otherwise.
-    const sorted = createdAt ? [...list].sort((a, b) => (createdAt[b.address] ?? 0) - (createdAt[a.address] ?? 0)) : list;
-    return sorted.filter((p) => {
-      if (filter !== 'ALL' && p.status !== filter) return false;
-      if (!q) return true;
-      const md = mdByMint.get(p.baseMint);
-      return [md?.name, md?.symbol, p.baseMint].some((s) => s?.toLowerCase().includes(q));
-    });
+    const created = (p: HatchPool) => createdAt?.[p.address] ?? p.link?.hatchedAt ?? 0; // link coins: when they were hatched
+    const sorted = createdAt ? [...list].sort((a, b) => created(b) - created(a)) : list;
+    return sorted.filter((p) => matchesHatch(p, filter, query, mdByMint.get(p.baseMint)));
   }, [list, filter, query, mdByMint, createdAt]);
 
   return (
@@ -159,7 +159,7 @@ export function HatchTable({
                 setFilter(f);
                 setShown(PAGE);
               }}
-              options={FILTERS}
+              options={filters}
               equal={false}
               className="w-max"
             />
@@ -174,7 +174,7 @@ export function HatchTable({
                 setQuery(e.target.value);
                 setShown(PAGE);
               }}
-              placeholder="Search name or ticker"
+              placeholder={hc?.link ? "Search name, ticker or link" : "Search name or ticker"}
               className="h-full min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-muted"
             />
           </label>
@@ -214,7 +214,7 @@ export function HatchTable({
         ) : (
           <>
             {filtered.slice(0, shown).map((p) => (
-              <Row key={p.address} pool={p} md={mdByMint.get(p.baseMint)} created={createdAt?.[p.address]} />
+              <Row key={p.address} pool={p} md={mdByMint.get(p.baseMint)} created={createdAt?.[p.address] ?? p.link?.hatchedAt ?? undefined} />
             ))}
             {filtered.length > shown && (
               <div className="flex justify-center border-t border-surface-3 bg-hatch-bg p-[18px]">

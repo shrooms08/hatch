@@ -1,5 +1,13 @@
 // Server-only: Cloudflare R2 uploads (S3-compatible API).
+// Devnet uploads live under devnet/ (images, metadata, receipts...); mainnet keys are unchanged.
 import { PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { NETWORK, type SolanaNetwork } from '@/lib/config/network';
+
+/** The bucket key for `key` on `network`: devnet/<key> on devnet, <key> on mainnet. */
+export function r2ObjectKey(key: string, network: SolanaNetwork = NETWORK): string {
+  const k = key.replace(/^\/+/, '');
+  return network === 'devnet' ? `devnet/${k}` : k;
+}
 
 export class R2NotConfiguredError extends Error {
   constructor() {
@@ -33,7 +41,8 @@ export function isR2Configured() {
 let client: S3Client | null = null;
 
 /** Uploads a NEW object and returns its public URL. Throws R2NotConfiguredError if env is missing, R2ObjectExistsError if the key is taken. */
-export async function uploadToR2(key: string, body: Buffer | string, contentType: string): Promise<string> {
+export async function uploadToR2(logicalKey: string, body: Buffer | string, contentType: string): Promise<string> {
+  const key = r2ObjectKey(logicalKey);
   const env = r2Env();
   if (!env) throw new R2NotConfiguredError();
   client ??= new S3Client({
@@ -46,15 +55,15 @@ export async function uploadToR2(key: string, body: Buffer | string, contentType
   } catch (e) {
     const code = (e as { Code?: string; name?: string })?.Code ?? (e as Error)?.name ?? 'UnknownError';
     const status = (e as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
-    if (status === 412 || code === 'PreconditionFailed') throw new R2ObjectExistsError(`${key.split('/')[0]} object already exists`);
-    throw new R2UploadError(`Upload to R2 failed (${code}) for ${key.split('/')[0]}`);
+    if (status === 412 || code === 'PreconditionFailed') throw new R2ObjectExistsError(`${logicalKey.split('/')[0]} object already exists`);
+    throw new R2UploadError(`Upload to R2 failed (${code}) for ${logicalKey.split('/')[0]}`);
   }
   return `${env.R2_PUBLIC_URL.replace(/\/+$/, '')}/${key}`;
 }
 
 /** Public URL of an object key (no upload). */
-export function publicR2Url(key: string): string {
+export function publicR2Url(logicalKey: string): string {
   const env = r2Env();
   if (!env) throw new R2NotConfiguredError();
-  return `${env.R2_PUBLIC_URL.replace(/\/+$/, '')}/${key}`;
+  return `${env.R2_PUBLIC_URL.replace(/\/+$/, '')}/${r2ObjectKey(logicalKey)}`;
 }

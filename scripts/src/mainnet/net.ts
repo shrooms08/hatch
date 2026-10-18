@@ -45,8 +45,10 @@ export const solscanAccount = (a: PublicKey | string) => `https://solscan.io/acc
 
 export type MainnetState = {
   partner?: string
-  configs?: Partial<Record<'stock' | 'meme' | 'stockNvdaV2' | 'aiAgent' | 'memeV2' | 'stockTsla', { config: string; quoteMint: string; quoteDecimals: number; thresholdRaw: string; baseTokenType: 'spl' | 'token2022'; tx?: string }>>
+  configs?: Partial<Record<'stock' | 'meme' | 'stockNvdaV2' | 'aiAgent' | 'memeV2' | 'stockTsla' | 'linkV1', { config: string; quoteMint: string; quoteDecimals: number; thresholdRaw: string; baseTokenType: 'spl' | 'token2022'; tx?: string }>>
   pools?: Partial<Record<'stock' | 'meme', { pool: string; baseMint: string; name: string; symbol: string; uri: string; tx?: string }>>
+  /** The Squads v4 vault that is pool creator of unclaimed link coins (public keys only). */
+  linkVault?: { multisig: string; vault: string; server: string; approver: string; backup: string; tx?: string }
   txs?: { step: string; label: string; sig: string; url: string; feeLamports?: number; costLamports?: number }[]
 }
 

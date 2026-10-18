@@ -1,0 +1,37 @@
+// Who owns a link, by permanent account id (never a username alone). Pure, shared by the server and tests.
+
+/** GitHub: the repo's owner is the signed-in user (same numeric id), or an org where they are an ACTIVE ADMIN. */
+export function githubOwnsRepo(p: {
+  user: { id: number };
+  repoOwner: { id: number; type: string };
+  /** GET /user/memberships/orgs/{org} for the signed-in user (orgs only); null when not a member. */
+  membership?: { role?: string; state?: string; organization?: { id?: number } } | null;
+}): { ok: true; via: 'user' | 'org-admin' } | { ok: false; reason: 'not-owner' | 'org-not-admin' } {
+  if (p.repoOwner.type === 'User') return p.repoOwner.id === p.user.id ? { ok: true, via: 'user' } : { ok: false, reason: 'not-owner' };
+  if (p.repoOwner.type === 'Organization') {
+    const m = p.membership;
+    if (!m || m.organization?.id !== p.repoOwner.id) return { ok: false, reason: 'not-owner' };
+    return m.role === 'admin' && m.state === 'active' ? { ok: true, via: 'org-admin' } : { ok: false, reason: 'org-not-admin' };
+  }
+  return { ok: false, reason: 'not-owner' };
+}
+
+export const OWNER_REFUSAL: Record<'not-owner' | 'org-not-admin', string> = {
+  'not-owner': "This GitHub account doesn't own this repo",
+  'org-not-admin': "This GitHub account doesn't own this repo (you are a member of the organization, but not an admin)",
+};
+
+/**
+ * YouTube: the video's channel (from videos.list) is one of the channels the signed-in Google account manages
+ * (channels.list mine=true; a Brand Account is picked in Google's account chooser). Matched by channel id only.
+ */
+export function youtubeOwnsVideo(p: { videoChannelId: string; myChannels: { id: string }[] }): { ok: true; channelId: string } | { ok: false; reason: 'no-channel' | 'not-owner' } {
+  if (!p.myChannels.length) return { ok: false, reason: 'no-channel' };
+  const hit = p.myChannels.find((c) => c.id === p.videoChannelId);
+  return hit ? { ok: true, channelId: hit.id } : { ok: false, reason: 'not-owner' };
+}
+
+export const YOUTUBE_REFUSAL: Record<'no-channel' | 'not-owner', string> = {
+  'no-channel': 'This Google account has no YouTube channel. If the channel is a Brand Account, pick it when Google asks which account to use.',
+  'not-owner': "This Google account doesn't manage the channel that posted this video. If the channel is a Brand Account, pick it when Google asks which account to use.",
+};

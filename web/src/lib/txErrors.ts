@@ -167,8 +167,8 @@ export function friendlyTxError(e: unknown, ctx: ErrorContext = {}): FriendlyErr
     return finish('expired', 'The network was slow and the transaction expired. Nothing was charged. Try again.');
 
   // Rate limits and network trouble (RPC 429, Jupiter busy, fetch failures).
-  if (/\b(429|502|503) (too many|bad gateway|service)|too many requests|rate limit|jupiterbusyerror|jupiter is busy|failed to fetch|networkerror|network error|fetch failed|could not reach|econnreset|etimedout|service unavailable/.test(text) || e instanceof Error && e.name === 'JupiterBusyError')
-    return finish('busy', 'The network is busy right now. Try again in a moment.');
+  if (/\b(429|502|503) (too many|bad gateway|service)|\b429 ?:|too many requests|rate limit|network busy|rpcbusyerror|jupiterbusyerror|jupiter is busy|failed to fetch|networkerror|network error|fetch failed|could not reach|econnreset|etimedout|service unavailable/.test(text) || (e instanceof Error && (e.name === 'JupiterBusyError' || e.name === 'RpcBusyError')))
+    return finish('busy', 'Network busy, try again in a few seconds.');
 
   if (stage === 'pending') return finish('unknown', "We couldn't confirm the transaction yet. Check your wallet for details.");
   const charged = stage === 'wallet' ? 'Check your wallet for details.' : 'Nothing was charged.';
@@ -177,6 +177,10 @@ export function friendlyTxError(e: unknown, ctx: ErrorContext = {}): FriendlyErr
 
 /** Map + log: every UI failure goes through here so the raw error always reaches the console. */
 export function reportTxError(e: unknown, ctx: ErrorContext = {}, where = 'transaction'): FriendlyError {
-  console.error(`[hatch] ${where} failed:`, e);
-  return friendlyTxError(e, ctx);
+  const f = friendlyTxError(e, ctx);
+  // Expected failures (busy network, cancelled in the wallet) are warnings: in development console.error opens
+  // Next's full-screen error overlay, which hid the inline message. Everything else is still an error.
+  if (f.kind === 'busy' || f.kind === 'cancelled') console.warn(`[hatch] ${where} failed (${f.kind}):`, e);
+  else console.error(`[hatch] ${where} failed:`, e);
+  return f;
 }

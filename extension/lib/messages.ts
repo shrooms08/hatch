@@ -27,9 +27,13 @@ export type BgRequest =
   /** Debug page: play a sound through the offscreen document (respects the Sounds setting). */
   | { type: "play-sound"; sound: SoundName }
   /** Content script: this tab's URL changed (SPA navigation). The side panel re-reads the page. */
-  | { type: "page-changed" };
+  | { type: "page-changed" }
+  /** Content script: is there a link coin for this canonical id? Only an 8-hex hash prefix leaves the browser. */
+  | { type: "link-lookup"; canonicalId: string };
 
 export type NoticeResponse = { hint: string | null };
+/** null: no answer (links off on this web app, offline, rate limited): show nothing. */
+export type LinkLookupResponse = { base: string; status: import("./linkCheck").LinkStatus } | null;
 
 /** From the background or side panel to a tab's content script. */
 export type TabMessage =

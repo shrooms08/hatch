@@ -24,7 +24,7 @@ import type { HatchPool } from '@/lib/dbc/pool';
 import { formatAmount, formatPercent } from '@/lib/format/amount';
 import { explorerAddressUrl, explorerTxUrl, EXPLORER_NAME, meteoraPoolUrl } from '@/lib/config/network';
 import { sourceDomain } from '@/lib/metadata/token';
-import { stockForConfig } from '@/lib/presets';
+import { isLinkConfig, stockForConfig } from '@/lib/presets';
 import { useIsTestLaunch, useLiveBaseFee, usePresetConfigs, useQuoteSymbol, useShieldReceipt, useTokenMetadata } from '@/hooks/useHatch';
 import { rawToUi } from '@/lib/solana/mint';
 import { SNIPER_SHIELD_LINE, baseFeePercentAt, formatFeePercent, hasSniperShield } from '@/lib/dbc/feeSchedule';
@@ -114,6 +114,7 @@ function TokenShare({ mint, pool, symbol }: { mint: string; pool: HatchPool | nu
 function HeroChips({ mint, pool, quote, domain, url }: { mint: string; pool: HatchPool | null | undefined; quote: string; domain: string | null; url?: string }) {
   const isTest = useIsTestLaunch(mint);
   const fee = useLiveBaseFee(pool);
+  const { data: hc } = usePresetConfigs();
   return (
     <>
       {isTest && <TestBadge className="h-[30px]" />}
@@ -124,12 +125,13 @@ function HeroChips({ mint, pool, quote, domain, url }: { mint: string; pool: Hat
           title={fee.decaying ? `${SNIPER_SHIELD_LINE} ${fee.secondsLeft}s left.` : SNIPER_SHIELD_LINE}
         />
       )}
-      {pool && pool.presetId === null && (
+      {pool && pool.presetId === null && !(hc && isLinkConfig(hc, pool.configKey)) && (
         <span className="inline-flex h-[30px] items-center rounded-pill border border-danger/45 bg-danger/[0.12] px-3 text-xs font-semibold text-danger">Not a Hatch launch</span>
       )}
       {pool && <StatusPill status={pool.status} className="h-[30px]" />}
       {pool?.presetId && <PresetBadge preset={pool.presetId} quote={quote} className="h-[30px]" />}
-      {domain && <InspiredChip domain={domain} href={url} />}
+      {/* Link coins: the "Coin for" card names the link instead. */}
+      {domain && !(pool && hc && isLinkConfig(hc, pool.configKey)) && <InspiredChip domain={domain} href={url} />}
       <AddressChip address={mint} label="Mint" />
     </>
   );

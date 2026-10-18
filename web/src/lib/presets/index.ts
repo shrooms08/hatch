@@ -93,17 +93,35 @@ export type HatchConfigs = {
    * counted in stats and tradable, but new launches always use `configs` / `stocks`.
    */
   legacy: LegacyConfig[];
+  /**
+   * Link coins ("one official coin per link"): the LINK-v1 config and the Squads vault PDA that is the pool
+   * creator until the link's owner claims. Not part of allConfigKeys (launch-only paths); the public list scans
+   * listedConfigKeys, which adds them.
+   */
+  link?: { config: string; vault: string; legacyConfigs?: string[] } | null;
 };
 
 export type LegacyConfig = { config: string; preset: PresetId; stock?: string };
 
-export const EMPTY_HATCH_CONFIGS: HatchConfigs = { network: '', configs: {}, stocks: {}, hiddenMints: [], testMints: [], legacy: [] };
+export const EMPTY_HATCH_CONFIGS: HatchConfigs = { network: '', configs: {}, stocks: {}, hiddenMints: [], testMints: [], legacy: [], link: null };
+
+/** True when `configKey` is the link-coin config. */
+export const isLinkConfig = (hc: HatchConfigs, configKey: string) => !!hc.link && (hc.link.config === configKey || (hc.link.legacyConfigs ?? []).includes(configKey));
 
 /** Every config key whose pools are Hatch pools: current ones (launches) and legacy ones (still listed). */
 export function allConfigKeys(hc: HatchConfigs): string[] {
   const keys = [...Object.values(hc.configs), ...Object.values(hc.stocks).map((s) => s.config), ...(hc.legacy ?? []).map((l) => l.config)].filter(Boolean) as string[];
   return [...new Set(keys)];
 }
+
+/** The link configs: the current one and every earlier one (their coins keep working). Empty where LINK_CONFIG is unset. */
+export const linkConfigKeys = (hc: HatchConfigs): string[] => (hc.link ? [hc.link.config, ...(hc.link.legacyConfigs ?? [])] : []);
+
+/**
+ * Configs whose pools appear in the public Hatches list: every launch config plus the link configs. Link coins are
+ * listed wherever LINK_CONFIG is set (devnet today; mainnet automatically once its LINK config exists).
+ */
+export const listedConfigKeys = (hc: HatchConfigs): string[] => [...new Set([...allConfigKeys(hc), ...linkConfigKeys(hc)])];
 
 export function presetForConfig(hc: HatchConfigs, configKey: string): PresetId | null {
   if (Object.values(hc.stocks).some((s) => s.config === configKey)) return 'STOCK';

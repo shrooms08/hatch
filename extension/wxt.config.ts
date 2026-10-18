@@ -20,6 +20,14 @@ process.env.WXT_HATCH_WEB_URL = HATCH_WEB_URL;
 const ALT_WEB_URLS = (process.env.WXT_HATCH_ALT_WEB_URLS ?? "").split(",").map((u) => u.trim()).filter(Boolean);
 process.env.WXT_HATCH_ALT_WEB_URLS = ALT_WEB_URLS.join(",");
 const HATCH_WEB_MATCHES = [...new Set([HATCH_WEB_URL, ...ALT_WEB_URLS].map((u) => `${new URL(u).origin}/*`))];
+// Dev builds only (build:dev): web apps the link features may be pointed at for testing (a local devnet server).
+// Host permission only: the wallet bridge never runs there.
+const DEV_WEB_URLS = (process.env.WXT_HATCH_DEV_WEB_URLS ?? "").split(",").map((u) => u.trim()).filter(Boolean);
+process.env.WXT_HATCH_DEV_WEB_URLS = DEV_WEB_URLS.join(",");
+const DEV_WEB_MATCHES = DEV_WEB_URLS.map((u) => `${new URL(u).origin}/*`);
+// Dev builds carry their own version so they are never mistaken for a store release (Chrome needs a numeric
+// "version"; version_name is what chrome://extensions shows).
+const DEV_VERSION = process.env.WXT_HATCH_DEV_VERSION; // e.g. "0.7.0-dev
 
 // Stable extension ID (knfkjiebkbhddjogcbniiachhomkmdkm): the manifest "key" is the PUBLIC key, committed in
 // extension-key.pub. The private key stays in .keys/hatch-extension.pem (gitignored) and is only needed to
@@ -45,7 +53,8 @@ export default defineConfig({
     // No "tabs": the side panel gets the page (and its URL) from our content script, never tab.url.
     permissions: ["storage", "sidePanel", "alarms", "notifications", "offscreen"],
     // Only the Hatch web app (AI + hatches API) and its other domains. Content scripts declare their own matches.
-    host_permissions: HATCH_WEB_MATCHES,
+    host_permissions: [...new Set([...HATCH_WEB_MATCHES, ...DEV_WEB_MATCHES])],
+    ...(DEV_VERSION ? { version: DEV_VERSION.replace(/-.*$/, ""), version_name: DEV_VERSION } : {}),
     action: { default_title: "Hatch" },
     ...(mode === "production"
       ? { content_security_policy: { extension_pages: "script-src 'self'; object-src 'self'; frame-ancestors 'none';" } }

@@ -5,9 +5,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useUnifiedWalletContext, useWallet } from '@jup-ag/wallet-adapter';
 import Decimal from 'decimal.js';
 import Page from '@/components/ui/Page/Page';
-import { Amount, Button, Card, EGG_RADIUS, EggGlyph, Overline, PresetBadge, Segmented, ShellBar, Skeleton, StatusPill, TestBadge, notify } from '@/components/ds';
+import { Amount, Button, Card, EGG_RADIUS, EggGlyph, LinkBadge, Overline, PresetBadge, Segmented, ShellBar, Skeleton, StatusPill, TestBadge, notify } from '@/components/ds';
 import { TokenAvatar } from '@/components/Hatch/TokenAvatar';
-import { useHatchPools, useHoldings, useIsTestLaunch, useQuoteSymbol, useTokenMetadata } from '@/hooks/useHatch';
+import { useHatchPool, useHatchPools, useHoldings, useIsTestLaunch, useMyLinkHatches, useQuoteSymbol, useTokenMetadata } from '@/hooks/useHatch';
+import type { MyLinkHatch } from '@/lib/server/links/service';
+import { feesLabel } from '@/lib/links/listing';
 import type { Holding } from '@/pages/api/holdings';
 import type { PresetId } from '@/lib/presets';
 import { useRouter } from 'next/router';
@@ -96,6 +98,41 @@ function MyHatchCard({ pool }: { pool: HatchPool }) {
         </Button>
       </div>
       <TxErrorNote error={txError} onDismiss={() => setTxError(null)} />
+    </Card>
+  );
+}
+
+/** A link coin this wallet hatched: no Claim (the fees are the link owner's, held by the Hatch vault). */
+function LinkHatchCard({ hatch, listed }: { hatch: MyLinkHatch; listed?: HatchPool }) {
+  const { data: md } = useTokenMetadata(hatch.mint);
+  // The public list (server-cached) has it right away; a coin too new for the list is read directly.
+  const { data: live } = useHatchPool(listed ? undefined : hatch.mint);
+  const pool = listed ?? live;
+  const quote = useQuoteSymbol(pool?.quote);
+  return (
+    <Card className="flex flex-col gap-3 rounded-[18px] p-3.5 transition-colors hover:border-line md:p-5">
+      <Link href={`/token/${hatch.mint}`} className="group flex items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yolk/50">
+        <TokenAvatar mint={hatch.mint} size={48} />
+        <div className="flex min-w-0 flex-1 flex-col gap-[3px]">
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-[15px] font-semibold text-ink group-hover:text-ink-accent">{md?.name ?? '…'}</span>
+            <LinkBadge platform={hatch.link.platform} className="h-6 px-2 text-[11px]" />
+          </span>
+          {pool ? (
+            <span className="truncate font-mono text-xs font-medium text-ink-muted">
+              <span className={progressInk(pool.progress, pool.isMigrated)}>{formatPercent(pool.isMigrated ? 1 : pool.progress)}</span> ·{' '}
+              {formatAmount(pool.isMigrated ? pool.thresholdUi : pool.quoteReserveUi)} / {formatAmount(pool.thresholdUi)} {quote}
+            </span>
+          ) : (
+            <Skeleton className="h-3 w-32" />
+          )}
+        </div>
+        {pool && <StatusPill status={pool.status} size="sm" />}
+      </Link>
+      {pool && <ShellBar progress={pool.progress} hatched={pool.isMigrated} height={8} />}
+      <span className="truncate text-[13px] text-ink-2">
+        You hatched this · {feesLabel(hatch.link, hatch.claimed, hatch.disowned)}
+      </span>
     </Card>
   );
 }
@@ -240,9 +277,13 @@ const GridSkeleton = () => (
 
 function CreatedView({ creator }: { creator: string }) {
   const { data, isLoading, error, refetch } = useHatchPools({ creator, enabled: !!creator });
-  if (isLoading) return <GridSkeleton />;
+  // Link coins: the vault is the on-chain creator, so they come from who paid for the hatch instead.
+  const linkHatches = useMyLinkHatches(creator);
+  const links = linkHatches.data ?? [];
+  const { data: listedPools } = useHatchPools({ enabled: links.length > 0 });
+  if (isLoading || linkHatches.isLoading) return <GridSkeleton />;
   if (error) return <LoadError what="hatches" error={error} retry={() => void refetch()} />;
-  if (!data?.length)
+  if (!data?.length && !links.length)
     return (
       <EmptyNest
         title="Your nest is empty"
@@ -259,10 +300,13 @@ function CreatedView({ creator }: { creator: string }) {
     );
   return (
     <>
-      <ClaimableSummary pools={data} />
+      {!!data?.length && <ClaimableSummary pools={data} />}
       <div className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2">
-        {data.map((p) => (
+        {data?.map((p) => (
           <MyHatchCard key={p.address} pool={p} />
+        ))}
+        {links.map((h) => (
+          <LinkHatchCard key={h.mint} hatch={h} listed={listedPools?.find((p) => p.baseMint === h.mint)} />
         ))}
       </div>
     </>

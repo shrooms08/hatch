@@ -17,7 +17,7 @@
     "brand-assets": "node --import tsx scripts/brand-assets.mts",
     "test:stats": "node --import tsx --test scripts/test-stats.mts",
     "test:security": "node --import tsx --test scripts/test-security.mts",
-    "test": "node --import tsx --test scripts/test-stats.mts scripts/test-security.mts scripts/test-presets-v2.mts scripts/test-share.mts scripts/test-errors.mts scripts/test-polish.mts scripts/test-cache.mts scripts/test-shield.mts scripts/test-actions.mts scripts/test-lifecycle.mts scripts/test-claimable.mts"
+    "test": "node --import tsx --test scripts/test-stats.mts scripts/test-security.mts scripts/test-presets-v2.mts scripts/test-share.mts scripts/test-errors.mts scripts/test-polish.mts scripts/test-cache.mts scripts/test-shield.mts scripts/test-actions.mts scripts/test-lifecycle.mts scripts/test-claimable.mts scripts/test-links.mts scripts/test-claims.mts scripts/test-rpc.mts scripts/test-links-db.mts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.131.0",
@@ -32,6 +32,8 @@
     "@solana/wallet-adapter-phantom": "^0.9.30",
     "@solana/wallet-adapter-solflare": "^0.6.34",
     "@solana/web3.js": "^1.99.0",
+    "@sqds/multisig": "2.1.4",
+    "@supabase/supabase-js": "^2.118.0",
     "@tanstack/react-query": "^4.44.0",
     "bn.js": "^5.2.5",
     "bs58": "^6.0.0",

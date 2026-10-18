@@ -14,7 +14,7 @@ import BN from 'bn.js';
 import { memoAsync } from '@/lib/cache/memoAsync';
 import { feeScheduleOf, type FeeSchedule } from '@/lib/dbc/feeSchedule';
 import { fetchMintInfo, rawToUi, type MintInfo } from '@/lib/solana/mint';
-import { allConfigKeys, isLegacyConfig, presetForConfig, EMPTY_HATCH_CONFIGS, type HatchConfigs, type PresetId } from '@/lib/presets';
+import { allConfigKeys, isLegacyConfig, isLinkConfig, listedConfigKeys, presetForConfig, EMPTY_HATCH_CONFIGS, type HatchConfigs, type PresetId } from '@/lib/presets';
 
 export type HatchStatus = 'INCUBATING' | 'ALMOST_HATCHED' | 'HATCHED';
 export const ALMOST_HATCHED_AT = 0.8;
@@ -25,11 +25,17 @@ export const STATUS_LABEL: Record<HatchStatus, string> = {
   HATCHED: 'Hatched',
 };
 
+export type PoolLink = { platform: 'x' | 'youtube' | 'github' | 'web'; title: string | null; displayUrl: string; ownerHandle: string | null; /** unix seconds */ hatchedAt: number | null };
+
 export type HatchPool = {
   address: string;
   baseMint: string;
   configKey: string;
   presetId: PresetId | null;
+  /** A link coin (pool under a LINK config; presetId is null). */
+  isLink: boolean;
+  /** Link coins in the public list only (/api/pools): which link the coin is for. */
+  link?: PoolLink | null;
   creator: string;
   quote: MintInfo;
   baseDecimals: number;
@@ -128,6 +134,7 @@ export async function describePool(
     baseMint: s.baseMint.toBase58(),
     configKey: s.config.toBase58(),
     presetId: presetForConfig(hc, s.config.toBase58()),
+    isLink: isLinkConfig(hc, s.config.toBase58()),
     creator: s.creator.toBase58(),
     quote,
     baseDecimals,
@@ -170,7 +177,8 @@ export async function fetchHatchPoolByMint(
   const client = dbcClient(connection);
   const mint = new PublicKey(baseMint);
   // Hatch pools sit at a PDA of (quote mint, base mint, config): plain account reads, no program scan.
-  for (const key of allConfigKeys(hc)) {
+  // Link coins (their own config, not listed with launches) are found the same way.
+  for (const key of listedConfigKeys(hc)) {
     const config = await client.state.getPoolConfig(key);
     if (!config) continue;
     const address = deriveDbcPoolAddress(config.quoteMint, mint, new PublicKey(key));
@@ -189,13 +197,45 @@ export async function fetchHatchPoolByMint(
  * All pools under Hatch's config keys (optionally only those created by `creator`).
  * `publicList` drops HIDDEN_MINTS (test tokens); direct token pages are unaffected.
  */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+  if (limit >= items.length) return Promise.all(items.map(fn));
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: limit }, worker));
+  return out;
+}
+
+/**
+ * Pools read by address (plain account reads, no program scan), e.g. link coins whose pools the links table names.
+ * Only pools under one of `configKeys` are returned; missing accounts are skipped.
+ */
+export async function fetchPoolsByAddress(connection: Connection, addresses: string[], configKeys: string[], hc: HatchConfigs): Promise<HatchPool[]> {
+  const client = dbcClient(connection);
+  const out = await mapLimit(addresses, 4, async (a) => {
+    const vp = await client.state.getPool(new PublicKey(a));
+    const configKey = vp?.poolState.config.toBase58();
+    if (!vp || !configKey || !configKeys.includes(configKey)) return null;
+    const config = await cachedPoolConfig(connection, configKey);
+    return config ? describePool(connection, new PublicKey(a), vp, config, hc) : null;
+  });
+  return out.filter((p): p is HatchPool => !!p);
+}
+
 export async function fetchHatchPools(
   connection: Connection,
   hc: HatchConfigs,
   opts: { creator?: string; publicList?: boolean } = {}
 ): Promise<HatchPool[]> {
   const client = dbcClient(connection);
-  const configKeys = allConfigKeys(hc);
+  // Creator scans include the link configs: a link coin's owner holds the creator role once they claim it, and
+  // claims future fees from My Hatches like any creator.
+  const configKeys = opts.creator ? listedConfigKeys(hc) : allConfigKeys(hc);
   const configs = new Map<string, PoolConfig>();
   await Promise.all(
     configKeys.map(async (k) => {
