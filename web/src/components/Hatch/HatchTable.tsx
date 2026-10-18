@@ -8,7 +8,7 @@ import { PLATFORM_NAME, matchesHatch, type HatchFilter } from '@/lib/links/listi
 import { fetchTokenMetadata, type HatchTokenMetadata as TokenMetadata } from '@/lib/metadata/token';
 import { formatAmount, formatPercent } from '@/lib/format/amount';
 import { timeAgo } from '@/lib/format/time';
-import { useIsTestLaunch, useQuoteSymbol } from '@/hooks/useHatch';
+import { useIsTestLaunch, usePresetConfigs, useQuoteSymbol } from '@/hooks/useHatch';
 import { cn } from '@/lib/utils';
 import { TokenAvatar } from './TokenAvatar';
 
@@ -122,10 +122,13 @@ export function HatchTable({
   createdAt?: Record<string, number>;
 }) {
   const [filter, setFilter] = useState<Filter>('ALL');
+  // The "Link coins" tab only where link coins exist (a LINK config is set; not on mainnet today).
+  const { data: hc } = usePresetConfigs();
+  const filters = hc?.link ? FILTERS : FILTERS.filter((f) => f.value !== 'LINK');
   const [query, setQuery] = useState('');
   const [shown, setShown] = useState(PAGE);
 
-  const list = pools ?? [];
+  const list = useMemo(() => pools ?? [], [pools]);
   const metas = useQueries({
     queries: list.map((p) => ({ queryKey: ['hatch', 'metadata', p.baseMint], queryFn: () => fetchTokenMetadata(p.baseMint), staleTime: 5 * 60_000 })),
   });
@@ -156,7 +159,7 @@ export function HatchTable({
                 setFilter(f);
                 setShown(PAGE);
               }}
-              options={FILTERS}
+              options={filters}
               equal={false}
               className="w-max"
             />
@@ -171,7 +174,7 @@ export function HatchTable({
                 setQuery(e.target.value);
                 setShown(PAGE);
               }}
-              placeholder="Search name, ticker or link"
+              placeholder={hc?.link ? "Search name, ticker or link" : "Search name or ticker"}
               className="h-full min-w-0 flex-1 bg-transparent text-ink outline-none placeholder:text-ink-muted"
             />
           </label>

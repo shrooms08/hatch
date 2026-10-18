@@ -4,6 +4,7 @@
 // Deliberately plain; the real design comes later.
 import { useEffect, useRef, useState } from 'react';
 import Head from 'next/head';
+import type { GetServerSideProps } from 'next';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { Transaction } from '@solana/web3.js';
@@ -35,6 +36,12 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   if (!res.ok) throw new Error((json as { error?: string }).error ?? `HTTP ${res.status}`);
   return json as T;
 }
+
+/** Link coins are off where linkNetwork() is null (mainnet today): the page is a 404 there. */
+export const getServerSideProps: GetServerSideProps = async () => {
+  const { linkNetwork } = await import('@/lib/server/links/chain');
+  return linkNetwork() ? { props: {} } : { notFound: true };
+};
 
 const fromBase64 = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
